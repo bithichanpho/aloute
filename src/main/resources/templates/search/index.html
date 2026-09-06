@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title>Tìm kiếm — ALOUTE</title></head>
+<body>
+<section>
+
+  <div class="page-header">
+    <h1>Tìm kiếm</h1>
+  </div>
+
+  <div class="feed-panel">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="text" id="searchInput" placeholder="Tìm theo tên hoặc @username" autocomplete="off">
+    </div>
+
+    <div id="searchResults"></div>
+  </div>
+
+</section>
+</body>
+</html>

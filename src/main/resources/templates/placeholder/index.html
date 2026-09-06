@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title th:text="${pageTitle} + ' — ALOUTE'">ALOUTE</title></head>
+<body>
+<section>
+
+  <div class="page-header">
+    <h1 th:text="${pageTitle}">Tính năng</h1>
+  </div>
+
+  <div class="feed-panel">
+    <div class="placeholder-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
+      </svg>
+      <div>Tính năng "<span th:text="${pageTitle}">...</span>" đang được phát triển và sẽ sớm ra mắt.</div>
+    </div>
+  </div>
+
+</section>
+</body>
+</html>

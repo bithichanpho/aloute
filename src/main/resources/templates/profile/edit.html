@@ -10,33 +10,34 @@
 
   <div class="feed-panel" style="padding: 24px 22px;">
 
-    <!-- th:action trỏ đến API cập nhật profile thật khi tích hợp backend -->
-    <form th:action="@{/api/users/me}" action="#" method="post" enctype="multipart/form-data">
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px;">
+      <img th:src="${profileUser.avatarUrl != null ? profileUser.avatarUrl : 'https://i.pravatar.cc/150?img=12'}"
+           src="https://i.pravatar.cc/150?img=12" alt="avatar"
+           style="width:72px; height:72px; border-radius:50%; object-fit:cover;">
+      <div>
+        <label class="btn-outline" style="display:inline-block; width:auto; padding:8px 16px; cursor:pointer;">
+          Đổi ảnh đại diện
+          <input type="file" id="editAvatarInput" accept="image/*" style="display:none;">
+        </label>
+      </div>
+    </div>
 
-      <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px;">
-        <img src="https://i.pravatar.cc/150?img=12" alt="avatar"
-             style="width:72px; height:72px; border-radius:50%; object-fit:cover;">
-        <div>
-          <label class="btn-outline" style="display:inline-block; width:auto; padding:8px 16px; cursor:pointer;">
-            Đổi ảnh đại diện
-            <input type="file" name="avatar" accept="image/*" style="display:none;">
-          </label>
-        </div>
+    <form id="profileEditForm">
+      <div class="field">
+        <input type="text" id="editFullName" placeholder="Họ và tên" th:value="${profileUser.fullName}">
       </div>
 
       <div class="field">
-        <input type="text" name="fullName" placeholder="Họ và tên" value="Minh Trần">
+        <input type="text" disabled th:value="'@' + ${profileUser.username}"
+               style="opacity:0.6; cursor:not-allowed;">
+        <p class="field-hint">Không thể đổi tên đăng nhập</p>
       </div>
 
       <div class="field">
-        <input type="text" name="username" placeholder="Tên đăng nhập" value="minh_tran">
-      </div>
-
-      <div class="field">
-        <textarea name="bio" placeholder="Giới thiệu bản thân" rows="3"
+        <textarea id="editBio" placeholder="Giới thiệu bản thân" rows="3" maxlength="300"
                   style="width:100%; padding:13px 14px; border:1px solid var(--border-strong); border-radius:10px;
                          font-family:var(--font); font-size:14.5px; background:var(--bg-panel); color:var(--text-primary);
-                         resize:vertical; outline:none;">Sinh viên CNTT · Đang xây ALOUTE cho đồ án Lập trình Web & CNPM 🚀</textarea>
+                         resize:vertical; outline:none;" th:text="${profileUser.bio}"></textarea>
       </div>
 
       <button type="submit" class="btn-primary" style="margin-top:8px;">Lưu thay đổi</button>

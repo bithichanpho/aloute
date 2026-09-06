@@ -11,4 +11,10 @@ public interface IChatMessageRepository extends MongoRepository<ChatMessage, Str
     List<ChatMessage> findByConversationIdOrderBySentAtAsc(String conversationId);
 
     List<ChatMessage> findBySenderIdOrReceiverIdOrderBySentAtDesc(String senderId, String receiverId);
+
+    List<ChatMessage> findByReceiverIdAndSenderIdAndReadFalse(String receiverId, String senderId);
+
+    long countByReceiverIdAndSenderIdAndReadFalse(String receiverId, String senderId);
+
+    long countByReceiverIdAndReadFalse(String receiverId);
 }

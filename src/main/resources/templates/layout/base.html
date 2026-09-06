@@ -8,7 +8,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" th:href="@{/css/main.css}">
 </head>
-<body>
+<body th:attr="data-current-user-id=${currentUser != null ? currentUser.id : ''}">
+
+<div id="toastHost"></div>
 
 <div class="app-shell">
 
@@ -23,6 +25,8 @@
   </button>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
 <script th:src="@{/js/app.js}"></script>
 </body>
 </html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xác thực email / ALOUTE</title>
+  <link rel="stylesheet" th:href="@{/css/main.css}">
+</head>
+<body class="auth-body">
+
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-card__logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
+        </svg>
+      </div>
+      <h1 class="auth-card__title">Xác thực email</h1>
+
+      <div id="verifyPending" style="text-align:center;color:var(--text-secondary);font-size:14.5px;">
+        Đang xác thực email của bạn...
+      </div>
+      <div id="verifySuccess" class="form-success" style="display:none;">
+        Xác thực email thành công! Bây giờ bạn có thể sử dụng đầy đủ tính năng của ALOUTE.
+      </div>
+      <div id="verifyError" class="form-error" style="display:none;"></div>
+
+      <p class="auth-switch">
+        <a th:href="@{/feed}">Về trang chủ</a> · <a th:href="@{/login}">Đăng nhập</a>
+      </p>
+    </div>
+  </div>
+
+  <script th:src="@{/js/app.js}"></script>
+  <script th:inline="javascript">
+    const token = /*[[${token}]]*/ null;
+    const pendingBox = document.getElementById('verifyPending');
+    const successBox = document.getElementById('verifySuccess');
+    const errorBox = document.getElementById('verifyError');
+
+    (async function () {
+      if (!token) {
+        pendingBox.style.display = 'none';
+        errorBox.textContent = 'Thiếu mã xác thực trong đường dẫn.';
+        errorBox.style.display = 'block';
+        return;
+      }
+      try {
+        await Aloute.api('/api/auth/verify-email?token=' + encodeURIComponent(token), { method: 'GET' });
+        pendingBox.style.display = 'none';
+        successBox.style.display = 'block';
+      } catch (err) {
+        pendingBox.style.display = 'none';
+        errorBox.textContent = err.message || 'Xác thực thất bại, đường dẫn có thể đã hết hạn hoặc được dùng rồi.';
+        errorBox.style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>

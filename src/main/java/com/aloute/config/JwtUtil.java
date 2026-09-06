@@ -40,6 +40,11 @@ public class JwtUtil {
                 .compact();
     }
 
+    /** Thời hạn token (ms) — dùng để set maxAge cho cookie ALOUTE_TOKEN ở AuthController. */
+    public long getExpirationMs() {
+        return expirationMs;
+    }
+
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }

@@ -28,16 +28,23 @@ public class NotificationService {
         this.messagingTemplate = messagingTemplate;
     }
 
-    /** Tạo thông báo + đẩy real-time ngay tới người nhận qua WebSocket (nếu đang mở app). */
+    /**
+     * Tạo thông báo + đẩy real-time ngay tới người nhận qua WebSocket (nếu đang mở app).
+     * "content" chỉ cần mô tả hành động (vd: "đã thích bài viết của bạn") — tên người
+     * thực hiện được tự động thêm vào phía trước dựa theo senderId, để LikeService,
+     * CommentService, FriendService... không phải tự query User chỉ để lấy username.
+     */
     public void notify(Long receiverId, Long senderId, String type, String referenceId, String content) {
         if (receiverId.equals(senderId)) return; // không tự thông báo cho chính mình
+
+        String actorName = userRepository.findById(senderId).map(User::getUsername).orElse("Ai đó");
 
         Notification notification = new Notification();
         notification.setReceiverId(receiverId);
         notification.setSenderId(senderId);
         notification.setType(type);
         notification.setReferenceId(referenceId);
-        notification.setContent(content);
+        notification.setContent(actorName + " " + content);
 
         Notification saved = notificationRepository.save(notification);
 
