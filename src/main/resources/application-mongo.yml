@@ -1,0 +1,3 @@
+spring:
+  mongodb:
+    uri: ${MONGO_URI:mongodb+srv://nhom18_aloute:nhom18_aloute@cluster0.a1cwnxd.mongodb.net/aloute_db?appName=Cluster0}

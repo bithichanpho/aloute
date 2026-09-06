@@ -1,0 +1,499 @@
+/* ============================================
+   ALOUTE — main.css
+   Giao diện dark mode giống Threads: sidebar có nhãn chữ,
+   khung feed dạng panel bo góc viền mảnh, nhãn "Thịnh hành"
+   tô vàng, icon lưu nổi bên phải mỗi bài viết, nút "+" nổi.
+   ============================================ */
+
+:root {
+  --bg: #000000;
+  --bg-panel: #181818;
+  --bg-pill: #1e1e1e;
+  --bg-hover: #202020;
+  --text-primary: #f2f2f2;
+  --text-secondary: #8a8a8a;
+  --text-tertiary: #6b6b6b;
+  --border: #292929;
+  --border-strong: #3a3a3a;
+  --accent-like: #f0173f;
+  --highlight-bg: #e8e26a;
+  --highlight-text: #171400;
+  --black: #000000;
+  --white: #ffffff;
+
+  --rail-width: 272px;
+  --feed-width: 620px;
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+img { max-width: 100%; display: block; }
+
+/* ============ Bố cục tổng thể ============ */
+
+.app-shell { display: flex; min-height: 100vh; }
+
+.main-column {
+  flex: 1;
+  padding-left: var(--rail-width);
+}
+
+.content-inner {
+  max-width: var(--feed-width);
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+}
+
+/* ============ Thanh điều hướng (sidebar có nhãn) ============ */
+
+.sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: var(--rail-width);
+  display: flex;
+  flex-direction: column;
+  padding: 22px 14px;
+  background: var(--bg);
+  z-index: 10;
+}
+
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  margin-bottom: 20px;
+  font-size: 19px;
+  font-weight: 700;
+}
+.sidebar__logo svg { width: 26px; height: 26px; }
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+}
+.sidebar__row:hover { background: var(--bg-hover); }
+.sidebar__row svg { width: 22px; height: 22px; stroke-width: 1.8; flex-shrink: 0; }
+
+.sidebar__row--active {
+  background: var(--bg-pill);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.sidebar__row--active svg { stroke-width: 2.2; }
+
+.sidebar__row img {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.sidebar__section {
+  margin-top: 22px;
+  padding: 0 14px;
+}
+
+.sidebar__section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.sidebar__section-head a { color: var(--text-tertiary); }
+.sidebar__section-head a:hover { color: var(--text-primary); }
+
+.sidebar__row--sub {
+  padding-left: 0;
+  font-size: 14.5px;
+  justify-content: space-between;
+}
+.sidebar__row--sub svg { width: 18px; height: 18px; color: var(--text-tertiary); }
+
+.sidebar__more { margin-top: auto; }
+
+/* ============ Header trang (tiêu đề + nút tùy chọn) ============ */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.page-header h1 { font-size: 26px; font-weight: 700; margin: 0; }
+.page-header button {
+  background: none; border: none; color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+}
+.page-header svg { width: 24px; height: 24px; stroke-width: 1.8; }
+
+/* ============ Panel feed (khung bo góc chứa compose + bài viết) ============ */
+
+.feed-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: visible;
+}
+
+/* ============ Ô soạn bài viết (compose box) ============ */
+
+.compose {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px;
+}
+
+.compose__avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.compose__body { flex: 1; }
+
+.compose__placeholder {
+  border: none; outline: none; width: 100%;
+  font-family: var(--font); font-size: 15px;
+  color: var(--text-tertiary); background: transparent; padding: 6px 0;
+}
+
+.btn-post {
+  background: var(--white); color: var(--black);
+  border: none; border-radius: 999px;
+  padding: 9px 20px; font-size: 14px; font-weight: 700;
+  flex-shrink: 0;
+}
+.btn-post:disabled { opacity: 0.3; cursor: default; }
+
+/* ============ Nhãn "Thịnh hành" ============ */
+
+.trending {
+  display: flex; align-items: center; gap: 6px;
+  padding: 14px 22px 0;
+  font-size: 13.5px; color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+.trending svg { width: 16px; height: 16px; stroke-width: 2; }
+.trending mark {
+  background: var(--highlight-bg); color: var(--highlight-text);
+  padding: 1px 5px; border-radius: 4px; font-weight: 700;
+}
+
+/* ============ Nhãn phân cách "First thread" ============ */
+
+.thread-divider {
+  display: flex; align-items: center; gap: 6px;
+  padding: 16px 22px 4px;
+  font-size: 13.5px; color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+.thread-divider svg { width: 15px; height: 15px; stroke-width: 1.8; }
+
+/* ============ Bài viết (post) ============ */
+
+.post {
+  position: relative;
+  display: flex; gap: 12px;
+  padding: 12px 22px 16px;
+}
+
+.post__avatar-col { flex-shrink: 0; position: relative; }
+
+.post__avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
+
+.post__avatar-badge {
+  position: absolute; right: -3px; bottom: -3px;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: var(--text-primary); color: var(--bg-panel);
+  border: 2px solid var(--bg-panel);
+  display: flex; align-items: center; justify-content: center;
+}
+.post__avatar-badge svg { width: 10px; height: 10px; stroke-width: 3; }
+
+.post__body { flex: 1; min-width: 0; }
+
+.post__header { display: flex; align-items: center; gap: 6px; }
+.post__username { font-weight: 700; font-size: 14.5px; }
+.post__time { color: var(--text-tertiary); font-size: 13.5px; }
+.post__more {
+  margin-left: auto; background: none; border: none;
+  color: var(--text-tertiary); display: flex; align-items: center;
+}
+.post__more svg { width: 18px; height: 18px; }
+
+.post__content {
+  margin: 4px 0 10px;
+  font-size: 15px; color: var(--text-primary);
+  white-space: pre-line; word-break: break-word;
+}
+
+.post__image {
+  width: 100%; border-radius: 14px; border: 1px solid var(--border);
+  margin-bottom: 8px; max-height: 420px; object-fit: cover;
+}
+
+.post__actions { display: flex; align-items: center; gap: 18px; }
+
+.action {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: none; color: var(--text-secondary);
+  padding: 4px 0;
+}
+.action svg { width: 21px; height: 21px; stroke-width: 1.8; }
+.action span { font-size: 13.5px; }
+
+.action--like.is-liked { color: var(--accent-like); }
+.action--like.is-liked svg { fill: var(--accent-like); stroke: var(--accent-like); }
+
+/* Icon lưu bài — nổi bên ngoài panel, hiện khi rê chuột vào bài viết */
+
+.post__save {
+  position: absolute;
+  right: -46px; top: 10px;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.post:hover .post__save { opacity: 1; }
+.post__save svg { width: 17px; height: 17px; stroke-width: 1.8; }
+
+@media (max-width: 900px) {
+  .post__save { display: none; }
+}
+
+/* Nút "+" nổi góc dưới phải */
+
+.fab {
+  position: fixed; right: 32px; bottom: 32px;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--bg-panel); border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  z-index: 20;
+}
+.fab svg { width: 24px; height: 24px; stroke-width: 2; }
+
+/* ============ Trang xác thực (login/register) ============ */
+
+.auth-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.auth-card { width: 100%; max-width: 360px; }
+.auth-card__logo { display: flex; justify-content: center; margin-bottom: 28px; }
+.auth-card__logo svg { width: 40px; height: 40px; }
+.auth-card__title { font-size: 20px; font-weight: 700; text-align: center; margin: 0 0 24px; }
+
+.field { margin-bottom: 12px; }
+.field input {
+  width: 100%; padding: 13px 14px;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  font-family: var(--font); font-size: 14.5px; outline: none;
+  background: var(--bg-panel); color: var(--text-primary);
+}
+.field input::placeholder { color: var(--text-tertiary); }
+.field input:focus { border-color: var(--text-primary); }
+
+.btn-primary {
+  width: 100%; padding: 13px;
+  background: var(--white); color: var(--black);
+  border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; margin-top: 6px;
+}
+.btn-primary:hover { opacity: 0.88; }
+
+.auth-switch { text-align: center; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
+.auth-switch a { font-weight: 700; color: var(--text-primary); }
+
+/* ============ Trang hồ sơ (profile) ============ */
+
+.profile-header__top { display: flex; justify-content: space-between; align-items: flex-start; }
+.profile-header__name { font-size: 21px; font-weight: 700; margin: 0; }
+.profile-header__username { color: var(--text-secondary); font-size: 14.5px; margin: 2px 0 0; }
+.profile-header__avatar { width: 68px; height: 68px; border-radius: 50%; object-fit: cover; }
+.profile-header__bio { margin: 14px 0 0; font-size: 14.5px; line-height: 1.5; }
+.profile-header__stats { margin: 10px 0 0; font-size: 13.5px; color: var(--text-secondary); }
+
+.btn-outline {
+  width: 100%; padding: 9px; margin-top: 16px;
+  background: transparent; color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  font-size: 14.5px; font-weight: 700;
+}
+.btn-outline:hover { background: var(--bg-hover); }
+
+.profile-tabs { display: flex; margin-top: 20px; border-bottom: 1px solid var(--border); }
+.profile-tabs__item {
+  flex: 1; text-align: center; padding: 13px 0;
+  font-size: 14.5px; font-weight: 600; color: var(--text-tertiary);
+  border-bottom: 2px solid transparent;
+}
+.profile-tabs__item--active { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+
+/* ============ Responsive ============ */
+
+@media (max-width: 900px) {
+  :root { --rail-width: 0px; }
+  .sidebar { display: none; }
+  .content-inner { padding-bottom: 90px; }
+  .fab { right: 20px; bottom: 20px; }
+}
+
+/* ============ Badge thông báo trên icon sidebar ============ */
+
+.sidebar__icon-wrap { position: relative; display: flex; }
+
+.badge {
+  position: absolute;
+  top: -4px; right: -8px;
+  min-width: 16px; height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-like);
+  color: var(--white);
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+
+/* ============ Layout rộng hơn cho trang chat ============ */
+
+.content-inner--wide { max-width: 900px; }
+
+/* ============ Trang chat (2 cột: danh sách hội thoại + khung chat) ============ */
+
+.chat-shell {
+  display: flex;
+  height: calc(100vh - 56px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.chat-list {
+  width: 300px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.chat-list__header {
+  padding: 18px 20px 12px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  cursor: pointer;
+}
+.chat-item:hover { background: var(--bg-hover); }
+.chat-item--active { background: var(--bg-hover); }
+
+.chat-item__avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.chat-item__name { font-weight: 600; font-size: 14.5px; }
+.chat-item__preview {
+  font-size: 13px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+}
+
+.chat-thread { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.chat-thread__header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700; font-size: 15px;
+}
+.chat-thread__header img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+
+.chat-thread__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.bubble {
+  max-width: 62%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 14.5px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.bubble--theirs {
+  background: var(--bg-hover);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.bubble--mine {
+  background: var(--white);
+  color: var(--black);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-thread__input {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.chat-thread__input input {
+  flex: 1;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-family: var(--font);
+  font-size: 14.5px;
+  outline: none;
+}
+.chat-thread__send {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--white); color: var(--black);
+  border: none; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.chat-thread__send svg { width: 18px; height: 18px; }
+
+@media (max-width: 900px) {
+  .chat-shell { border-radius: 0; height: calc(100vh - 56px); }
+  .chat-list { width: 100%; }
+  .chat-list.has-active-thread { display: none; }
+}

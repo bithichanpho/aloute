@@ -1,0 +1,12 @@
+# application-jwt.yml — cấu hình JWT
+#
+# secret: chuỗi bí mật dùng để ký/verify token, càng dài càng an toàn
+# (ít nhất 32 ký tự cho thuật toán HS256). Đây là giá trị mặc định tạm để
+# chạy được ngay — nên đổi sang giá trị ngẫu nhiên khác qua biến môi trường
+# JWT_SECRET khi triển khai thật.
+#
+# expiration: thời hạn token, tính bằng mili-giây. 86400000 = 24 giờ.
+
+jwt:
+  secret: ${JWT_SECRET:aloute-dev-secret-key-thay-doi-truoc-khi-nop-bai-32ky-tu}
+  expiration: ${JWT_EXPIRATION:86400000}

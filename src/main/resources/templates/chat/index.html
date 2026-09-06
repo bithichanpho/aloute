@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title>Tin nhắn — ALOUTE</title></head>
+<body>
+<section class="content-inner--wide" style="margin: 0 auto;">
+
+  <div class="chat-shell">
+
+    <!-- Cột trái: danh sách hội thoại — khi nối backend, thay bằng
+         th:each qua ${conversations} -->
+    <aside class="chat-list">
+      <div class="chat-list__header">Tin nhắn</div>
+
+      <div class="chat-item chat-item--active">
+        <img class="chat-item__avatar" src="https://i.pravatar.cc/150?img=32" alt="avatar">
+        <div>
+          <div class="chat-item__name">lan_pham</div>
+          <div class="chat-item__preview">Ok để mai mình gửi file nhé</div>
+        </div>
+      </div>
+
+      <div class="chat-item">
+        <img class="chat-item__avatar" src="https://i.pravatar.cc/150?img=45" alt="avatar">
+        <div>
+          <div class="chat-item__name">duy_nguyen</div>
+          <div class="chat-item__preview">Cảm ơn bạn đã giúp fix bug JWT 🙏</div>
+        </div>
+      </div>
+
+      <div class="chat-item">
+        <img class="chat-item__avatar" src="https://i.pravatar.cc/150?img=15" alt="avatar">
+        <div>
+          <div class="chat-item__name">hoa_tran</div>
+          <div class="chat-item__preview">Nhóm họp lúc 8h tối nay nha</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Cột phải: khung tin nhắn của hội thoại đang chọn -->
+    <div class="chat-thread">
+      <div class="chat-thread__header">
+        <img src="https://i.pravatar.cc/150?img=32" alt="avatar">
+        <span>lan_pham</span>
+      </div>
+
+      <div class="chat-thread__messages" id="messageList">
+        <div class="bubble bubble--theirs">Chào bạn, ALOUTE làm tới đâu rồi?</div>
+        <div class="bubble bubble--mine">Mình vừa xong phần đăng bài, đang làm chat 😄</div>
+        <div class="bubble bubble--theirs">Ok để mai mình gửi file thiết kế feed cho bạn nhé</div>
+      </div>
+
+      <div class="chat-thread__input">
+        <input type="text" id="messageInput" placeholder="Nhắn tin...">
+        <button class="chat-thread__send" onclick="sendMessage()" aria-label="Gửi">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+</section>
+
+<script th:src="@{/js/chat.js}"></script>
+</body>
+</html>

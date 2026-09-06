@@ -1,0 +1,21 @@
+# application-db.yml — cấu hình SQL Server (JPA)
+#
+# Đổi 3 giá trị dưới đây khớp với SQL Server bạn đã cài (SQL Server Express
+# hoặc bản đầy đủ). Nếu dùng SQL Server Express, tên instance mặc định
+# thường là SQLEXPRESS — có thể cần sửa lại đoạn "localhost:1433" thành
+# "localhost\\SQLEXPRESS" tùy cách cài đặt của bạn.
+
+spring:
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=aloute_db;encrypt=true;trustServerCertificate=true
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:123}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true

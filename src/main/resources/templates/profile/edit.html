@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title>Chỉnh sửa trang cá nhân — ALOUTE</title></head>
+<body>
+<section>
+
+  <div class="page-header">
+    <h1>Chỉnh sửa trang cá nhân</h1>
+  </div>
+
+  <div class="feed-panel" style="padding: 24px 22px;">
+
+    <!-- th:action trỏ đến API cập nhật profile thật khi tích hợp backend -->
+    <form th:action="@{/api/users/me}" action="#" method="post" enctype="multipart/form-data">
+
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px;">
+        <img src="https://i.pravatar.cc/150?img=12" alt="avatar"
+             style="width:72px; height:72px; border-radius:50%; object-fit:cover;">
+        <div>
+          <label class="btn-outline" style="display:inline-block; width:auto; padding:8px 16px; cursor:pointer;">
+            Đổi ảnh đại diện
+            <input type="file" name="avatar" accept="image/*" style="display:none;">
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <input type="text" name="fullName" placeholder="Họ và tên" value="Minh Trần">
+      </div>
+
+      <div class="field">
+        <input type="text" name="username" placeholder="Tên đăng nhập" value="minh_tran">
+      </div>
+
+      <div class="field">
+        <textarea name="bio" placeholder="Giới thiệu bản thân" rows="3"
+                  style="width:100%; padding:13px 14px; border:1px solid var(--border-strong); border-radius:10px;
+                         font-family:var(--font); font-size:14.5px; background:var(--bg-panel); color:var(--text-primary);
+                         resize:vertical; outline:none;">Sinh viên CNTT · Đang xây ALOUTE cho đồ án Lập trình Web & CNPM 🚀</textarea>
+      </div>
+
+      <button type="submit" class="btn-primary" style="margin-top:8px;">Lưu thay đổi</button>
+    </form>
+  </div>
+
+</section>
+</body>
+</html>

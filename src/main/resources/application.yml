@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: aloute
+  config:
+    import:
+      - application-db.yml
+      - application-mongo.yml
+      - application-jwt.yml
+      - application-mail.yml
+      - application-cloudinary.yml
+
+server:
+  port: 8080

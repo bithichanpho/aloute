@@ -1,0 +1,3 @@
+<span class="badge" th:fragment="badge(count)"
+      th:if="${count != null and count > 0}"
+      th:text="${count > 99 ? '99+' : count}">3</span>
