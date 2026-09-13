@@ -1,21 +1,16 @@
-# application-db.yml — cấu hình SQL Server (JPA)
-#
-# Đổi 3 giá trị dưới đây khớp với SQL Server bạn đã cài (SQL Server Express
-# hoặc bản đầy đủ). Nếu dùng SQL Server Express, tên instance mặc định
-# thường là SQLEXPRESS — có thể cần sửa lại đoạn "localhost:1433" thành
-# "localhost\\SQLEXPRESS" tùy cách cài đặt của bạn.
-
+# PostgreSQL configuration. Local and production can both use Supabase.
 spring:
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=aloute_db;encrypt=true;trustServerCertificate=true
-    username: ${DB_USERNAME:sa}
-    password: ${DB_PASSWORD:123}
-    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
-
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: ${DB_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_FORMAT_SQL:false}
+        jdbc:
+          time_zone: UTC

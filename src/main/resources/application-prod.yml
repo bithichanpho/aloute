@@ -1,0 +1,56 @@
+# Production profile for a persistent Windows/Docker deployment using Supabase Postgres.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+        # Keep JPA server-side access isolated from Supabase's Data API surface.
+        default_schema: ${DB_SCHEMA:public}
+  mongodb:
+    uri: ${MONGO_URI}
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+server:
+  address: 0.0.0.0
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: framework
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:8080}
+  security:
+    cookie-secure: ${APP_COOKIE_SECURE:false}
+  mail:
+    from: ${MAIL_FROM:ALOUTE <no-reply@example.com>}
+    frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:8080}
+  moderation:
+    service-url: ${MODERATION_SERVICE_URL:http://localhost:8000}

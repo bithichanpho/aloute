@@ -1,10 +1,9 @@
-
 spring:
   mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${MAIL_USERNAME:tranthiphuongtrang2711@gmail.com}
-    password: ${MAIL_PASSWORD:irvf dtqz oosy hogs}
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -14,5 +13,5 @@ spring:
 
 app:
   mail:
-    from: ${MAIL_FROM:ALOUTE <no-reply@aloute.com>}
+    from: ${MAIL_FROM:ALOUTE <no-reply@localhost>}
     frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:8080}

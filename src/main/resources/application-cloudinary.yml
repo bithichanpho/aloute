@@ -1,4 +1,4 @@
 cloudinary:
-  cloud-name: ${CLOUDINARY_CLOUD_NAME:dhjsacpn}
-  api-key: ${CLOUDINARY_API_KEY:696721212877342}
-  api-secret: ${CLOUDINARY_API_SECRET:luGpCSvhTOWPR2UK0vUxHlfxF9o}
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+  api-key: ${CLOUDINARY_API_KEY:}
+  api-secret: ${CLOUDINARY_API_SECRET:}
