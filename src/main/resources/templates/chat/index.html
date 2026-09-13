@@ -4,7 +4,7 @@
 <body>
 <section class="content-inner--chat" id="chatPage">
 
-  <div class="chat-shell" id="chatShell">
+  <div class="chat-shell" id="chatShell" th:attr="data-open-user-id=${openUserId != null ? openUserId : ''}">
 
     <!-- Cột trái: tìm kiếm + danh sách hội thoại / bạn bè -->
     <aside class="chat-list" id="chatList">

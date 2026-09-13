@@ -113,13 +113,16 @@ public class ViewController {
     }
 
     @GetMapping("/chat")
-    public String chat(Authentication authentication, Model model) {
-        Long userId = requireLogin(authentication);
-        if (userId == null) return "redirect:/login";
+    public String chat(Authentication authentication, Model model,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long userId) {
+        Long currentUserId = requireLogin(authentication);
+        if (currentUserId == null) return "redirect:/login";
 
-        List<ConversationResponse> conversations = chatService.getConversations(userId);
+        List<ConversationResponse> conversations = chatService.getConversations(currentUserId);
         model.addAttribute("conversations", conversations);
-        addCommonAttributes(model, userId, "chat");
+        // Được điều hướng tới từ nút "Nhắn tin" trên trang cá nhân -> mở sẵn đúng hội thoại đó
+        model.addAttribute("openUserId", userId);
+        addCommonAttributes(model, currentUserId, "chat");
         return "chat/index";
     }
 

@@ -13,6 +13,7 @@
 (function () {
   const chatList = document.getElementById('chatList');
   const chatListScroll = document.getElementById('chatListScroll');
+  const chatShell = document.getElementById('chatShell');
   const chatThread = document.getElementById('chatThread');
   const emptyState = document.getElementById('chatEmptyState');
   const template = document.getElementById('chatThreadTemplate');
@@ -22,6 +23,7 @@
   const currentUserId = document.body.dataset.currentUserId;
 
   let activeUserId = null;
+  let activeGroupId = null;
   let activeItemEl = null;
   let stompClientRef = null;
 
@@ -55,12 +57,29 @@
     });
   }
 
-  // ---------- Chọn 1 hội thoại ----------
-  chatList.querySelectorAll('.chat-item[data-user-id]').forEach(item => {
+  // ---------- Chọn 1 hội thoại (1-1 hoặc nhóm) ----------
+  chatList.querySelectorAll('.chat-item[data-user-id], .chat-item[data-group-id]').forEach(item => {
     item.addEventListener('click', () => openConversation(item));
   });
 
-  async function openConversation(item) {
+  // ---------- Đến từ nút "Nhắn tin" trên trang cá nhân (/chat?userId=X) -> mở sẵn đúng hội thoại ----------
+  if (chatShell && chatShell.dataset.openUserId) {
+    const targetItem = chatList.querySelector('.chat-item[data-user-id="' + chatShell.dataset.openUserId + '"]');
+    if (targetItem) {
+      openConversation(targetItem);
+      targetItem.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function openConversation(item) {
+    if (item.dataset.groupId) {
+      openGroupConversation(item);
+    } else {
+      openDirectConversation(item);
+    }
+  }
+
+  async function openDirectConversation(item) {
     chatList.querySelectorAll('.chat-item').forEach(i => i.classList.remove('chat-item--active'));
     item.classList.add('chat-item--active');
     chatList.classList.add('has-active-thread');
@@ -70,6 +89,7 @@
     const fullName = item.dataset.fullname || item.dataset.username || 'Người dùng';
     const avatar = item.dataset.avatar || 'https://i.pravatar.cc/150?img=32';
     const online = item.dataset.online === 'true';
+    activeGroupId = null;
     activeUserId = userId;
 
     resetClusterTracking();
@@ -97,6 +117,68 @@
     input.addEventListener('input', () => {
       sendBtn.disabled = input.value.trim().length === 0;
       notifyTyping();
+    });
+    sendBtn.addEventListener('click', () => sendCurrentMessage());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); sendCurrentMessage(); }
+    });
+    input.focus();
+
+    const backBtn = document.getElementById('chatBackBtn');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        chatList.classList.remove('has-active-thread');
+      });
+    }
+  }
+
+  // ---------- Mở 1 luồng chat NHÓM ----------
+  async function openGroupConversation(item) {
+    chatList.querySelectorAll('.chat-item').forEach(i => i.classList.remove('chat-item--active'));
+    item.classList.add('chat-item--active');
+    chatList.classList.add('has-active-thread');
+    activeItemEl = item;
+
+    const groupId = item.dataset.groupId;
+    const groupName = item.dataset.groupName || 'Nhóm';
+    const avatar = item.dataset.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + groupId);
+    activeUserId = null;
+    activeGroupId = groupId;
+
+    resetClusterTracking();
+
+    const unreadEl = item.querySelector('.chat-item__unread');
+    if (unreadEl) unreadEl.remove();
+
+    renderThreadShell(groupName, avatar, false);
+    const threadAvatar = document.getElementById('chatThreadAvatar');
+    if (threadAvatar) threadAvatar.classList.add('chat-item__avatar--group');
+
+    const statusEl = document.getElementById('chatThreadStatus');
+    if (statusEl) statusEl.textContent = (item.dataset.memberCount || '0') + ' thành viên';
+
+    const menuBtn = document.getElementById('groupMenuBtn');
+    if (menuBtn) {
+      menuBtn.hidden = false;
+      menuBtn.addEventListener('click', () => openGroupInfoModal(groupId));
+    }
+
+    const messageList = document.getElementById('messageList');
+    messageList.innerHTML = '<div class="empty-state empty-state--thread"><span>Đang tải tin nhắn...</span></div>';
+
+    try {
+      const messages = await Aloute.api('/api/chat/group/' + groupId + '/messages');
+      renderMessages(messages);
+      Aloute.api('/api/chat/group/' + groupId + '/read', { method: 'POST' }).catch(() => {});
+    } catch (err) {
+      messageList.innerHTML = '<div class="empty-state empty-state--thread"><span>Không tải được tin nhắn: ' + Aloute.escapeHtml(err.message) + '</span></div>';
+    }
+
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendMessageBtn');
+
+    input.addEventListener('input', () => {
+      sendBtn.disabled = input.value.trim().length === 0;
     });
     sendBtn.addEventListener('click', () => sendCurrentMessage());
     input.addEventListener('keydown', (e) => {
@@ -240,17 +322,23 @@
     if (msg.clientId) row.dataset.clientId = msg.clientId;
 
     let avatarHtml = '';
+    let senderNameHtml = '';
     if (!mine) {
       const showAvatar = !sameCluster;
       avatarHtml = showAvatar
         ? '<img class="msg-row__avatar" src="' + Aloute.escapeHtml(msg.senderAvatarUrl || 'https://i.pravatar.cc/150?img=32') + '" alt="avatar">'
         : '<span class="msg-row__avatar-spacer"></span>';
+      // Trong nhóm có nhiều người gửi khác nhau -> ghi rõ tên ngay trong bubble đầu cụm để khỏi nhầm ai nói gì
+      if (activeGroupId && showAvatar) {
+        senderNameHtml = '<span class="bubble__sender-name">' + Aloute.escapeHtml(msg.senderFullName || msg.senderUsername || '') + '</span>';
+      }
     }
 
     const pendingClass = opts.pending ? ' bubble--pending' : '';
     row.innerHTML =
       avatarHtml +
       '<div class="bubble ' + (mine ? 'bubble--mine' : 'bubble--theirs') + ' bubble--cluster-last' + pendingClass + '">' +
+      senderNameHtml +
       '  <span class="bubble__text">' + Aloute.escapeHtml(msg.content) + '</span>' +
       '  <span class="bubble__time">' + formatClock(sentAt) + '</span>' +
       '</div>';
@@ -309,12 +397,12 @@
     stompClientRef.send('/app/chat.typing', {}, JSON.stringify({ receiverId: Number(activeUserId) }));
   }
 
-  // ---------- Gửi tin nhắn (optimistic UI) ----------
+  // ---------- Gửi tin nhắn (optimistic UI, hỗ trợ cả 1-1 và nhóm) ----------
   function sendCurrentMessage() {
     const input = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendMessageBtn');
     const content = input.value.trim();
-    if (!content || !activeUserId) return;
+    if (!content || (!activeUserId && !activeGroupId)) return;
 
     if (!stompClientRef) {
       Aloute.toast('Đang kết nối lại, vui lòng thử lại sau giây lát', true);
@@ -322,7 +410,7 @@
     }
 
     const clientId = 'c' + Date.now() + Math.random().toString(36).slice(2, 8);
-    const receiverId = Number(activeUserId);
+    const isGroup = !!activeGroupId;
 
     const optimisticRow = appendBubble({
       senderId: currentUserId,
@@ -332,13 +420,14 @@
     }, { pending: true });
 
     const timeoutId = setTimeout(() => markPendingFailed(clientId), 12000);
-    pendingByClientId.set(clientId, { el: optimisticRow, content, receiverId, timeoutId });
+    pendingByClientId.set(clientId, isGroup
+      ? { el: optimisticRow, content, groupId: Number(activeGroupId), timeoutId }
+      : { el: optimisticRow, content, receiverId: Number(activeUserId), timeoutId });
 
-    stompClientRef.send('/app/chat.send', {}, JSON.stringify({
-      receiverId: receiverId,
-      content: content,
-      clientId: clientId
-    }));
+    const payload = isGroup
+      ? { groupId: Number(activeGroupId), content: content, clientId: clientId }
+      : { receiverId: Number(activeUserId), content: content, clientId: clientId };
+    stompClientRef.send('/app/chat.send', {}, JSON.stringify(payload));
 
     input.value = '';
     sendBtn.disabled = true;
@@ -448,11 +537,54 @@
     }
   }
 
+  /** Cập nhật dòng NHÓM ở cột trái khi có tin nhắn nhóm mới — tương tự upsertChatListItem nhưng cho group. */
+  function upsertGroupListItem(msg) {
+    const item = chatList.querySelector('.chat-item[data-group-id="' + msg.groupId + '"]');
+    const isMine = String(msg.senderId) === String(currentUserId);
+
+    if (!item) {
+      location.reload();
+      return;
+    }
+
+    let preview = item.querySelector('.chat-item__preview');
+    if (preview) {
+      const senderPrefix = isMine ? 'Bạn: ' : (msg.senderFullName || msg.senderUsername || '') + ': ';
+      preview.textContent = senderPrefix + msg.content;
+    }
+
+    const timeEl = item.querySelector('.chat-item__time');
+    if (timeEl) timeEl.textContent = 'vừa xong';
+
+    const isActive = activeGroupId && String(msg.groupId) === String(activeGroupId);
+    if (!isMine && !isActive) {
+      let badge = item.querySelector('.chat-item__unread');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'chat-item__unread';
+        item.querySelector('.chat-item__bottom').appendChild(badge);
+        badge.textContent = '1';
+      } else {
+        badge.textContent = String((parseInt(badge.textContent, 10) || 0) + 1);
+      }
+    }
+
+    if (chatListScroll && chatListScroll.firstChild !== item) {
+      chatListScroll.insertBefore(item, chatListScroll.firstChild);
+    }
+  }
+
   // ---------- Nhận tin nhắn real-time (app.js phát ra sự kiện này) ----------
   document.addEventListener('aloute:message', (e) => {
     const msg = e.detail;
-    const otherId = String(msg.senderId) === String(currentUserId) ? String(msg.receiverId) : String(msg.senderId);
     const isMine = String(msg.senderId) === String(currentUserId);
+
+    if (msg.groupId != null) {
+      handleIncomingGroupMessage(msg, isMine);
+      return;
+    }
+
+    const otherId = isMine ? String(msg.receiverId) : String(msg.senderId);
 
     if (isMine && msg.clientId && reconcilePending(msg)) {
       upsertChatListItem(msg, otherId);
@@ -471,6 +603,22 @@
 
     upsertChatListItem(msg, otherId);
   });
+
+  function handleIncomingGroupMessage(msg, isMine) {
+    if (isMine && msg.clientId && reconcilePending(msg)) {
+      upsertGroupListItem(msg);
+      return;
+    }
+
+    if (activeGroupId && String(msg.groupId) === String(activeGroupId)) {
+      appendBubble(msg, {});
+      if (!isMine) {
+        Aloute.api('/api/chat/group/' + msg.groupId + '/read', { method: 'POST' }).catch(() => {});
+      }
+    }
+
+    upsertGroupListItem(msg);
+  }
 
   // ---------- Đang gõ (app.js phát 'aloute:typing' từ /queue/typing) ----------
   document.addEventListener('aloute:typing', (e) => {
@@ -511,6 +659,266 @@
         input.value = pending.content;
         input.dispatchEvent(new Event('input'));
       }
+    }
+  });
+
+  // ============================================================
+  // Quản lý nhóm chat: tạo nhóm mới, xem/thêm/xóa thành viên, rời nhóm.
+  // ============================================================
+
+  const newGroupBtn = document.getElementById('newGroupBtn');
+  const createGroupModal = document.getElementById('createGroupModal');
+  const closeCreateGroupBtn = document.getElementById('closeCreateGroupBtn');
+  const createGroupForm = document.getElementById('createGroupForm');
+  const newGroupNameInput = document.getElementById('newGroupName');
+  const newGroupMemberList = document.getElementById('newGroupMemberList');
+  const createGroupError = document.getElementById('createGroupError');
+  const createGroupSubmitBtn = document.getElementById('createGroupSubmitBtn');
+
+  const groupInfoModal = document.getElementById('groupInfoModal');
+  const closeGroupInfoBtn = document.getElementById('closeGroupInfoBtn');
+  const groupInfoTitle = document.getElementById('groupInfoTitle');
+  const groupInfoError = document.getElementById('groupInfoError');
+  const groupInfoMemberList = document.getElementById('groupInfoMemberList');
+  const groupAddMemberList = document.getElementById('groupAddMemberList');
+  const leaveGroupBtn = document.getElementById('leaveGroupBtn');
+
+  let myFriendsCache = null; // cache danh sách bạn bè trong phiên này, đỡ gọi lại API nhiều lần
+
+  async function getMyFriends() {
+    if (myFriendsCache) return myFriendsCache;
+    myFriendsCache = await Aloute.api('/api/users/' + currentUserId + '/friends');
+    return myFriendsCache;
+  }
+
+  function openModal(modal) { if (modal) modal.hidden = false; }
+  function closeModal(modal) { if (modal) modal.hidden = true; }
+
+  // ---------- Modal: Tạo nhóm mới ----------
+  if (newGroupBtn) {
+    newGroupBtn.addEventListener('click', async () => {
+      createGroupError.style.display = 'none';
+      createGroupForm.reset();
+      newGroupMemberList.innerHTML = '<span style="color:var(--text-tertiary); font-size:13.5px;">Đang tải danh sách bạn bè...</span>';
+      openModal(createGroupModal);
+
+      try {
+        const friends = await getMyFriends();
+        if (!friends.length) {
+          newGroupMemberList.innerHTML = '<span style="color:var(--text-tertiary); font-size:13.5px;">Bạn chưa có bạn bè nào (2 người cần follow lẫn nhau) để thêm vào nhóm.</span>';
+          return;
+        }
+        newGroupMemberList.innerHTML = friends.map(f => memberRowHtml(f, { checkbox: true })).join('');
+      } catch (err) {
+        newGroupMemberList.innerHTML = '';
+        createGroupError.textContent = err.message || 'Không tải được danh sách bạn bè';
+        createGroupError.style.display = 'block';
+      }
+    });
+  }
+
+  if (closeCreateGroupBtn) closeCreateGroupBtn.addEventListener('click', () => closeModal(createGroupModal));
+  if (createGroupModal) {
+    createGroupModal.addEventListener('click', (e) => { if (e.target === createGroupModal) closeModal(createGroupModal); });
+  }
+
+  if (createGroupForm) {
+    createGroupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      createGroupError.style.display = 'none';
+
+      const name = newGroupNameInput.value.trim();
+      const memberIds = Array.from(newGroupMemberList.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(cb => Number(cb.value));
+
+      if (!name) {
+        createGroupError.textContent = 'Vui lòng nhập tên nhóm.';
+        createGroupError.style.display = 'block';
+        return;
+      }
+      if (!memberIds.length) {
+        createGroupError.textContent = 'Chọn ít nhất 1 bạn bè để tạo nhóm.';
+        createGroupError.style.display = 'block';
+        return;
+      }
+
+      createGroupSubmitBtn.disabled = true;
+      createGroupSubmitBtn.textContent = 'Đang tạo...';
+
+      try {
+        await Aloute.api('/api/chat/groups', {
+          method: 'POST',
+          body: JSON.stringify({ name, memberIds })
+        });
+        Aloute.toast('Đã tạo nhóm "' + name + '"');
+        closeModal(createGroupModal);
+        // Danh sách bên trái cần thêm dòng nhóm mới -> tải lại trang là cách chắc chắn nhất
+        location.reload();
+      } catch (err) {
+        createGroupError.textContent = err.message || 'Tạo nhóm thất bại';
+        createGroupError.style.display = 'block';
+      } finally {
+        createGroupSubmitBtn.disabled = false;
+        createGroupSubmitBtn.textContent = 'Tạo nhóm';
+      }
+    });
+  }
+
+  function memberRowHtml(user, opts) {
+    opts = opts || {};
+    const avatar = user.avatarUrl || 'https://i.pravatar.cc/150?img=32';
+    const name = user.fullName || user.username;
+    let right = '';
+    if (opts.checkbox) {
+      right = '<input type="checkbox" value="' + user.id + '">';
+    } else if (opts.roleLabel) {
+      right = '<span class="member-row__role">' + Aloute.escapeHtml(opts.roleLabel) + '</span>';
+    }
+    if (opts.actionLabel) {
+      right += '<button type="button" class="member-row__action" data-action-user-id="' + user.id + '">' + Aloute.escapeHtml(opts.actionLabel) + '</button>';
+    }
+    return '<label class="member-row">' +
+      '<img src="' + Aloute.escapeHtml(avatar) + '" alt="avatar">' +
+      '<span class="member-row__name">' + Aloute.escapeHtml(name) + '</span>' +
+      right +
+      '</label>';
+  }
+
+  // ---------- Modal: Thông tin & thành viên nhóm ----------
+  async function openGroupInfoModal(groupId) {
+    groupInfoError.style.display = 'none';
+    groupInfoTitle.textContent = 'Thông tin nhóm';
+    groupInfoMemberList.innerHTML = '<span style="color:var(--text-tertiary); font-size:13.5px;">Đang tải...</span>';
+    groupAddMemberList.innerHTML = '<span style="color:var(--text-tertiary); font-size:13.5px;">Đang tải...</span>';
+    groupInfoModal.dataset.groupId = groupId;
+    openModal(groupInfoModal);
+    await refreshGroupInfoModal(groupId);
+  }
+
+  async function refreshGroupInfoModal(groupId) {
+    try {
+      const group = await Aloute.api('/api/chat/groups/' + groupId);
+      groupInfoTitle.textContent = group.name + ' · ' + group.members.length + ' thành viên';
+
+      const myMembership = group.members.find(m => String(m.userId) === String(currentUserId));
+      const iAmAdmin = myMembership && myMembership.role === 'ADMIN';
+
+      groupInfoMemberList.innerHTML = group.members.map(m => memberRowHtml(
+        { id: m.userId, fullName: m.fullName, username: m.username, avatarUrl: m.avatarUrl },
+        {
+          roleLabel: m.role === 'ADMIN' ? 'Quản trị viên' : '',
+          actionLabel: (iAmAdmin && String(m.userId) !== String(currentUserId)) ? 'Xóa' : ''
+        }
+      )).join('');
+
+      groupInfoMemberList.querySelectorAll('.member-row__action').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const targetUserId = btn.dataset.actionUserId;
+          if (!confirm('Xóa thành viên này khỏi nhóm?')) return;
+          try {
+            await Aloute.api('/api/chat/groups/' + groupId + '/members/' + targetUserId, { method: 'DELETE' });
+            Aloute.toast('Đã xóa thành viên');
+            await refreshGroupInfoModal(groupId);
+            updateGroupListItemMemberCount(groupId, group.members.length - 1);
+          } catch (err) {
+            groupInfoError.textContent = err.message || 'Xóa thành viên thất bại';
+            groupInfoError.style.display = 'block';
+          }
+        });
+      });
+
+      // Bạn bè chưa ở trong nhóm -> gợi ý thêm nhanh
+      const memberIdSet = new Set(group.members.map(m => String(m.userId)));
+      const friends = await getMyFriends();
+      const addable = friends.filter(f => !memberIdSet.has(String(f.id)));
+
+      groupAddMemberList.innerHTML = addable.length
+        ? addable.map(f => memberRowHtml(f, { actionLabel: 'Thêm' })).join('')
+        : '<span style="color:var(--text-tertiary); font-size:13.5px;">Không còn bạn bè nào để thêm.</span>';
+
+      groupAddMemberList.querySelectorAll('.member-row__action').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const userId = btn.dataset.actionUserId;
+          btn.disabled = true;
+          try {
+            await Aloute.api('/api/chat/groups/' + groupId + '/members', {
+              method: 'POST',
+              body: JSON.stringify({ userId: Number(userId) })
+            });
+            Aloute.toast('Đã thêm thành viên');
+            await refreshGroupInfoModal(groupId);
+            updateGroupListItemMemberCount(groupId, group.members.length + 1);
+          } catch (err) {
+            groupInfoError.textContent = err.message || 'Thêm thành viên thất bại';
+            groupInfoError.style.display = 'block';
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      groupInfoMemberList.innerHTML = '';
+      groupInfoError.textContent = err.message || 'Không tải được thông tin nhóm';
+      groupInfoError.style.display = 'block';
+    }
+  }
+
+  function updateGroupListItemMemberCount(groupId, count) {
+    const item = chatList.querySelector('.chat-item[data-group-id="' + groupId + '"]');
+    if (!item) return;
+    item.dataset.memberCount = String(count);
+    if (activeGroupId && String(groupId) === String(activeGroupId)) {
+      const statusEl = document.getElementById('chatThreadStatus');
+      if (statusEl) statusEl.textContent = count + ' thành viên';
+    }
+  }
+
+  if (closeGroupInfoBtn) closeGroupInfoBtn.addEventListener('click', () => closeModal(groupInfoModal));
+  if (groupInfoModal) {
+    groupInfoModal.addEventListener('click', (e) => { if (e.target === groupInfoModal) closeModal(groupInfoModal); });
+  }
+
+  if (leaveGroupBtn) {
+    leaveGroupBtn.addEventListener('click', async () => {
+      const groupId = groupInfoModal.dataset.groupId;
+      if (!groupId) return;
+      if (!confirm('Rời khỏi nhóm này?')) return;
+      try {
+        await Aloute.api('/api/chat/groups/' + groupId + '/members/' + currentUserId, { method: 'DELETE' });
+        Aloute.toast('Đã rời nhóm');
+        closeModal(groupInfoModal);
+        location.reload();
+      } catch (err) {
+        groupInfoError.textContent = err.message || 'Rời nhóm thất bại';
+        groupInfoError.style.display = 'block';
+      }
+    });
+  }
+
+  // ---------- Nhóm vừa thay đổi (app.js phát 'aloute:group-update' từ /queue/group-updates) ----------
+  document.addEventListener('aloute:group-update', (e) => {
+    const { groupId, action, affectedUserId } = e.detail;
+    const isAboutMe = String(affectedUserId) === String(currentUserId);
+    const item = chatList.querySelector('.chat-item[data-group-id="' + groupId + '"]');
+
+    // Mình vừa được thêm vào 1 nhóm mới, hoặc vừa bị xóa/tự rời (ở tab khác) khỏi 1 nhóm đang có
+    // trong danh sách -> danh sách bên trái cần thêm/bớt hẳn 1 dòng, tải lại trang là cách chắc chắn nhất.
+    if (action === 'created' || ((action === 'member_removed' || action === 'member_left') && isAboutMe)) {
+      location.reload();
+      return;
+    }
+
+    if (!item) return; // nhóm này không ở trong danh sách của mình (không liên quan) -> bỏ qua
+
+    // Đang mở đúng modal thông tin của nhóm này -> làm mới danh sách thành viên ngay
+    if (groupInfoModal && !groupInfoModal.hidden && String(groupInfoModal.dataset.groupId) === String(groupId)) {
+      refreshGroupInfoModal(groupId);
+    }
+
+    // Người khác (không phải mình) rời/bị thêm/bị xóa -> chỉ cần cập nhật lại số lượng thành viên hiển thị
+    if (action === 'member_added' || action === 'member_removed' || action === 'member_left') {
+      Aloute.api('/api/chat/groups/' + groupId).then(group => {
+        updateGroupListItemMemberCount(groupId, group.members.length);
+      }).catch(() => {});
     }
   });
 })();

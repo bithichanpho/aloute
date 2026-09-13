@@ -322,6 +322,7 @@ public class ChatService {
 
         userRepository.findById(Long.valueOf(m.getSenderId())).ifPresent(sender -> {
             dto.setSenderUsername(sender.getUsername());
+            dto.setSenderFullName(sender.getFullName());
             dto.setSenderAvatarUrl(sender.getAvatarUrl());
         });
 

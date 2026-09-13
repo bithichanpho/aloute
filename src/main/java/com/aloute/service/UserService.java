@@ -17,10 +17,18 @@ public class UserService {
 
     private final IUserRepository userRepository;
     private final IFriendRepository friendRepository;
+    private final FriendService friendService;
+    private final CloseFriendService closeFriendService;
 
-    public UserService(IUserRepository userRepository, IFriendRepository friendRepository) {
+    public UserService(
+            IUserRepository userRepository,
+            IFriendRepository friendRepository,
+            FriendService friendService,
+            CloseFriendService closeFriendService) {
         this.userRepository = userRepository;
         this.friendRepository = friendRepository;
+        this.friendService = friendService;
+        this.closeFriendService = closeFriendService;
     }
 
     public Optional<User> findUserBasicInfo(Long userId) {
@@ -44,6 +52,8 @@ public class UserService {
         if (currentUserId != null) {
             dto.setFollowedByCurrentUser(
                     friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId));
+            dto.setMutualFriend(friendService.isFriend(currentUserId, targetUserId));
+            dto.setCloseFriendStatus(closeFriendService.getStatus(currentUserId, targetUserId));
         }
 
         return dto;

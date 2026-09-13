@@ -152,6 +152,12 @@ window.Aloute = (function () {
         document.dispatchEvent(new CustomEvent('aloute:chat-error', { detail: payload }));
       });
 
+      // Nhom vua duoc tao / them nguoi / co nguoi roi - xem GroupService#broadcastGroupUpdate
+      stompClient.subscribe('/user/queue/group-updates', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:group-update', { detail: payload }));
+      });
+
       readyCallbacks.forEach(cb => cb(stompClient));
       readyCallbacks.length = 0;
     }, function () {
@@ -434,6 +440,112 @@ window.Aloute = (function () {
   }
 
   // ============================================================
+  // Nut "Ban than" (trang ca nhan, ket qua tim kiem) — mo hinh gui
+  // loi moi / cho chap nhan, khac voi Follow o tren (bam la co ngay).
+  // Trang thai: NONE | PENDING_SENT | PENDING_RECEIVED | ACCEPTED
+  // ============================================================
+  function initCloseFriendButtons() {
+    document.querySelectorAll('.btn-close-friend[data-user-id]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCloseFriendClick(btn);
+      });
+    });
+
+    // Thanh "X đã gửi lời mời kết bạn thân" render sẵn trên trang cá nhân (chỉ có ở đó,
+    // vì cần đủ chỗ cho 2 nút chấp nhận/từ chối cạnh nhau).
+    document.querySelectorAll('.close-friend-request-bar[data-user-id]').forEach(bar => {
+      if (bar.dataset.bound) return;
+      bar.dataset.bound = '1';
+      const userId = bar.dataset.userId;
+      const acceptBtn = bar.querySelector('.close-friend-request-bar__accept');
+      const declineBtn = bar.querySelector('.close-friend-request-bar__decline');
+
+      if (acceptBtn) {
+        acceptBtn.addEventListener('click', async () => {
+          acceptBtn.disabled = true;
+          if (declineBtn) declineBtn.disabled = true;
+          try {
+            await api('/api/close-friends/' + userId + '/accept', { method: 'POST' });
+            toast('Đã chấp nhận kết bạn thân');
+            location.reload();
+          } catch (err) {
+            toast(err.message, true);
+            acceptBtn.disabled = false;
+            if (declineBtn) declineBtn.disabled = false;
+          }
+        });
+      }
+      if (declineBtn) {
+        declineBtn.addEventListener('click', async () => {
+          if (!confirm('Từ chối lời mời kết bạn thân này?')) return;
+          if (acceptBtn) acceptBtn.disabled = true;
+          declineBtn.disabled = true;
+          try {
+            await api('/api/close-friends/' + userId, { method: 'DELETE' });
+            toast('Đã từ chối lời mời');
+            location.reload();
+          } catch (err) {
+            toast(err.message, true);
+            if (acceptBtn) acceptBtn.disabled = false;
+            declineBtn.disabled = false;
+          }
+        });
+      }
+    });
+  }
+
+  async function handleCloseFriendClick(btn) {
+    const userId = btn.dataset.userId;
+    const status = btn.dataset.status || 'NONE';
+    btn.disabled = true;
+    try {
+      if (status === 'NONE') {
+        const result = await api('/api/close-friends/' + userId + '/request', { method: 'POST' });
+        applyCloseFriendState(btn, result);
+        toast(result === 'ACCEPTED' ? 'Đã trở thành bạn thân' : 'Đã gửi lời mời kết bạn thân');
+      } else if (status === 'PENDING_SENT') {
+        if (!confirm('Hủy lời mời kết bạn thân đã gửi?')) return;
+        await api('/api/close-friends/' + userId, { method: 'DELETE' });
+        applyCloseFriendState(btn, 'NONE');
+        toast('Đã hủy lời mời');
+      } else if (status === 'PENDING_RECEIVED') {
+        await api('/api/close-friends/' + userId + '/accept', { method: 'POST' });
+        applyCloseFriendState(btn, 'ACCEPTED');
+        toast('Đã chấp nhận kết bạn thân');
+      } else if (status === 'ACCEPTED') {
+        if (!confirm('Xóa khỏi danh sách bạn thân?')) return;
+        await api('/api/close-friends/' + userId, { method: 'DELETE' });
+        applyCloseFriendState(btn, 'NONE');
+        toast('Đã xóa khỏi bạn thân');
+      }
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function applyCloseFriendState(btn, status) {
+    btn.dataset.status = status;
+    btn.classList.remove('is-close', 'is-pending');
+    if (status === 'ACCEPTED') {
+      btn.classList.add('is-close');
+      btn.textContent = '★ Bạn thân';
+    } else if (status === 'PENDING_SENT') {
+      btn.classList.add('is-pending');
+      btn.textContent = 'Đã gửi lời mời';
+    } else if (status === 'PENDING_RECEIVED') {
+      btn.textContent = 'Chấp nhận bạn thân';
+    } else {
+      btn.textContent = '+ Bạn thân';
+    }
+  }
+
+  // ============================================================
   // Tim kiem nguoi dung (/search)
   // ============================================================
   function initSearchPage() {
@@ -463,6 +575,7 @@ window.Aloute = (function () {
       }
       resultsEl.innerHTML = users.map(renderUserRow).join('');
       initFollowButtons();
+      initCloseFriendButtons();
     } catch (err) {
       resultsEl.innerHTML = '<div class="empty-state">' + escapeHtml(err.message) + '</div>';
     }
@@ -472,6 +585,18 @@ window.Aloute = (function () {
     const followBtn = u.followedByCurrentUser
       ? '<button class="btn-follow is-following" data-user-id="' + u.id + '">Dang theo doi</button>'
       : '<button class="btn-follow" data-user-id="' + u.id + '">Theo doi</button>';
+
+    // Nut "Ban than" chi hien khi da la ban be (follow lan nhau) — va khong hien khi ho vua
+    // gui loi moi cho minh (PENDING_RECEIVED), vi user-row nho khong du cho 2 nut chap
+    // nhan/tu choi canh nhau; truong hop do phan hoi qua trang /activity hoac trang ca nhan.
+    let closeFriendBtn = '';
+    if (u.mutualFriend && u.closeFriendStatus !== 'PENDING_RECEIVED') {
+      const status = u.closeFriendStatus || 'NONE';
+      const cls = status === 'ACCEPTED' ? ' is-close' : (status === 'PENDING_SENT' ? ' is-pending' : '');
+      const label = status === 'ACCEPTED' ? '★ Bạn thân' : (status === 'PENDING_SENT' ? 'Đã gửi lời mời' : '+ Bạn thân');
+      closeFriendBtn = '<button class="btn-close-friend' + cls + '" style="width:auto;margin-top:0;" ' +
+        'data-user-id="' + u.id + '" data-status="' + status + '">' + label + '</button>';
+    }
 
     return (
       '<div class="user-row">' +
@@ -484,6 +609,7 @@ window.Aloute = (function () {
       '    </div>' +
       '  </a>' +
       followBtn +
+      closeFriendBtn +
       '</div>'
     );
   }
@@ -493,17 +619,62 @@ window.Aloute = (function () {
   // ============================================================
   function initActivityPage() {
     const markAllBtn = document.getElementById('markAllReadBtn');
-    if (!markAllBtn) return;
+    if (markAllBtn) {
+      markAllBtn.addEventListener('click', async () => {
+        try {
+          await api('/api/notifications/read-all', { method: 'POST' });
+          document.querySelectorAll('.notif-item--unread').forEach(el => el.classList.remove('notif-item--unread'));
+          const badge = document.getElementById('notifUnreadBadge');
+          if (badge) badge.style.display = 'none';
+          toast('Da danh dau tat ca la da doc');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+    }
 
-    markAllBtn.addEventListener('click', async () => {
-      try {
-        await api('/api/notifications/read-all', { method: 'POST' });
-        document.querySelectorAll('.notif-item--unread').forEach(el => el.classList.remove('notif-item--unread'));
-        const badge = document.getElementById('notifUnreadBadge');
-        if (badge) badge.style.display = 'none';
-        toast('Da danh dau tat ca la da doc');
-      } catch (err) {
-        toast(err.message, true);
+    // Loi moi ket ban than gui thang trong thong bao -> chap nhan/tu choi ngay tai day,
+    // khong can qua trang ca nhan cua nguoi gui.
+    document.querySelectorAll('.notif-item__actions[data-sender-id]').forEach(actions => {
+      const senderId = actions.dataset.senderId;
+      const acceptBtn = actions.querySelector('.notif-item__accept');
+      const declineBtn = actions.querySelector('.notif-item__decline');
+
+      const disableBoth = () => {
+        if (acceptBtn) acceptBtn.disabled = true;
+        if (declineBtn) declineBtn.disabled = true;
+      };
+      // Lời mời có thể đã được xử lý ở nơi khác (trang cá nhân, tab khác...) từ trước khi
+      // trang này tải — nếu bấm mà API báo không tìm thấy, chỉ cần ẩn 2 nút đi, không phải lỗi thật.
+      const resolveWithLabel = (label) => {
+        actions.innerHTML = '<span style="color:var(--text-tertiary); font-size:13px;">' + label + '</span>';
+      };
+
+      if (acceptBtn) {
+        acceptBtn.addEventListener('click', async () => {
+          disableBoth();
+          try {
+            await api('/api/close-friends/' + senderId + '/accept', { method: 'POST' });
+            toast('Đã chấp nhận kết bạn thân');
+            resolveWithLabel('Đã chấp nhận');
+          } catch (err) {
+            toast(err.message, true);
+            resolveWithLabel('Lời mời không còn hiệu lực');
+          }
+        });
+      }
+      if (declineBtn) {
+        declineBtn.addEventListener('click', async () => {
+          disableBoth();
+          try {
+            await api('/api/close-friends/' + senderId, { method: 'DELETE' });
+            toast('Đã từ chối lời mời');
+            resolveWithLabel('Đã từ chối');
+          } catch (err) {
+            toast(err.message, true);
+            resolveWithLabel('Lời mời không còn hiệu lực');
+          }
+        });
       }
     });
   }
@@ -621,6 +792,7 @@ window.Aloute = (function () {
     initQuickComposeBox();
     initComposePage();
     initFollowButtons();
+    initCloseFriendButtons();
     initSearchPage();
     initActivityPage();
     initProfileEditPage();
@@ -631,6 +803,6 @@ window.Aloute = (function () {
   return {
     api, toast, timeAgo, escapeHtml, formatCount,
     onRealtimeReady, connectRealtime,
-    initFeedInteractions, initFollowButtons
+    initFeedInteractions, initFollowButtons, initCloseFriendButtons
   };
 })();

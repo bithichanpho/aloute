@@ -23,11 +23,17 @@
         <svg th:if="${n.type == 'LIKE'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>
         <svg th:if="${n.type == 'COMMENT'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.6 8.4c-1.3 0-2.6-.3-3.7-.9L3 20l1.1-5.4a8.3 8.3 0 0 1-.7-3.1A8.4 8.4 0 0 1 12.1 3a8.4 8.4 0 0 1 8.9 8.5Z"/></svg>
         <svg th:if="${n.type == 'FOLLOW'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>
-        <svg th:unless="${n.type == 'LIKE' or n.type == 'COMMENT' or n.type == 'FOLLOW'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.6 7.9 3.2 5 6.2 4.6c1.9-.3 3.5.6 4.4 2 .5-.9 1.5-1.6 2.6-1.9 3-.6 5 2 4.6 4.9-.7 5-9.8 10.9-9.8 10.9Z"/></svg>
+        <svg th:if="${n.type == 'CLOSE_FRIEND_REQUEST' or n.type == 'CLOSE_FRIEND_ACCEPTED'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.8 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg>
+        <svg th:unless="${n.type == 'LIKE' or n.type == 'COMMENT' or n.type == 'FOLLOW' or n.type == 'CLOSE_FRIEND_REQUEST' or n.type == 'CLOSE_FRIEND_ACCEPTED'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.6 7.9 3.2 5 6.2 4.6c1.9-.3 3.5.6 4.4 2 .5-.9 1.5-1.6 2.6-1.9 3-.6 5 2 4.6 4.9-.7 5-9.8 10.9-9.8 10.9Z"/></svg>
       </div>
       <div class="notif-item__body">
         <div th:text="${n.content}">Nội dung thông báo</div>
         <div class="notif-item__time" th:text="${#temporals.format(n.createdAt, 'HH:mm dd/MM/yyyy')}">1 giờ trước</div>
+        <!-- Lời mời kết bạn thân -> chấp nhận/từ chối ngay tại thông báo, referenceId = id người gửi -->
+        <div th:if="${n.type == 'CLOSE_FRIEND_REQUEST'}" class="notif-item__actions" th:attr="data-sender-id=${n.referenceId}">
+          <button type="button" class="notif-item__accept">Chấp nhận</button>
+          <button type="button" class="notif-item__decline">Từ chối</button>
+        </div>
       </div>
     </div>
   </div>

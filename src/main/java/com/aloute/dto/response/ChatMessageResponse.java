@@ -12,6 +12,7 @@ public class ChatMessageResponse {
     private LocalDateTime sentAt;
     private Long groupId;
     private String senderUsername;
+    private String senderFullName;
     private String senderAvatarUrl;
     private String timeAgo;
     private String clientId;
@@ -81,6 +82,14 @@ public class ChatMessageResponse {
 
     public void setSenderUsername(String senderUsername) {
         this.senderUsername = senderUsername;
+    }
+
+    public String getSenderFullName() {
+        return senderFullName;
+    }
+
+    public void setSenderFullName(String senderFullName) {
+        this.senderFullName = senderFullName;
     }
 
     public String getSenderAvatarUrl() {

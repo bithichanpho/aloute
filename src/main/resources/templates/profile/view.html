@@ -22,10 +22,33 @@
     </p>
 
     <button th:if="${isOwnProfile}" class="btn-outline" onclick="location.href='/profile/edit'">Chỉnh sửa trang cá nhân</button>
-    <button th:unless="${isOwnProfile}"
-            class="btn-follow" th:classappend="${profileUser.followedByCurrentUser} ? ' is-following' : ''"
-            th:attr="data-user-id=${profileUser.id}"
-            th:text="${profileUser.followedByCurrentUser} ? 'Đang theo dõi' : 'Theo dõi'">Theo dõi</button>
+
+    <div th:unless="${isOwnProfile}" class="profile-header__actions">
+      <button class="btn-follow" th:classappend="${profileUser.followedByCurrentUser} ? ' is-following' : ''"
+              th:attr="data-user-id=${profileUser.id}"
+              th:text="${profileUser.followedByCurrentUser} ? 'Đang theo dõi' : 'Theo dõi'">Theo dõi</button>
+      <!-- Nhắn tin: chỉ bật khi đã là bạn bè (follow lẫn nhau) — đúng điều kiện để chat được -->
+      <button th:if="${profileUser.mutualFriend}" class="btn-message"
+              th:onclick="|location.href='/chat?userId=' + ${profileUser.id}|">Nhắn tin</button>
+    </div>
+
+    <!-- Bạn thân: chỉ hiện khi đã là bạn bè (follow lẫn nhau) với người này -->
+    <button th:if="${!isOwnProfile and profileUser.mutualFriend and profileUser.closeFriendStatus != 'PENDING_RECEIVED'}"
+            class="btn-close-friend"
+            th:with="cfAccepted=${profileUser.closeFriendStatus == 'ACCEPTED'}, cfPending=${profileUser.closeFriendStatus == 'PENDING_SENT'}"
+            th:classappend="${cfAccepted ? ' is-close' : (cfPending ? ' is-pending' : '')}"
+            th:attr="data-user-id=${profileUser.id}, data-status=${profileUser.closeFriendStatus}"
+            th:text="${cfAccepted ? '★ Bạn thân' : (cfPending ? 'Đã gửi lời mời' : '+ Bạn thân')}">+ Bạn thân</button>
+
+    <!-- Họ vừa gửi lời mời kết bạn thân cho mình -> cho chấp nhận/từ chối ngay tại đây -->
+    <div th:if="${!isOwnProfile and profileUser.closeFriendStatus == 'PENDING_RECEIVED'}"
+         class="close-friend-request-bar" th:attr="data-user-id=${profileUser.id}">
+      <span th:text="${profileUser.fullName + ' đã gửi lời mời kết bạn thân'}">đã gửi lời mời kết bạn thân</span>
+      <div class="close-friend-request-bar__actions">
+        <button type="button" class="close-friend-request-bar__accept">Chấp nhận</button>
+        <button type="button" class="close-friend-request-bar__decline">Từ chối</button>
+      </div>
+    </div>
 
     <div class="profile-tabs">
       <div class="profile-tabs__item profile-tabs__item--active">Bài viết</div>

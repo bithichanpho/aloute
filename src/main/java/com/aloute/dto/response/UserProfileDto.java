@@ -11,6 +11,8 @@ public class UserProfileDto {
     private long followerCount;
     private long followingCount;
     private boolean isFollowedByCurrentUser;
+    private boolean mutualFriend; // true nếu 2 người đã follow lẫn nhau ("bạn bè")
+    private String closeFriendStatus = "NONE"; // NONE | PENDING_SENT | PENDING_RECEIVED | ACCEPTED
 
     public Long getId() {
         return id;
@@ -82,5 +84,21 @@ public class UserProfileDto {
 
     public void setFollowedByCurrentUser(boolean followedByCurrentUser) {
         isFollowedByCurrentUser = followedByCurrentUser;
+    }
+
+    public boolean isMutualFriend() {
+        return mutualFriend;
+    }
+
+    public void setMutualFriend(boolean mutualFriend) {
+        this.mutualFriend = mutualFriend;
+    }
+
+    public String getCloseFriendStatus() {
+        return closeFriendStatus;
+    }
+
+    public void setCloseFriendStatus(String closeFriendStatus) {
+        this.closeFriendStatus = closeFriendStatus;
     }
 }

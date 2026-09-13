@@ -355,6 +355,38 @@ img { max-width: 100%; display: block; }
 }
 .btn-outline:hover { background: var(--bg-hover); }
 
+/* Nút "Bạn thân" trên trang cá nhân — nằm ngay dưới nút Theo dõi/Đang theo dõi */
+.btn-close-friend {
+  width: 100%; padding: 9px; margin-top: 8px;
+  background: transparent; color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  font-size: 14.5px; font-weight: 700;
+}
+.btn-close-friend:hover { background: var(--bg-hover); }
+.btn-close-friend.is-pending { color: var(--text-tertiary); }
+.btn-close-friend.is-close {
+  background: var(--highlight-bg); color: var(--highlight-text); border-color: var(--highlight-bg);
+}
+.btn-close-friend.is-close:hover { opacity: 0.88; }
+.btn-close-friend:disabled { opacity: 0.6; cursor: default; }
+
+/* Thanh "X đã gửi lời mời kết bạn thân" kèm 2 nút chấp nhận/từ chối trên trang cá nhân */
+.close-friend-request-bar {
+  margin-top: 8px; padding: 10px 12px;
+  background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 10px;
+  font-size: 13.5px; color: var(--text-secondary);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.close-friend-request-bar__actions { display: flex; gap: 8px; }
+.close-friend-request-bar__accept,
+.close-friend-request-bar__decline {
+  flex: 1; padding: 8px; border-radius: 8px; font-size: 13.5px; font-weight: 700; border: none;
+}
+.close-friend-request-bar__accept { background: var(--highlight-bg); color: var(--highlight-text); }
+.close-friend-request-bar__accept:hover { opacity: 0.88; }
+.close-friend-request-bar__decline { background: var(--bg-hover); color: var(--text-primary); }
+.close-friend-request-bar__decline:hover { background: var(--bg-pill); }
+
 .profile-tabs { display: flex; margin-top: 20px; border-bottom: 1px solid var(--border); }
 .profile-tabs__item {
   flex: 1; text-align: center; padding: 13px 0;
@@ -636,6 +668,13 @@ img { max-width: 100%; display: block; }
 }
 
 .bubble__text { white-space: pre-wrap; word-break: break-word; }
+.bubble__sender-name {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-follow, #4c9eff);
+  margin-bottom: 2px;
+}
 .bubble__time {
   align-self: flex-end;
   margin-top: 3px;
@@ -718,6 +757,15 @@ img { max-width: 100%; display: block; }
 }
 .btn-follow.is-following { background: transparent; color: var(--text-primary); border: 1px solid var(--border-strong); }
 
+/* Hàng nút Theo dõi + Nhắn tin trên trang cá nhân (kiểu Threads: 2 nút bằng nhau, cạnh nhau) */
+.profile-header__actions { display: flex; gap: 8px; margin-top: 14px; }
+.profile-header__actions .btn-follow { flex: 1; border-radius: 10px; text-align: center; }
+.btn-message {
+  flex: 1; padding: 8px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 700;
+  background: transparent; color: var(--text-primary); border: 1px solid var(--border-strong);
+}
+.btn-message:hover { background: var(--bg-hover); }
+
 .empty-state {
   text-align: center; color: var(--text-tertiary); font-size: 14.5px;
   padding: 48px 20px;
@@ -752,6 +800,15 @@ img { max-width: 100%; display: block; }
 .notif-item__icon svg { width: 20px; height: 20px; }
 .notif-item__body { flex: 1; min-width: 0; font-size: 14.5px; }
 .notif-item__time { color: var(--text-tertiary); font-size: 12.5px; margin-top: 2px; }
+.notif-item__actions { display: flex; gap: 8px; margin-top: 8px; }
+.notif-item__accept,
+.notif-item__decline {
+  padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; border: none;
+}
+.notif-item__accept { background: var(--highlight-bg); color: var(--highlight-text); }
+.notif-item__accept:hover { opacity: 0.88; }
+.notif-item__decline { background: var(--bg-hover); color: var(--text-primary); }
+.notif-item__decline:hover { background: var(--bg-pill); }
 
 .page-actions { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .link-btn { background: none; border: none; color: var(--text-secondary); font-size: 13.5px; font-weight: 600; }
