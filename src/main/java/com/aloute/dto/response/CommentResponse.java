@@ -10,6 +10,9 @@ public class CommentResponse {
     private String username;
     private String userAvatarUrl;
     private String content;
+    private String parentCommentId;
+    private String parentUsername;
+    private int replyCount;
     private LocalDateTime createdAt;
 
     public String getId() {
@@ -66,5 +69,29 @@ public class CommentResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getParentCommentId() {
+        return parentCommentId;
+    }
+
+    public void setParentCommentId(String parentCommentId) {
+        this.parentCommentId = parentCommentId;
+    }
+
+    public String getParentUsername() {
+        return parentUsername;
+    }
+
+    public void setParentUsername(String parentUsername) {
+        this.parentUsername = parentUsername;
+    }
+
+    public int getReplyCount() {
+        return replyCount;
+    }
+
+    public void setReplyCount(int replyCount) {
+        this.replyCount = replyCount;
     }
 }

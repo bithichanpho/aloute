@@ -14,6 +14,9 @@ public class PostResponse {
     private int commentCount;
     private boolean likedByCurrentUser;
     private LocalDateTime createdAt;
+    
+    // The missing field added here:
+    private String timeAgo;
 
     public String getId() {
         return id;
@@ -93,5 +96,14 @@ public class PostResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    // Getter and setter for timeAgo
+    public String getTimeAgo() {
+        return timeAgo;
+    }
+
+    public void setTimeAgo(String timeAgo) {
+        this.timeAgo = timeAgo;
     }
 }

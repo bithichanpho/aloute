@@ -32,7 +32,6 @@ build/
 ### VS Code ###
 .vscode/
 
-### Aloute — file bí mật, không commit ###
+### Aloute ###
 serviceAccountKey.json
-application-firebase.yml
 .env

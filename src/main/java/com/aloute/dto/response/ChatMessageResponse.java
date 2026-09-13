@@ -10,7 +10,12 @@ public class ChatMessageResponse {
     private String content;
     private boolean read;
     private LocalDateTime sentAt;
-
+    private Long groupId;
+    private String senderUsername;
+    private String senderAvatarUrl;
+    private String timeAgo;
+    private String clientId;
+    
     public ChatMessageResponse() {
     }
 
@@ -61,4 +66,44 @@ public class ChatMessageResponse {
     public void setSentAt(LocalDateTime sentAt) {
         this.sentAt = sentAt;
     }
+    
+    public Long getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(Long groupId) {
+        this.groupId = groupId;
+    }
+
+    public String getSenderUsername() {
+        return senderUsername;
+    }
+
+    public void setSenderUsername(String senderUsername) {
+        this.senderUsername = senderUsername;
+    }
+
+    public String getSenderAvatarUrl() {
+        return senderAvatarUrl;
+    }
+
+    public void setSenderAvatarUrl(String senderAvatarUrl) {
+        this.senderAvatarUrl = senderAvatarUrl;
+    }
+    
+    public String getTimeAgo() {
+        return timeAgo;
+    }
+
+    public void setTimeAgo(String timeAgo) {
+        this.timeAgo = timeAgo;
+    }
+
+	public String getClientId() {
+		return clientId;
+	}
+
+	public void setClientId(String clientId) {
+		this.clientId = clientId;
+	}
 }

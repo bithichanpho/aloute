@@ -112,6 +112,12 @@ public class PostService {
         });
     }
 
+    /** Lấy 1 bài viết duy nhất (dùng cho trang thread /post/{id}). */
+    public PostResponse getPost(String postId, Long currentUserId) {
+        Post post = getPostOrThrow(postId);
+        return toResponse(post, currentUserId);
+    }
+
     public Post getPostOrThrow(String postId) {
         return postRepository.findById(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài viết"));

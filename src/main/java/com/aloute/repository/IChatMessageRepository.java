@@ -17,4 +17,11 @@ public interface IChatMessageRepository extends MongoRepository<ChatMessage, Str
     long countByReceiverIdAndSenderIdAndReadFalse(String receiverId, String senderId);
 
     long countByReceiverIdAndReadFalse(String receiverId);
+
+    // ---- Dành cho nhóm: conversationId dạng "group_<id>" ----
+    java.util.Optional<ChatMessage> findFirstByConversationIdOrderBySentAtDesc(String conversationId);
+
+    long countByConversationIdAndSentAtAfter(String conversationId, java.time.LocalDateTime after);
+
+    long countByConversationId(String conversationId);
 }

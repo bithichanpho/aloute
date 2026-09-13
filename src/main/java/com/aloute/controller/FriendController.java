@@ -50,6 +50,14 @@ public class FriendController {
         return ApiResponse.success(toProfiles(ids, currentUserId));
     }
 
+    /** Bạn bè = 2 người đã follow lẫn nhau. Đây là những người có thể nhắn tin cho nhau. */
+    @GetMapping("/{userId}/friends")
+    public ApiResponse<List<UserProfileDto>> getFriends(Authentication authentication, @PathVariable Long userId) {
+        Long currentUserId = SecurityUtils.currentUserId(authentication);
+        List<Long> ids = friendService.getMutualFriendIds(userId);
+        return ApiResponse.success(toProfiles(ids, currentUserId));
+    }
+
     private List<UserProfileDto> toProfiles(List<Long> ids, Long currentUserId) {
         return ids.stream()
                 .map(id -> userService.getProfile(id, currentUserId))

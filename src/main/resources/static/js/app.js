@@ -128,6 +128,30 @@ window.Aloute = (function () {
         document.dispatchEvent(new CustomEvent('aloute:message', { detail: msg }));
       });
 
+      // Bao "dang nhap" tu nguoi dang nhan tin (xem ChatController#typing)
+      stompClient.subscribe('/user/queue/typing', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:typing', { detail: payload }));
+      });
+
+      // Bao "da xem" tin nhan (xem ChatService#markAsRead)
+      stompClient.subscribe('/user/queue/read-receipts', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:read', { detail: payload }));
+      });
+
+      // Online/offline cua ban be (xem PresenceService#broadcastPresence)
+      stompClient.subscribe('/user/queue/presence', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:presence', { detail: payload }));
+      });
+
+      // Loi gui tin nhan (vd: chua la ban be, noi dung rong...) - xem ChatController#sendMessage
+      stompClient.subscribe('/user/queue/errors', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:chat-error', { detail: payload }));
+      });
+
       readyCallbacks.forEach(cb => cb(stompClient));
       readyCallbacks.length = 0;
     }, function () {
@@ -156,6 +180,13 @@ window.Aloute = (function () {
   // ============================================================
   // Tuong tac tren feed: like, mo form binh luan, dang bai, xoa bai
   // ============================================================
+
+  /** Định dạng lại toàn bộ số đếm (like/comment) kiểu "1,2K" ngay lúc tải trang. */
+  function formatInitialCounts() {
+    document.querySelectorAll('[data-raw]').forEach(el => {
+      el.textContent = formatCount(el.dataset.raw);
+    });
+  }
 
   function initFeedInteractions() {
     document.querySelectorAll('[data-post-id]').forEach(postEl => {
@@ -186,6 +217,26 @@ window.Aloute = (function () {
       if (replyBtn && !replyBtn.dataset.bound) {
         replyBtn.dataset.bound = '1';
         replyBtn.addEventListener('click', () => toggleCommentBox(postEl, postId));
+      }
+
+      const repostBtn = postEl.querySelector('.action--repost');
+      if (repostBtn && !repostBtn.dataset.bound) {
+        repostBtn.dataset.bound = '1';
+        repostBtn.addEventListener('click', () => toast('Tính năng đăng lại đang được phát triển'));
+      }
+
+      const shareBtn = postEl.querySelector('.action--share');
+      if (shareBtn && !shareBtn.dataset.bound) {
+        shareBtn.dataset.bound = '1';
+        shareBtn.addEventListener('click', async () => {
+          const link = window.location.origin + '/feed#post-' + postId;
+          try {
+            await navigator.clipboard.writeText(link);
+            toast('Đã sao chép liên kết bài viết');
+          } catch (e) {
+            toast(link);
+          }
+        });
       }
 
       const deleteBtn = postEl.querySelector('.post__delete');
@@ -234,8 +285,9 @@ window.Aloute = (function () {
         loadComments(postId, box.querySelector('.comment-list'));
         const replySpan = postEl.querySelector('.action--reply span');
         if (replySpan) {
-          const n = (parseInt(replySpan.textContent, 10) || 0) + 1;
-          replySpan.textContent = String(n);
+          const n = (parseInt(replySpan.dataset.raw || replySpan.textContent, 10) || 0) + 1;
+          replySpan.dataset.raw = String(n);
+          replySpan.textContent = formatCount(n);
         }
       } catch (err) {
         toast(err.message, true);
@@ -520,6 +572,7 @@ window.Aloute = (function () {
       connectRealtime();
     }
     initFeedInteractions();
+    formatInitialCounts();
     initQuickComposeBox();
     initComposePage();
     initFollowButtons();

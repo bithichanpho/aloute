@@ -16,13 +16,19 @@ public class ChatMessage {
     private String conversationId; // ghép 2 userId theo thứ tự cố định, vd "3_10"
 
     private String senderId;
-    private String receiverId;
+    private String receiverId; // null nếu đây là tin nhắn nhóm
+    private Long groupId;      // null nếu đây là tin nhắn 1-1
     private String content;
     private boolean read = false;
     private LocalDateTime sentAt;
 
     public ChatMessage() {
         this.sentAt = LocalDateTime.now();
+    }
+
+    /** Sinh conversationId cho tin nhắn NHÓM, tách biệt khỏi id user để không đụng nhau. */
+    public static String buildGroupConversationId(Long groupId) {
+        return "group_" + groupId;
     }
 
     /** Sinh conversationId ổn định giữa 2 user, không phụ thuộc thứ tự truyền vào. */
@@ -62,6 +68,14 @@ public class ChatMessage {
 
     public void setReceiverId(String receiverId) {
         this.receiverId = receiverId;
+    }
+
+    public Long getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(Long groupId) {
+        this.groupId = groupId;
     }
 
     public String getContent() {

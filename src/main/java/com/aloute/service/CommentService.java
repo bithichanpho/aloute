@@ -35,18 +35,41 @@ public class CommentService {
     public CommentResponse createComment(String postId, Long currentUserId, CreateCommentRequest request) {
         Post post = postService.getPostOrThrow(postId);
 
+        Comment parent = null;
+        if (request.getParentCommentId() != null && !request.getParentCommentId().isBlank()) {
+            parent = commentRepository.findById(request.getParentCommentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bình luận gốc để trả lời"));
+            if (!parent.getPostId().equals(postId)) {
+                throw new ResourceNotFoundException("Bình luận không thuộc bài viết này");
+            }
+        }
+
         Comment comment = new Comment();
         comment.setPostId(postId);
         comment.setUserId(String.valueOf(currentUserId));
         comment.setContent(request.getContent());
+        comment.setParentCommentId(parent != null ? parent.getId() : null);
 
         Comment saved = commentRepository.save(comment);
         postService.adjustCommentCount(postId, 1);
 
-        notificationService.notify(
-                Long.valueOf(post.getUserId()), currentUserId,
-                "COMMENT", postId, "đã bình luận về bài viết của bạn"
-        );
+        if (parent != null) {
+            parent.setReplyCount(parent.getReplyCount() + 1);
+            commentRepository.save(parent);
+
+            Long parentAuthorId = Long.valueOf(parent.getUserId());
+            if (!parentAuthorId.equals(currentUserId)) {
+                notificationService.notify(
+                        parentAuthorId, currentUserId,
+                        "COMMENT", postId, "đã trả lời bình luận của bạn"
+                );
+            }
+        } else {
+            notificationService.notify(
+                    Long.valueOf(post.getUserId()), currentUserId,
+                    "COMMENT", postId, "đã bình luận về bài viết của bạn"
+            );
+        }
 
         return toResponse(saved);
     }
@@ -74,6 +97,8 @@ public class CommentService {
         dto.setPostId(comment.getPostId());
         dto.setContent(comment.getContent());
         dto.setCreatedAt(comment.getCreatedAt());
+        dto.setParentCommentId(comment.getParentCommentId());
+        dto.setReplyCount(comment.getReplyCount());
 
         Long userId = Long.valueOf(comment.getUserId());
         dto.setUserId(userId);
@@ -81,6 +106,12 @@ public class CommentService {
             dto.setUsername(u.getUsername());
             dto.setUserAvatarUrl(u.getAvatarUrl());
         });
+
+        if (comment.getParentCommentId() != null) {
+            commentRepository.findById(comment.getParentCommentId()).ifPresent(parent ->
+                    userService.findUserBasicInfo(Long.valueOf(parent.getUserId()))
+                            .ifPresent(pu -> dto.setParentUsername(pu.getUsername())));
+        }
 
         return dto;
     }

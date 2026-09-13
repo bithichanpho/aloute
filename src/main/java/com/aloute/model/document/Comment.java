@@ -15,6 +15,12 @@ public class Comment {
     private String userId;
     private String content;
 
+    /** null = bình luận gốc (trả lời trực tiếp bài viết). Có giá trị = đang trả lời một bình luận khác (reply lồng nhau kiểu Threads). */
+    private String parentCommentId;
+
+    /** Số lượt reply trực tiếp vào bình luận này (denormalized, cập nhật bởi CommentService). */
+    private int replyCount = 0;
+
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
 
     private LocalDateTime createdAt;
@@ -53,6 +59,22 @@ public class Comment {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getParentCommentId() {
+        return parentCommentId;
+    }
+
+    public void setParentCommentId(String parentCommentId) {
+        this.parentCommentId = parentCommentId;
+    }
+
+    public int getReplyCount() {
+        return replyCount;
+    }
+
+    public void setReplyCount(int replyCount) {
+        this.replyCount = replyCount;
     }
 
     public ModerationStatus getModerationStatus() {

@@ -1,6 +1,8 @@
 package com.aloute.service;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -47,6 +49,23 @@ public class FriendService {
     public List<Long> getFollowerIds(Long userId) {
         return friendRepository.findByFollowedId(userId).stream()
                 .map(Friend::getFollowerId)
+                .collect(Collectors.toList());
+    }
+
+    /** 2 người là "bạn bè" khi cả hai đã follow lẫn nhau (mutual follow). */
+    public boolean isFriend(Long userIdA, Long userIdB) {
+        if (userIdA == null || userIdB == null || userIdA.equals(userIdB)) {
+            return false;
+        }
+        return friendRepository.existsByFollowerIdAndFollowedId(userIdA, userIdB)
+                && friendRepository.existsByFollowerIdAndFollowedId(userIdB, userIdA);
+    }
+
+    /** Danh sách userId đang follow lẫn nhau với userId — dùng để hiện "Bạn bè" trong phần tin nhắn. */
+    public List<Long> getMutualFriendIds(Long userId) {
+        Set<Long> followerSet = new HashSet<>(getFollowerIds(userId));
+        return getFollowingIds(userId).stream()
+                .filter(followerSet::contains)
                 .collect(Collectors.toList());
     }
 }

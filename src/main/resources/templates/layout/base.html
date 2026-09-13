@@ -20,7 +20,7 @@
     <div class="content-inner" th:replace="${content}"></div>
   </div>
 
-  <button class="fab" aria-label="Tạo bài viết mới" onclick="location.href='/compose'">
+  <button class="fab" th:if="${activeNav != 'chat'}" aria-label="Tạo bài viết mới" onclick="location.href='/compose'">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
   </button>
 </div>

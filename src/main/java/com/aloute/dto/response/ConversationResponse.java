@@ -4,13 +4,59 @@ import java.time.LocalDateTime;
 
 public class ConversationResponse {
 
+    // --- Group Chat Properties ---
+    private boolean group;
+    private Long groupId;
+    private String groupName;
+    private int memberCount;
+
+    // --- Direct Chat Properties ---
     private Long otherUserId;
     private String otherUsername;
     private String otherFullName;
-    private String otherAvatarUrl;
+    
+    // --- Shared Properties ---
+    private String otherAvatarUrl; // Used for both user avatar and group avatar
     private String lastMessage;
     private LocalDateTime lastMessageAt;
     private long unreadCount;
+    private String lastMessageTimeAgo;
+    private boolean online;           // người còn lại có đang mở app hay không (chấm xanh)
+    private boolean hasConversation = true; // false = bạn bè (follow lẫn nhau) nhưng chưa từng nhắn tin
+
+    // --- Getters and Setters ---
+
+    public boolean isGroup() {
+        return group;
+    }
+
+    public void setGroup(boolean group) {
+        this.group = group;
+    }
+
+    public Long getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(Long groupId) {
+        this.groupId = groupId;
+    }
+
+    public String getGroupName() {
+        return groupName;
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
+
+    public int getMemberCount() {
+        return memberCount;
+    }
+
+    public void setMemberCount(int memberCount) {
+        this.memberCount = memberCount;
+    }
 
     public Long getOtherUserId() {
         return otherUserId;
@@ -66,5 +112,29 @@ public class ConversationResponse {
 
     public void setUnreadCount(long unreadCount) {
         this.unreadCount = unreadCount;
+    }
+
+    public String getLastMessageTimeAgo() {
+        return lastMessageTimeAgo;
+    }
+
+    public void setLastMessageTimeAgo(String lastMessageTimeAgo) {
+        this.lastMessageTimeAgo = lastMessageTimeAgo;
+    }
+
+    public boolean isOnline() {
+        return online;
+    }
+
+    public void setOnline(boolean online) {
+        this.online = online;
+    }
+
+    public boolean isHasConversation() {
+        return hasConversation;
+    }
+
+    public void setHasConversation(boolean hasConversation) {
+        this.hasConversation = hasConversation;
     }
 }
