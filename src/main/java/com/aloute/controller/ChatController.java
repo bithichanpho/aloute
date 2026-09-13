@@ -66,6 +66,22 @@ public class ChatController {
         return ApiResponse.success("Đã đánh dấu đã đọc", null);
     }
 
+    /** Lịch sử tin nhắn trong 1 nhóm — chỉ thành viên nhóm mới xem được. */
+    @GetMapping("/api/chat/group/{groupId}/messages")
+    public ApiResponse<List<ChatMessageResponse>> getGroupMessages(
+            Authentication authentication, @PathVariable Long groupId) {
+        Long userId = requireUserId(authentication);
+        return ApiResponse.success(chatService.getGroupMessages(groupId, userId));
+    }
+
+    /** Đánh dấu đã đọc hội thoại nhóm đến thời điểm hiện tại. */
+    @PostMapping("/api/chat/group/{groupId}/read")
+    public ApiResponse<Void> markGroupAsRead(Authentication authentication, @PathVariable Long groupId) {
+        Long userId = requireUserId(authentication);
+        chatService.markGroupAsRead(groupId, userId);
+        return ApiResponse.success("Đã đánh dấu đã đọc", null);
+    }
+
     @GetMapping("/api/chat/unread-count")
     public ApiResponse<Map<String, Long>> getUnreadCount(Authentication authentication) {
         Long userId = requireUserId(authentication);
@@ -80,10 +96,10 @@ public class ChatController {
 
     /**
      * Client gửi STOMP frame tới đích /app/chat.send kèm payload
-     * {"receiverId": 5, "content": "...", "clientId": "tmp-123"}. "principal" là
-     * người dùng đã được WebSocketConfig xác thực từ cookie JWT ngay lúc bắt tay
-     * kết nối. "clientId" (tuỳ chọn) được echo nguyên vẹn lại trong response để
-     * front-end đối chiếu bubble "đang gửi" hiển thị lạc quan (optimistic UI).
+     * {"receiverId": 5, "content": "..."} (chat 1-1) hoặc {"groupId": 2, "content": "..."}
+     * (chat nhóm) — kèm "clientId" tùy chọn để front-end đối chiếu bubble "đang gửi"
+     * hiển thị lạc quan (optimistic UI). "principal" là người dùng đã được
+     * WebSocketConfig xác thực từ cookie JWT ngay lúc bắt tay kết nối.
      */
     @MessageMapping("/chat.send")
     public void sendMessage(SendMessageRequest request, Principal principal) {
@@ -93,9 +109,13 @@ public class ChatController {
 
         userRepository.findByUsername(principal.getName()).ifPresent(sender -> {
             try {
-                chatService.sendMessage(sender.getId(), request.getReceiverId(), request.getContent(), request.getClientId());
+                if (request.getGroupId() != null) {
+                    chatService.sendGroupMessage(sender.getId(), request.getGroupId(), request.getContent(), request.getClientId());
+                } else {
+                    chatService.sendMessage(sender.getId(), request.getReceiverId(), request.getContent(), request.getClientId());
+                }
             } catch (RuntimeException ex) {
-                // Báo lỗi ngược lại đúng phiên WS của người gửi (vd: nội dung rỗng, chưa là bạn bè...)
+                // Báo lỗi ngược lại đúng phiên WS của người gửi (vd: nội dung rỗng, chưa là bạn bè, không phải thành viên nhóm...)
                 messagingTemplate.convertAndSendToUser(principal.getName(), "/queue/errors",
                         Map.of("message", ex.getMessage(), "clientId", request.getClientId() != null ? request.getClientId() : ""));
             }

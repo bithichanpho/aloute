@@ -44,6 +44,26 @@
     </form>
   </div>
 
+  <div class="feed-panel" style="padding: 24px 22px; margin-top:16px;">
+    <h2 style="font-size:16px;margin:0 0 16px;">Đổi mật khẩu</h2>
+
+    <div id="changePasswordError" class="form-error" style="display:none;"></div>
+    <div id="changePasswordSuccess" class="form-success" style="display:none;"></div>
+
+    <form id="changePasswordForm">
+      <div class="field">
+        <input type="password" id="currentPassword" placeholder="Mật khẩu hiện tại" autocomplete="current-password" required>
+      </div>
+      <div class="field">
+        <input type="password" id="newPassword" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" autocomplete="new-password" minlength="6" required>
+      </div>
+      <div class="field">
+        <input type="password" id="confirmNewPassword" placeholder="Xác nhận mật khẩu mới" autocomplete="new-password" minlength="6" required>
+      </div>
+      <button type="submit" class="btn-outline" style="width:auto; padding:10px 20px;">Đổi mật khẩu</button>
+    </form>
+  </div>
+
 </section>
 </body>
 </html>

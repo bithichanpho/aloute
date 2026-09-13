@@ -423,7 +423,82 @@ img { max-width: 100%; display: block; }
   padding: 18px 20px 12px;
   font-size: 19px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+
+.chat-list__new-group-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: var(--bg-pill); border-radius: 50%;
+  color: var(--text-primary); flex-shrink: 0;
+}
+.chat-list__new-group-btn svg { width: 17px; height: 17px; }
+.chat-list__new-group-btn:hover { background: var(--bg-hover); }
+
+.chat-item__avatar--group { object-fit: cover; background: var(--bg-pill); }
+
+.chat-thread__menu-btn {
+  margin-left: auto;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; border-radius: 50%;
+  color: var(--text-primary); flex-shrink: 0;
+}
+.chat-thread__menu-btn svg { width: 18px; height: 18px; }
+.chat-thread__menu-btn:hover { background: var(--bg-hover); }
+
+/* ============ Modal chung (tạo nhóm / thông tin nhóm) ============ */
+
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal-card {
+  width: 100%; max-width: 400px;
+  max-height: 82vh; overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.modal-card__header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.modal-card__header h2 { font-size: 17px; margin: 0; }
+.modal-card__close {
+  border: none; background: transparent; color: var(--text-secondary);
+  font-size: 22px; line-height: 1; padding: 0 4px;
+}
+.modal-card__close:hover { color: var(--text-primary); }
+
+.modal-card__member-list {
+  max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px 4px; margin-bottom: 6px;
+}
+
+.member-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px;
+}
+.member-row:hover { background: var(--bg-hover); }
+.member-row img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.member-row__name { flex: 1; font-size: 14px; font-weight: 600; }
+.member-row__role { font-size: 12px; color: var(--text-tertiary); margin-right: 4px; }
+.member-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--white); }
+.member-row__action {
+  border: none; background: transparent; color: var(--accent-like);
+  font-size: 12.5px; font-weight: 700; padding: 4px 8px;
+}
+.member-row__action:hover { text-decoration: underline; }
 
 .chat-search {
   display: flex;

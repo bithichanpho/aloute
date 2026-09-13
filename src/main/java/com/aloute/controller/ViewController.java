@@ -72,6 +72,19 @@ public class ViewController {
         return "auth/verify";
     }
 
+    /** Trang nhập email để yêu cầu link đặt lại mật khẩu. */
+    @GetMapping("/forgot-password")
+    public String forgotPassword(Authentication authentication) {
+        return isLoggedIn(authentication) ? "redirect:/feed" : "auth/forgot-password";
+    }
+
+    /** Trang nhập mật khẩu mới, mở từ link trong email quên mật khẩu. */
+    @GetMapping("/reset-password")
+    public String resetPassword(@RequestParam(required = false) String token, Model model) {
+        model.addAttribute("token", token);
+        return "auth/reset-password";
+    }
+
     @GetMapping("/feed")
     public String feed(
             Authentication authentication, Model model,

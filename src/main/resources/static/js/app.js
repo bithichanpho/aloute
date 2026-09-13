@@ -547,6 +547,51 @@ window.Aloute = (function () {
   }
 
   // ============================================================
+  // Doi mat khau (trong trang /profile/edit)
+  // ============================================================
+  function initChangePasswordForm() {
+    const form = document.getElementById('changePasswordForm');
+    if (!form) return;
+
+    const errorBox = document.getElementById('changePasswordError');
+    const successBox = document.getElementById('changePasswordSuccess');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.style.display = 'none';
+      successBox.style.display = 'none';
+
+      const currentPassword = document.getElementById('currentPassword').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+
+      if (newPassword.length < 6) {
+        errorBox.textContent = 'Mat khau moi phai co it nhat 6 ky tu.';
+        errorBox.style.display = 'block';
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        errorBox.textContent = 'Hai mat khau moi nhap vao khong khop.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      try {
+        await api('/api/users/me/change-password', {
+          method: 'POST',
+          body: { currentPassword, newPassword }
+        });
+        successBox.textContent = 'Da doi mat khau thanh cong.';
+        successBox.style.display = 'block';
+        form.reset();
+      } catch (err) {
+        errorBox.textContent = err.message || 'Doi mat khau that bai.';
+        errorBox.style.display = 'block';
+      }
+    });
+  }
+
+  // ============================================================
   // Dang xuat (nut cuoi sidebar, xuat hien o moi trang da dang nhap)
   // ============================================================
   function initLogout() {
@@ -579,6 +624,7 @@ window.Aloute = (function () {
     initSearchPage();
     initActivityPage();
     initProfileEditPage();
+    initChangePasswordForm();
     initLogout();
   });
 

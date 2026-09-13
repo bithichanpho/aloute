@@ -17,6 +17,8 @@ public interface IUserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
     
     Optional<User> findByVerificationToken(String verificationToken);
+
+    Optional<User> findByResetPasswordToken(String resetPasswordToken);
     
     List<User> findByUsernameContainingIgnoreCaseOrFullNameContainingIgnoreCase(String username, String fullName);
 }

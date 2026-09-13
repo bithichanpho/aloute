@@ -14,8 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.config.JwtAuthFilter;
 import com.aloute.config.JwtUtil;
+import com.aloute.dto.request.ForgotPasswordRequest;
 import com.aloute.dto.request.LoginRequest;
 import com.aloute.dto.request.RegisterRequest;
+import com.aloute.dto.request.ResetPasswordRequest;
 import com.aloute.dto.response.AuthResponse;
 import com.aloute.service.AuthService;
 
@@ -67,6 +69,20 @@ public class AuthController {
     public ApiResponse<Void> verifyEmail(@RequestParam String token) {
         authService.verifyEmail(token);
         return ApiResponse.success("Xác thực email thành công", null);
+    }
+
+    /** Gửi email chứa link đặt lại mật khẩu nếu email tồn tại (luôn trả về thành công). */
+    @PostMapping("/forgot-password")
+    public ApiResponse<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request.getEmail());
+        return ApiResponse.success("Nếu email tồn tại trong hệ thống, chúng tôi đã gửi link đặt lại mật khẩu", null);
+    }
+
+    /** Đặt mật khẩu mới bằng token nhận được từ email quên mật khẩu. */
+    @PostMapping("/reset-password")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request.getToken(), request.getNewPassword());
+        return ApiResponse.success("Đặt lại mật khẩu thành công, vui lòng đăng nhập lại", null);
     }
 
     /**

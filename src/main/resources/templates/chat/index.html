@@ -10,6 +10,9 @@
     <aside class="chat-list" id="chatList">
       <div class="chat-list__header">
         <span>Tin nhắn</span>
+        <button type="button" id="newGroupBtn" class="chat-list__new-group-btn" title="Tạo nhóm mới" aria-label="Tạo nhóm mới">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+        </button>
       </div>
 
       <label class="chat-search" for="chatSearchInput">
@@ -25,8 +28,35 @@
           <span>Theo dõi lẫn nhau với một người để trở thành bạn bè và bắt đầu trò chuyện. Ghé qua trang <a th:href="@{/search}">Tìm kiếm</a> nhé!</span>
         </div>
 
+        <!-- Hội thoại nhóm -->
         <div class="chat-item"
              th:each="conv : ${conversations}"
+             th:if="${conv.group}"
+             th:attr="data-group-id=${conv.groupId},
+                      data-group-name=${conv.groupName},
+                      data-member-count=${conv.memberCount},
+                      data-avatar=${conv.otherAvatarUrl}">
+          <span class="chat-item__avatar-wrap">
+            <img class="chat-item__avatar chat-item__avatar--group"
+                 th:src="${conv.otherAvatarUrl != null ? conv.otherAvatarUrl : 'https://api.dicebear.com/7.x/identicon/svg?seed=' + conv.groupId}"
+                 src="https://api.dicebear.com/7.x/identicon/svg?seed=group" alt="avatar nhóm">
+          </span>
+          <div class="chat-item__body">
+            <div class="chat-item__top">
+              <span class="chat-item__name" th:text="${conv.groupName}">Nhóm</span>
+              <span class="chat-item__time" th:text="${conv.lastMessageTimeAgo}">1 giờ</span>
+            </div>
+            <div class="chat-item__bottom">
+              <span class="chat-item__preview" th:text="${conv.lastMessage}">...</span>
+              <span class="chat-item__unread" th:if="${conv.unreadCount > 0}" th:text="${conv.unreadCount > 99 ? '99+' : conv.unreadCount}">1</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hội thoại 1-1 -->
+        <div class="chat-item"
+             th:each="conv : ${conversations}"
+             th:if="${!conv.group}"
              th:classappend="${!conv.hasConversation} ? 'chat-item--preview' : ''"
              th:attr="data-user-id=${conv.otherUserId},
                       data-username=${conv.otherUsername},
@@ -77,6 +107,9 @@
             <span id="chatThreadName">...</span>
             <span class="chat-thread__status" id="chatThreadStatus"></span>
           </div>
+          <button class="chat-thread__menu-btn" id="groupMenuBtn" aria-label="Tùy chọn nhóm" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+          </button>
         </div>
 
         <div class="chat-thread__messages" id="messageList"></div>
@@ -90,6 +123,46 @@
       </template>
     </div>
 
+  </div>
+
+  <!-- Modal: Tạo nhóm mới -->
+  <div class="modal-overlay" id="createGroupModal" hidden>
+    <div class="modal-card">
+      <div class="modal-card__header">
+        <h2>Tạo nhóm mới</h2>
+        <button type="button" class="modal-card__close" id="closeCreateGroupBtn" aria-label="Đóng">&times;</button>
+      </div>
+      <div id="createGroupError" class="form-error" style="display:none;"></div>
+      <form id="createGroupForm">
+        <div class="field">
+          <input type="text" id="newGroupName" placeholder="Tên nhóm" maxlength="100" required>
+        </div>
+        <p class="field-hint">Chọn thành viên (chỉ hiện bạn bè — những người đã theo dõi lẫn nhau với bạn):</p>
+        <div class="modal-card__member-list" id="newGroupMemberList">
+          <span style="color:var(--text-tertiary); font-size:13.5px;">Đang tải danh sách bạn bè...</span>
+        </div>
+        <button type="submit" class="btn-primary" id="createGroupSubmitBtn">Tạo nhóm</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Thông tin & thành viên nhóm -->
+  <div class="modal-overlay" id="groupInfoModal" hidden>
+    <div class="modal-card">
+      <div class="modal-card__header">
+        <h2 id="groupInfoTitle">Thông tin nhóm</h2>
+        <button type="button" class="modal-card__close" id="closeGroupInfoBtn" aria-label="Đóng">&times;</button>
+      </div>
+      <div id="groupInfoError" class="form-error" style="display:none;"></div>
+      <div class="modal-card__member-list" id="groupInfoMemberList"></div>
+
+      <p class="field-hint" style="margin-top:14px;">Thêm bạn bè chưa ở trong nhóm:</p>
+      <div class="modal-card__member-list" id="groupAddMemberList">
+        <span style="color:var(--text-tertiary); font-size:13.5px;">Đang tải...</span>
+      </div>
+
+      <button type="button" class="btn-outline" id="leaveGroupBtn" style="margin-top:16px; color:var(--accent-like); border-color:var(--accent-like);">Rời nhóm</button>
+    </div>
   </div>
 
   <script th:src="@{/js/chat.js}" defer></script>

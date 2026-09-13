@@ -14,6 +14,7 @@ import com.aloute.repository.IUserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -92,6 +93,52 @@ public class AuthService {
 
         user.setEmailVerified(true);
         user.setVerificationToken(null);
+        userRepository.save(user);
+    }
+
+    /**
+     * Quên mật khẩu: sinh token dùng 1 lần, hết hạn sau 30 phút, gửi qua email.
+     * Luôn trả về thành công dù email có tồn tại hay không (tránh lộ email nào
+     * đã đăng ký trong hệ thống — kỹ thuật chuẩn chống dò email).
+     */
+    public void forgotPassword(String email) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            String token = UUID.randomUUID().toString();
+            user.setResetPasswordToken(token);
+            user.setResetPasswordExpiry(LocalDateTime.now().plusMinutes(30));
+            userRepository.save(user);
+            emailService.sendResetPasswordEmail(user.getEmail(), user.getFullName(), token);
+        });
+    }
+
+    /** Đặt lại mật khẩu bằng token nhận qua email quên mật khẩu. */
+    public void resetPassword(String token, String newPassword) {
+        User user = userRepository.findByResetPasswordToken(token)
+                .orElseThrow(() -> new BadRequestException("Link đặt lại mật khẩu không hợp lệ hoặc đã được dùng"));
+
+        if (user.getResetPasswordExpiry() == null || user.getResetPasswordExpiry().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Link đặt lại mật khẩu đã hết hạn, vui lòng yêu cầu lại");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setResetPasswordToken(null);
+        user.setResetPasswordExpiry(null);
+        userRepository.save(user);
+    }
+
+    /** Đổi mật khẩu khi đã đăng nhập — phải nhập đúng mật khẩu hiện tại. */
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new BadRequestException("Mật khẩu hiện tại không đúng");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new BadRequestException("Mật khẩu mới phải khác mật khẩu hiện tại");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
     }
 }

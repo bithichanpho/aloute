@@ -47,6 +47,7 @@ public class SecurityConfig {
                 // cho những trang bắt buộc đăng nhập (feed, chat, compose, profile/me...).
                 .requestMatchers(
                         "/", "/login", "/register", "/verify-email",
+                        "/forgot-password", "/reset-password",
                         "/feed", "/chat", "/profile/**", "/compose",
                         "/search", "/activity", "/insights", "/saved",
                         "/css/**", "/js/**", "/images/**", "/favicon.ico",

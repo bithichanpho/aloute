@@ -132,7 +132,7 @@ public class ChatService {
     // ================= CHAT NHÓM =================
 
     /** Gửi tin nhắn nhóm — chỉ thành viên nhóm mới gửi được, đẩy real-time tới TẤT CẢ thành viên. */
-    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content) {
+    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId) {
         if (content == null || content.isBlank()) {
             throw new BadRequestException("Nội dung tin nhắn không được để trống");
         }
@@ -151,6 +151,7 @@ public class ChatService {
 
         ChatMessage saved = chatMessageRepository.save(message);
         ChatMessageResponse dto = toResponse(saved);
+        dto.setClientId(clientId);
 
         // Đẩy tới TẤT CẢ thành viên nhóm (kể cả người gửi, để đồng bộ nhiều tab/thiết bị)
         for (Long memberId : groupService.getMemberIds(groupId)) {

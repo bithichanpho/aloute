@@ -49,6 +49,34 @@ public class EmailService {
         sendHtml(toEmail, "Xác thực tài khoản ALOUTE của bạn", html);
     }
 
+    /**
+     * Gửi email chứa link đặt lại mật khẩu dạng:
+     * {frontendBaseUrl}/reset-password?token=xxx
+     * Link có hiệu lực trong khoảng thời gian giới hạn (kiểm tra ở AuthService).
+     */
+    public void sendResetPasswordEmail(String toEmail, String fullName, String resetToken) {
+        String resetLink = frontendBaseUrl + "/reset-password?token=" + resetToken;
+
+        String html = """
+                <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+                  <h2>Chào %s,</h2>
+                  <p>Bạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu cho tài khoản ALOUTE này.
+                     Bấm nút bên dưới để đặt mật khẩu mới:</p>
+                  <p style="margin: 24px 0;">
+                    <a href="%s" style="background:#101010;color:#fff;padding:12px 24px;
+                       border-radius:8px;text-decoration:none;font-weight:600;">
+                       Đặt lại mật khẩu
+                    </a>
+                  </p>
+                  <p>Nếu nút không hoạt động, dán link sau vào trình duyệt:<br>%s</p>
+                  <p style="color:#888;font-size:13px;">Link có hiệu lực trong 30 phút.
+                     Nếu bạn không yêu cầu điều này, hãy bỏ qua email này — mật khẩu của bạn vẫn an toàn.</p>
+                </div>
+                """.formatted(fullName, resetLink, resetLink);
+
+        sendHtml(toEmail, "Yêu cầu đặt lại mật khẩu ALOUTE", html);
+    }
+
     private void sendHtml(String to, String subject, String htmlContent) {
         try {
             MimeMessage message = mailSender.createMimeMessage();

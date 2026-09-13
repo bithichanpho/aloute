@@ -16,9 +16,11 @@ import org.springframework.web.multipart.MultipartFile;
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
+import com.aloute.dto.request.ChangePasswordRequest;
 import com.aloute.dto.request.UpdateProfileRequest;
 import com.aloute.dto.response.UserProfileDto;
 import com.aloute.security.SecurityUtils;
+import com.aloute.service.AuthService;
 import com.aloute.service.ImageStorageService;
 import com.aloute.service.UserService;
 
@@ -30,10 +32,12 @@ public class UserController {
 
     private final UserService userService;
     private final ImageStorageService imageStorageService;
+    private final AuthService authService;
 
-    public UserController(UserService userService, ImageStorageService imageStorageService) {
+    public UserController(UserService userService, ImageStorageService imageStorageService, AuthService authService) {
         this.userService = userService;
         this.imageStorageService = imageStorageService;
+        this.authService = authService;
     }
 
     @GetMapping("/me")
@@ -71,6 +75,15 @@ public class UserController {
         } catch (IOException e) {
             throw new BadRequestException("Tải ảnh lên thất bại: " + e.getMessage());
         }
+    }
+
+    /** Đổi mật khẩu khi đã đăng nhập — bắt buộc nhập đúng mật khẩu hiện tại. */
+    @PostMapping("/me/change-password")
+    public ApiResponse<Void> changePassword(
+            Authentication authentication, @Valid @RequestBody ChangePasswordRequest request) {
+        Long userId = requireUserId(authentication);
+        authService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword());
+        return ApiResponse.success("Đã đổi mật khẩu thành công", null);
     }
 
     private Long requireUserId(Authentication authentication) {
