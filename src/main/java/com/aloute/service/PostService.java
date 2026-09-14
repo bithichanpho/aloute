@@ -1,11 +1,19 @@
 package com.aloute.service;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import com.aloute.common.exception.ResourceNotFoundException;
@@ -13,8 +21,10 @@ import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.dto.request.CreatePostRequest;
 import com.aloute.dto.response.ModerationResult;
 import com.aloute.dto.response.PostResponse;
+import com.aloute.model.document.Like;
 import com.aloute.model.document.ModerationStatus;
 import com.aloute.model.document.Post;
+import com.aloute.model.entity.User;
 import com.aloute.repository.ILikeRepository;
 import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IUserRepository;
@@ -27,18 +37,21 @@ public class PostService {
     private final ILikeRepository likeRepository;
     private final ModerationService moderationService;
     private final NotificationService notificationService;
+    private final MongoTemplate mongoTemplate;
 
     public PostService(
             IPostRepository postRepository,
             IUserRepository userRepository,
             ILikeRepository likeRepository,
             ModerationService moderationService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            MongoTemplate mongoTemplate) {
         this.postRepository = postRepository;
         this.userRepository = userRepository;
         this.likeRepository = likeRepository;
         this.moderationService = moderationService;
         this.notificationService = notificationService;
+        this.mongoTemplate = mongoTemplate;
     }
 
     public PostResponse createPost(Long currentUserId, CreatePostRequest request) {
@@ -61,30 +74,25 @@ public class PostService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         List<Post> posts = postRepository.findAllByOrderByCreatedAtDesc(pageable);
 
-        return posts.stream()
-                .filter(p -> p.getModerationStatus() != ModerationStatus.HIDDEN)
-                .map(p -> toResponse(p, currentUserId))
-                .collect(Collectors.toList());
+        return toResponses(posts, currentUserId);
     }
 
     /** Feed theo danh sách người đang follow (dùng cho tab "Following"). */
     public List<PostResponse> getFeedByFollowing(Long currentUserId, List<Long> followingIds, int page, int size) {
+        if (followingIds == null || followingIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         List<String> ids = followingIds.stream().map(String::valueOf).collect(Collectors.toList());
         List<Post> posts = postRepository.findByUserIdInOrderByCreatedAtDesc(ids, pageable);
 
-        return posts.stream()
-                .filter(p -> p.getModerationStatus() != ModerationStatus.HIDDEN)
-                .map(p -> toResponse(p, currentUserId))
-                .collect(Collectors.toList());
+        return toResponses(posts, currentUserId);
     }
 
     public List<PostResponse> getPostsByUser(Long userId, Long currentUserId) {
         List<Post> posts = postRepository.findByUserIdOrderByCreatedAtDesc(String.valueOf(userId));
-        return posts.stream()
-                .filter(p -> p.getModerationStatus() != ModerationStatus.HIDDEN)
-                .map(p -> toResponse(p, currentUserId))
-                .collect(Collectors.toList());
+        return toResponses(posts, currentUserId);
     }
 
     public void deletePost(String postId, Long currentUserId) {
@@ -97,19 +105,14 @@ public class PostService {
         postRepository.delete(post);
     }
 
-    /** Gọi từ LikeService/CommentService để cập nhật số đếm denormalized. */
     public void adjustLikeCount(String postId, int delta) {
-        postRepository.findById(postId).ifPresent(post -> {
-            post.setLikeCount(Math.max(0, post.getLikeCount() + delta));
-            postRepository.save(post);
-        });
+        Query query = Query.query(Criteria.where("_id").is(postId));
+        mongoTemplate.updateFirst(query, new Update().inc("likeCount", delta), Post.class);
     }
 
     public void adjustCommentCount(String postId, int delta) {
-        postRepository.findById(postId).ifPresent(post -> {
-            post.setCommentCount(Math.max(0, post.getCommentCount() + delta));
-            postRepository.save(post);
-        });
+        Query query = Query.query(Criteria.where("_id").is(postId));
+        mongoTemplate.updateFirst(query, new Update().inc("commentCount", delta), Post.class);
     }
 
     /** Lấy 1 bài viết duy nhất (dùng cho trang thread /post/{id}). */
@@ -146,5 +149,61 @@ public class PostService {
         }
 
         return dto;
+    }
+
+    /**
+     * Chuyển 1 danh sách Post thành PostResponse theo lô (batch), tránh N+1 query:
+     * - 1 query duy nhất tới bảng users (Postgres) để lấy tất cả tác giả liên quan.
+     * - 1 query duy nhất tới MongoDB để lấy toàn bộ bài đã được currentUser like.
+     * Đồng thời lọc bỏ các bài đã bị ẩn (moderation HIDDEN).
+     */
+    private List<PostResponse> toResponses(List<Post> posts, Long currentUserId) {
+        if (posts == null || posts.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Lấy toàn bộ ID tác giả, đồng thời loại bỏ ID trùng
+        Set<Long> userIds = posts.stream().map(post -> Long.valueOf(post.getUserId())).collect(Collectors.toSet());
+
+        // Chỉ dùng một query để lấy tất cả tác giả
+        Map<Long, User> usersById = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+
+        Set<String> likedPostIds = Collections.emptySet();
+
+        if (currentUserId != null) {
+            List<String> postIds = posts.stream().map(Post::getId).collect(Collectors.toList());
+
+            // Chỉ dùng một query MongoDB để lấy toàn bộ bài đã like
+            likedPostIds = likeRepository.findByPostIdInAndUserId(postIds, String.valueOf(currentUserId)).stream()
+                    .map(Like::getPostId).collect(Collectors.toSet());
+        }
+
+        final Set<String> finalLikedPostIds = likedPostIds;
+
+        return posts.stream().filter(post -> post.getModerationStatus() != ModerationStatus.HIDDEN).map(post -> {
+            PostResponse dto = new PostResponse();
+
+            dto.setId(post.getId());
+            dto.setContent(post.getContent());
+            dto.setImageUrl(post.getImageUrl());
+            dto.setLikeCount(post.getLikeCount());
+            dto.setCommentCount(post.getCommentCount());
+            dto.setCreatedAt(post.getCreatedAt());
+
+            Long authorId = Long.valueOf(post.getUserId());
+            dto.setUserId(authorId);
+
+            User author = usersById.get(authorId);
+
+            if (author != null) {
+                dto.setUsername(author.getUsername());
+                dto.setUserAvatarUrl(author.getAvatarUrl());
+            }
+
+            dto.setLikedByCurrentUser(finalLikedPostIds.contains(post.getId()));
+
+            return dto;
+        }).collect(Collectors.toList());
     }
 }

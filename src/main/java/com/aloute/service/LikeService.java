@@ -3,7 +3,6 @@ package com.aloute.service;
 import org.springframework.stereotype.Service;
 
 import com.aloute.model.document.Like;
-import com.aloute.model.document.Post;
 import com.aloute.repository.ILikeRepository;
 
 @Service
@@ -19,7 +18,12 @@ public class LikeService {
         this.notificationService = notificationService;
     }
 
-    /** Bật/tắt like — trả về true nếu sau thao tác là ĐÃ like. */
+    /**
+     * Bật/tắt like — trả về true nếu sau thao tác là ĐÃ like.
+     * Chỉ còn 3 lệnh Mongo cần thiết để đảm bảo đúng dữ liệu (tìm like cũ, ghi/xoá,
+     * cộng/trừ đếm) — việc tạo notification (kèm query Post + User + đẩy WebSocket)
+     * chạy nền ở NotificationService, không còn nằm trên đường chờ response nữa.
+     */
     public boolean toggleLike(String postId, Long currentUserId) {
         String userIdStr = String.valueOf(currentUserId);
 
@@ -32,12 +36,7 @@ public class LikeService {
                 .orElseGet(() -> {
                     likeRepository.save(new Like(postId, userIdStr));
                     postService.adjustLikeCount(postId, 1);
-
-                    Post post = postService.getPostOrThrow(postId);
-                    notificationService.notify(
-                            Long.valueOf(post.getUserId()), currentUserId,
-                            "LIKE", postId, "đã thích bài viết của bạn"
-                    );
+                    notificationService.notifyPostLiked(postId, currentUserId);
                     return true;
                 });
     }

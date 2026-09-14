@@ -202,19 +202,39 @@ window.Aloute = (function () {
       if (likeBtn && !likeBtn.dataset.bound) {
         likeBtn.dataset.bound = '1';
         likeBtn.addEventListener('click', async () => {
-          likeBtn.disabled = true;
+          // Chan bam lien tuc khi con request dang bay (tranh gui trung request),
+          // nhung KHONG cho doi response moi cap nhat UI - cap nhat lac quan ngay
+          // khi bam de nut phan hoi tuc thi, roi goi API o phia sau.
+          if (likeBtn.dataset.pending === '1') return;
+          likeBtn.dataset.pending = '1';
+
+          const countEl = likeBtn.querySelector('span');
+          const wasLiked = likeBtn.classList.contains('is-liked');
+          const nextLiked = !wasLiked;
+          const prevCount = parseInt(countEl.dataset.raw || countEl.textContent, 10) || 0;
+          const optimisticCount = nextLiked ? prevCount + 1 : Math.max(0, prevCount - 1);
+
+          likeBtn.classList.toggle('is-liked', nextLiked);
+          countEl.dataset.raw = String(optimisticCount);
+          countEl.textContent = formatCount(optimisticCount);
+
           try {
             const liked = await api('/api/posts/' + postId + '/like', { method: 'POST' });
-            likeBtn.classList.toggle('is-liked', liked);
-            const countEl = likeBtn.querySelector('span');
-            let count = parseInt(countEl.dataset.raw || countEl.textContent, 10) || 0;
-            count = liked ? count + 1 : Math.max(0, count - 1);
-            countEl.dataset.raw = String(count);
-            countEl.textContent = formatCount(count);
+            // Server la nguon su that cuoi cung - dong bo lai neu lech (vd 2 tab cung luc).
+            if (liked !== nextLiked) {
+              const serverCount = liked ? prevCount + 1 : Math.max(0, prevCount - 1);
+              likeBtn.classList.toggle('is-liked', liked);
+              countEl.dataset.raw = String(serverCount);
+              countEl.textContent = formatCount(serverCount);
+            }
           } catch (err) {
+            // Loi -> rollback ve trang thai truoc khi bam
+            likeBtn.classList.toggle('is-liked', wasLiked);
+            countEl.dataset.raw = String(prevCount);
+            countEl.textContent = formatCount(prevCount);
             toast(err.message, true);
           } finally {
-            likeBtn.disabled = false;
+            likeBtn.dataset.pending = '0';
           }
         });
       }
