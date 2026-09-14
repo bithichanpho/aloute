@@ -3,6 +3,8 @@ package com.aloute.controller;
 import java.io.IOException;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.unit.DataSize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,12 +28,41 @@ import com.aloute.service.ImageStorageService;
 @RequestMapping("/api/upload")
 public class UploadController {
 
-    private static final long MAX_SIZE_BYTES = 8L * 1024 * 1024; // 8MB
+    private static final long MAX_IMAGE_SIZE_BYTES = 100L * 1024 * 1024; // 100MB
+
+    @Value("${app.upload.max-file-size:2GB}")
+    private DataSize maxUploadSize;
 
     private final ImageStorageService imageStorageService;
 
     public UploadController(ImageStorageService imageStorageService) {
         this.imageStorageService = imageStorageService;
+    }
+
+    @PostMapping("/media")
+    public ApiResponse<Map<String, String>> uploadMedia(
+            Authentication authentication, @RequestParam("file") MultipartFile file) {
+
+        if (SecurityUtils.currentUserId(authentication) == null) {
+            throw new UnauthorizedException("Cần đăng nhập để tải tệp lên");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("Vui lòng chọn tệp");
+        }
+        if (file.getSize() > maxUploadSize.toBytes()) {
+            throw new BadRequestException("Tệp vượt quá dung lượng cho phép (" + maxUploadSize + ")");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            throw new BadRequestException("Không xác định được định dạng tệp");
+        }
+
+        try {
+            return ApiResponse.success("Tải tệp thành công", imageStorageService.uploadMedia(file));
+        } catch (IOException e) {
+            throw new BadRequestException("Tải tệp thất bại: " + e.getMessage());
+        }
     }
 
     @PostMapping("/image")
@@ -44,8 +75,8 @@ public class UploadController {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Vui lòng chọn một ảnh");
         }
-        if (file.getSize() > MAX_SIZE_BYTES) {
-            throw new BadRequestException("Ảnh vượt quá dung lượng cho phép (8MB)");
+        if (file.getSize() > MAX_IMAGE_SIZE_BYTES) {
+            throw new BadRequestException("Ảnh vượt quá dung lượng cho phép (100MB)");
         }
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {

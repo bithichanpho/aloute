@@ -5,7 +5,11 @@ public class SendMessageRequest {
     private Long receiverId; // dùng cho chat 1-1, để trống nếu là tin nhắn nhóm
     private Long groupId;    // dùng cho chat nhóm, để trống nếu là chat 1-1
     private String content;
-    private String clientId; // id tạm do client sinh ra, dùng để đối chiếu lại bubble "đang gửi" khi server echo về
+    private String clientId;
+    private String mediaUrl;
+    private String mediaType;
+    private String mediaName;
+    private Long mediaSize;
 
     public Long getGroupId() {
         return groupId;
@@ -30,6 +34,28 @@ public class SendMessageRequest {
     public void setContent(String content) {
         this.content = content;
     }
+
+    public String getMediaUrl() {
+        return mediaUrl;
+    }
+
+    public void setMediaUrl(String mediaUrl) {
+        this.mediaUrl = mediaUrl;
+    }
+
+    public String getMediaType() {
+        return mediaType;
+    }
+
+    public void setMediaType(String mediaType) {
+        this.mediaType = mediaType;
+    }
+
+
+    public String getMediaName() { return mediaName; }
+    public void setMediaName(String mediaName) { this.mediaName = mediaName; }
+    public Long getMediaSize() { return mediaSize; }
+    public void setMediaSize(Long mediaSize) { this.mediaSize = mediaSize; }
 
     public String getClientId() {
         return clientId;

@@ -7,6 +7,8 @@ import com.aloute.model.entity.User;
 import com.aloute.repository.IFriendRepository;
 import com.aloute.repository.IUserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import java.util.Map;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,16 +21,19 @@ public class UserService {
     private final IFriendRepository friendRepository;
     private final FriendService friendService;
     private final CloseFriendService closeFriendService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public UserService(
             IUserRepository userRepository,
             IFriendRepository friendRepository,
             FriendService friendService,
-            CloseFriendService closeFriendService) {
+            CloseFriendService closeFriendService,
+            SimpMessagingTemplate messagingTemplate) {
         this.userRepository = userRepository;
         this.friendRepository = friendRepository;
         this.friendService = friendService;
         this.closeFriendService = closeFriendService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     public Optional<User> findUserBasicInfo(Long userId) {
@@ -78,6 +83,13 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
         user.setAvatarUrl(avatarUrl);
         userRepository.save(user);
+        Map<String, Object> payload = Map.of("userId", userId, "avatarUrl", avatarUrl);
+        for (Long friendId : friendService.getMutualFriendIds(userId)) {
+            userRepository.findById(friendId).ifPresent(friend ->
+                    messagingTemplate.convertAndSendToUser(friend.getUsername(), "/queue/avatar-updates", payload));
+        }
+        // đồng bộ các tab/thiết bị khác của chính người dùng
+        messagingTemplate.convertAndSendToUser(user.getUsername(), "/queue/avatar-updates", payload);
     }
 
     public List<UserProfileDto> searchUsers(String keyword, Long currentUserId) {

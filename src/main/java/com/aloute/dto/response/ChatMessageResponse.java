@@ -16,6 +16,14 @@ public class ChatMessageResponse {
     private String senderAvatarUrl;
     private String timeAgo;
     private String clientId;
+    private String mediaUrl;
+    private String mediaType;
+    private String mediaName;
+    private Long mediaSize;
+    private String messageType;
+    private String callId;
+    private String callType;
+    private String callStatus;
     
     public ChatMessageResponse() {
     }
@@ -51,6 +59,19 @@ public class ChatMessageResponse {
     public void setContent(String content) {
         this.content = content;
     }
+
+
+    public String getMessageType() { return messageType; }
+    public void setMessageType(String messageType) { this.messageType = messageType; }
+
+    public String getCallId() { return callId; }
+    public void setCallId(String callId) { this.callId = callId; }
+
+    public String getCallType() { return callType; }
+    public void setCallType(String callType) { this.callType = callType; }
+
+    public String getCallStatus() { return callStatus; }
+    public void setCallStatus(String callStatus) { this.callStatus = callStatus; }
 
     public boolean isRead() {
         return read;
@@ -107,6 +128,28 @@ public class ChatMessageResponse {
     public void setTimeAgo(String timeAgo) {
         this.timeAgo = timeAgo;
     }
+
+    public String getMediaUrl() {
+        return mediaUrl;
+    }
+
+    public void setMediaUrl(String mediaUrl) {
+        this.mediaUrl = mediaUrl;
+    }
+
+    public String getMediaType() {
+        return mediaType;
+    }
+
+    public void setMediaType(String mediaType) {
+        this.mediaType = mediaType;
+    }
+
+
+    public String getMediaName() { return mediaName; }
+    public void setMediaName(String mediaName) { this.mediaName = mediaName; }
+    public Long getMediaSize() { return mediaSize; }
+    public void setMediaSize(Long mediaSize) { this.mediaSize = mediaSize; }
 
 	public String getClientId() {
 		return clientId;

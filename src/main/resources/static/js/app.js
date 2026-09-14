@@ -146,6 +146,18 @@ window.Aloute = (function () {
         document.dispatchEvent(new CustomEvent('aloute:presence', { detail: payload }));
       });
 
+      // Thay avatar theo thời gian thực khi bạn bè đổi ảnh đại diện.
+      stompClient.subscribe('/user/queue/avatar-updates', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:avatar-update', { detail: payload }));
+      });
+
+      // Tín hiệu WebRTC cho cuộc gọi 1-1: offer / answer / ICE / hangup
+      stompClient.subscribe('/user/queue/call', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:call-signal', { detail: payload }));
+      });
+
       // Loi gui tin nhan (vd: chua la ban be, noi dung rong...) - xem ChatController#sendMessage
       stompClient.subscribe('/user/queue/errors', function (frame) {
         const payload = JSON.parse(frame.body);
@@ -201,41 +213,62 @@ window.Aloute = (function () {
       const likeBtn = postEl.querySelector('.action--like');
       if (likeBtn && !likeBtn.dataset.bound) {
         likeBtn.dataset.bound = '1';
-        likeBtn.addEventListener('click', async () => {
-          // Chan bam lien tuc khi con request dang bay (tranh gui trung request),
-          // nhung KHONG cho doi response moi cap nhat UI - cap nhat lac quan ngay
-          // khi bam de nut phan hoi tuc thi, roi goi API o phia sau.
-          if (likeBtn.dataset.pending === '1') return;
-          likeBtn.dataset.pending = '1';
 
-          const countEl = likeBtn.querySelector('span');
-          const wasLiked = likeBtn.classList.contains('is-liked');
-          const nextLiked = !wasLiked;
-          const prevCount = parseInt(countEl.dataset.raw || countEl.textContent, 10) || 0;
-          const optimisticCount = nextLiked ? prevCount + 1 : Math.max(0, prevCount - 1);
+        // Optimistic UI + queue trạng thái mong muốn: người dùng có thể bấm
+        // like/unlike liên tục mà UI không bị khóa và request không bị chồng chéo.
+        const countEl = likeBtn.querySelector('span');
+        const state = {
+          desired: likeBtn.classList.contains('is-liked'),
+          serverLiked: likeBtn.classList.contains('is-liked'),
+          serverCount: parseInt(countEl.dataset.raw || countEl.textContent, 10) || 0,
+          inFlight: false
+        };
 
-          likeBtn.classList.toggle('is-liked', nextLiked);
-          countEl.dataset.raw = String(optimisticCount);
-          countEl.textContent = formatCount(optimisticCount);
+        function renderLikeState() {
+          const pendingDelta = state.desired === state.serverLiked ? 0 : (state.desired ? 1 : -1);
+          const displayedCount = Math.max(0, state.serverCount + pendingDelta);
+          likeBtn.classList.toggle('is-liked', state.desired);
+          countEl.dataset.raw = String(displayedCount);
+          countEl.textContent = formatCount(displayedCount);
+        }
 
+        async function flushLikeQueue() {
+          if (state.inFlight) return;
+          state.inFlight = true;
           try {
-            const liked = await api('/api/posts/' + postId + '/like', { method: 'POST' });
-            // Server la nguon su that cuoi cung - dong bo lai neu lech (vd 2 tab cung luc).
-            if (liked !== nextLiked) {
-              const serverCount = liked ? prevCount + 1 : Math.max(0, prevCount - 1);
-              likeBtn.classList.toggle('is-liked', liked);
-              countEl.dataset.raw = String(serverCount);
-              countEl.textContent = formatCount(serverCount);
+            while (state.desired !== state.serverLiked) {
+              const requested = state.desired;
+              try {
+                const result = await api('/api/posts/' + postId + '/like', {
+                  method: 'POST',
+                  body: { liked: requested }
+                });
+                state.serverLiked = !!result.liked;
+                state.serverCount = Number(result.likeCount) || 0;
+                // Nếu user đã bấm tiếp trong lúc chờ response, vòng lặp ngay lập tức
+                // gửi trạng thái cuối cùng; không rollback UI về trạng thái cũ.
+                renderLikeState();
+              } catch (err) {
+                // Không làm mất trạng thái lạc quan nếu đây chỉ là 1 lần bấm tiếp;
+                // chỉ rollback khi request hiện tại vẫn còn là request cuối cùng.
+                if (state.desired === requested) {
+                  state.desired = state.serverLiked;
+                  renderLikeState();
+                  toast(err.message || 'Không thể cập nhật lượt thích', true);
+                  break;
+                }
+              }
             }
-          } catch (err) {
-            // Loi -> rollback ve trang thai truoc khi bam
-            likeBtn.classList.toggle('is-liked', wasLiked);
-            countEl.dataset.raw = String(prevCount);
-            countEl.textContent = formatCount(prevCount);
-            toast(err.message, true);
           } finally {
-            likeBtn.dataset.pending = '0';
+            state.inFlight = false;
+            renderLikeState();
           }
+        }
+
+        likeBtn.addEventListener('click', () => {
+          state.desired = !state.desired;
+          renderLikeState();
+          flushLikeQueue();
         });
       }
 

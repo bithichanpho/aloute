@@ -22,6 +22,7 @@ import com.aloute.repository.IUserRepository;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.ChatService;
 import com.aloute.service.PresenceService;
+import com.aloute.service.FriendService;
 
 /**
  * Tin nhắn có 2 đường vào:
@@ -37,13 +38,19 @@ public class ChatController {
     private final IUserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final PresenceService presenceService;
+    private final FriendService friendService;
+    private final com.aloute.service.NotificationService notificationService;
+    private final com.aloute.service.CallTimeoutService callTimeoutService;
 
     public ChatController(ChatService chatService, IUserRepository userRepository,
-            SimpMessagingTemplate messagingTemplate, PresenceService presenceService) {
+            SimpMessagingTemplate messagingTemplate, PresenceService presenceService, FriendService friendService, com.aloute.service.NotificationService notificationService, com.aloute.service.CallTimeoutService callTimeoutService) {
         this.chatService = chatService;
         this.userRepository = userRepository;
         this.messagingTemplate = messagingTemplate;
         this.presenceService = presenceService;
+        this.friendService = friendService;
+        this.notificationService = notificationService;
+        this.callTimeoutService = callTimeoutService;
     }
 
     @GetMapping("/api/chat/conversations")
@@ -110,9 +117,9 @@ public class ChatController {
         userRepository.findByUsername(principal.getName()).ifPresent(sender -> {
             try {
                 if (request.getGroupId() != null) {
-                    chatService.sendGroupMessage(sender.getId(), request.getGroupId(), request.getContent(), request.getClientId());
+                    chatService.sendGroupMessage(sender.getId(), request.getGroupId(), request.getContent(), request.getClientId(), request.getMediaUrl(), request.getMediaType(), request.getMediaName(), request.getMediaSize());
                 } else {
-                    chatService.sendMessage(sender.getId(), request.getReceiverId(), request.getContent(), request.getClientId());
+                    chatService.sendMessage(sender.getId(), request.getReceiverId(), request.getContent(), request.getClientId(), request.getMediaUrl(), request.getMediaType(), request.getMediaName(), request.getMediaSize());
                 }
             } catch (RuntimeException ex) {
                 // Báo lỗi ngược lại đúng phiên WS của người gửi (vd: nội dung rỗng, chưa là bạn bè, không phải thành viên nhóm...)
@@ -144,6 +151,81 @@ public class ChatController {
             } catch (NumberFormatException ignored) {
                 // payload sai định dạng — bỏ qua, đây chỉ là tín hiệu phụ không quan trọng
             }
+        });
+    }
+
+
+    // ================= VIDEO CALL SIGNALING (WebRTC) =================
+
+    @MessageMapping("/call.offer")
+    public void callOffer(Map<String, Object> payload, Principal principal) {
+        forwardCallSignal(payload, principal, "offer");
+    }
+
+    @MessageMapping("/call.answer")
+    public void callAnswer(Map<String, Object> payload, Principal principal) {
+        forwardCallSignal(payload, principal, "answer");
+    }
+
+    @MessageMapping("/call.ice")
+    public void callIce(Map<String, Object> payload, Principal principal) {
+        forwardCallSignal(payload, principal, "ice");
+    }
+
+    @MessageMapping("/call.hangup")
+    public void callHangup(Map<String, Object> payload, Principal principal) {
+        forwardCallSignal(payload, principal, "hangup");
+    }
+
+    private void forwardCallSignal(Map<String, Object> payload, Principal principal, String type) {
+        if (principal == null || principal.getName() == null) return;
+        Object targetRaw = payload.get("targetUserId");
+        if (targetRaw == null) return;
+        final Long targetId;
+        try {
+            targetId = Long.valueOf(targetRaw.toString());
+        } catch (NumberFormatException ex) {
+            return;
+        }
+
+        userRepository.findByUsername(principal.getName()).ifPresent(sender -> {
+            if (sender.getId().equals(targetId)) return;
+            if (!friendService.isFriend(sender.getId(), targetId)) return;
+
+            userRepository.findById(targetId).ifPresent(target -> {
+                Map<String, Object> signal = new java.util.HashMap<>(payload);
+                signal.put("type", type);
+                signal.put("fromUserId", sender.getId());
+                signal.put("fromUsername", sender.getUsername());
+                signal.put("fromFullName", sender.getFullName());
+                signal.put("fromAvatarUrl", sender.getAvatarUrl());
+                signal.put("callType", payload.getOrDefault("callType", "video"));
+                messagingTemplate.convertAndSendToUser(target.getUsername(), "/queue/call", signal);
+
+                String callId = String.valueOf(payload.getOrDefault("callId", ""));
+                String callType = String.valueOf(payload.getOrDefault("callType", "video"));
+                if ("offer".equals(type) && !callId.isBlank()) {
+                    // Không đánh dấu miss ngay khi offer được gửi. Cho phép người nhận có đủ 30s để
+                    // nhận cuộc gọi. Scheduler sẽ kết thúc + lưu CALL_MISSED nếu không có answer/reject.
+                    callTimeoutService.schedule(callId, sender.getId(), targetId, callType);
+                } else if ("answer".equals(type)) {
+                    callTimeoutService.cancel(callId);
+                } else if ("hangup".equals(type)) {
+                    callTimeoutService.cancel(callId);
+                    boolean missed = Boolean.parseBoolean(String.valueOf(payload.getOrDefault("missed", "false")));
+                    Long callerId = null;
+                    Object callerRaw = payload.get("callerUserId");
+                    if (callerRaw != null) {
+                        try { callerId = Long.valueOf(callerRaw.toString()); } catch (NumberFormatException ignored) { }
+                    }
+                    // Chỉ caller (người khởi tạo) gửi timeout/missed=true mới tạo thông báo CALL_MISSED
+                    // cho receiver. Người nhận bấm Từ chối không bị ghi nhầm thành cuộc gọi nhỡ cho caller.
+                    if (missed && callerId != null && sender.getId().equals(callerId)) {
+                        notificationService.notify(targetId, sender.getId(), "CALL_MISSED", callId,
+                                "đã gọi " + ("audio".equalsIgnoreCase(callType) ? "thoại" : "video") + " cho bạn");
+                    }
+                }
+            });
         });
     }
 

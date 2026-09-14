@@ -63,8 +63,12 @@ public class ChatService {
      * yêu cầu: theo dõi lẫn nhau xong mới xuất hiện/nhắn được trong phần tin nhắn.
      */
     public ChatMessageResponse sendMessage(Long senderId, Long receiverId, String content, String clientId) {
-        if (content == null || content.isBlank()) {
-            throw new BadRequestException("Nội dung tin nhắn không được để trống");
+        return sendMessage(senderId, receiverId, content, clientId, null, null, null, null);
+    }
+
+    public ChatMessageResponse sendMessage(Long senderId, Long receiverId, String content, String clientId, String mediaUrl, String mediaType, String mediaName, Long mediaSize) {
+        if ((content == null || content.isBlank()) && (mediaUrl == null || mediaUrl.isBlank())) {
+            throw new BadRequestException("Tin nhắn phải có nội dung hoặc tệp đính kèm");
         }
         if (senderId.equals(receiverId)) {
             throw new BadRequestException("Không thể tự nhắn tin cho chính mình");
@@ -82,7 +86,11 @@ public class ChatService {
         message.setConversationId(ChatMessage.buildConversationId(String.valueOf(senderId), String.valueOf(receiverId)));
         message.setSenderId(String.valueOf(senderId));
         message.setReceiverId(String.valueOf(receiverId));
-        message.setContent(content.trim());
+        message.setContent(content == null ? "" : content.trim());
+        message.setMediaUrl(mediaUrl);
+        message.setMediaType(mediaType);
+        message.setMediaName(mediaName);
+        message.setMediaSize(mediaSize);
 
         ChatMessage saved = chatMessageRepository.save(message);
         ChatMessageResponse dto = toResponse(saved);
@@ -121,6 +129,48 @@ public class ChatService {
                 Map.of("readerId", currentUserId, "readAt", LocalDateTime.now().toString())));
     }
 
+    /**
+     * Tạo một "tin nhắn hệ thống" đại diện cho cuộc gọi nhỡ.
+     * Nó được lưu cùng collection chat_messages để xuất hiện trong lịch sử chat
+     * và tự động trở thành mục mới nhất của hội thoại.
+     */
+    public ChatMessageResponse createMissedCallMessage(Long callerId, Long receiverId, String callId, String callType) {
+        if (callerId == null || receiverId == null || callId == null || callId.isBlank()) {
+            return null;
+        }
+
+        // Idempotent: timeout/retry không tạo 2 dòng cuộc gọi nhỡ.
+        var existed = chatMessageRepository.findByCallId(callId);
+        if (existed.isPresent()) {
+            return toResponse(existed.get());
+        }
+
+        User caller = userRepository.findById(callerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người gọi"));
+        User receiver = userRepository.findById(receiverId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người nhận"));
+
+        ChatMessage message = new ChatMessage();
+        message.setConversationId(ChatMessage.buildConversationId(String.valueOf(callerId), String.valueOf(receiverId)));
+        message.setSenderId(String.valueOf(callerId));
+        message.setReceiverId(String.valueOf(receiverId));
+        message.setContent("");
+        message.setMessageType("CALL");
+        message.setCallId(callId);
+        message.setCallType("audio".equalsIgnoreCase(callType) ? "audio" : "video");
+        message.setCallStatus("MISSED");
+        // Người nhận chưa xem dòng cuộc gọi nhỡ thì badge/unread vẫn hoạt động như tin nhắn.
+        message.setRead(false);
+
+        ChatMessage saved = chatMessageRepository.save(message);
+        ChatMessageResponse dto = toResponse(saved);
+
+        // Cả hai phía thấy cùng một dòng trong lịch sử; phía nhận sẽ có unread nếu chat chưa mở.
+        messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
+        messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
+        return dto;
+    }
+
     public long countUnreadTotal(Long userId) {
         long directUnread = chatMessageRepository.countByReceiverIdAndReadFalse(String.valueOf(userId));
         long groupUnread = groupService.getMyGroups(userId).stream()
@@ -133,8 +183,16 @@ public class ChatService {
 
     /** Gửi tin nhắn nhóm — chỉ thành viên nhóm mới gửi được, đẩy real-time tới TẤT CẢ thành viên. */
     public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId) {
-        if (content == null || content.isBlank()) {
-            throw new BadRequestException("Nội dung tin nhắn không được để trống");
+        return sendGroupMessage(senderId, groupId, content, clientId, null, null, null, null);
+    }
+
+    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId, String mediaUrl, String mediaType) {
+        return sendGroupMessage(senderId, groupId, content, clientId, mediaUrl, mediaType, null, null);
+    }
+
+    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId, String mediaUrl, String mediaType, String mediaName, Long mediaSize) {
+        if ((content == null || content.isBlank()) && (mediaUrl == null || mediaUrl.isBlank())) {
+            throw new BadRequestException("Tin nhắn phải có nội dung hoặc tệp đính kèm");
         }
         if (!groupService.isMember(groupId, senderId)) {
             throw new UnauthorizedException("Bạn không phải thành viên của nhóm này");
@@ -147,7 +205,11 @@ public class ChatService {
         message.setConversationId(ChatMessage.buildGroupConversationId(groupId));
         message.setSenderId(String.valueOf(senderId));
         message.setGroupId(groupId);
-        message.setContent(content.trim());
+        message.setContent(content == null ? "" : content.trim());
+        message.setMediaUrl(mediaUrl);
+        message.setMediaType(mediaType);
+        message.setMediaName(mediaName);
+        message.setMediaSize(mediaSize);
 
         ChatMessage saved = chatMessageRepository.save(message);
         ChatMessageResponse dto = toResponse(saved);
@@ -252,7 +314,7 @@ public class ChatService {
         ConversationResponse dto = new ConversationResponse();
         dto.setGroup(false);
         dto.setOtherUserId(otherId);
-        dto.setLastMessage(latest.getContent());
+        dto.setLastMessage(previewText(latest));
         dto.setLastMessageAt(latest.getSentAt());
         dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
         dto.setUnreadCount(chatMessageRepository.countByReceiverIdAndSenderIdAndReadFalse(currentUserIdStr, otherIdStr));
@@ -297,7 +359,7 @@ public class ChatService {
         dto.setUnreadCount(countGroupUnread(group.getId(), currentUserId));
 
         chatMessageRepository.findFirstByConversationIdOrderBySentAtDesc(conversationId).ifPresentOrElse(latest -> {
-            dto.setLastMessage(latest.getContent());
+            dto.setLastMessage(previewText(latest));
             dto.setLastMessageAt(latest.getSentAt());
             dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
         }, () -> {
@@ -309,6 +371,21 @@ public class ChatService {
         return dto;
     }
 
+    private String previewText(ChatMessage message) {
+        if ("CALL".equalsIgnoreCase(message.getMessageType())) {
+            String call = "audio".equalsIgnoreCase(message.getCallType()) ? "Cuộc gọi thoại" : "Cuộc gọi video";
+            if ("MISSED".equalsIgnoreCase(message.getCallStatus())) return "☎ " + call + " nhỡ";
+            if ("REJECTED".equalsIgnoreCase(message.getCallStatus())) return "☎ " + call + " bị từ chối";
+            return "☎ " + call;
+        }
+        if (message.getMediaType() != null) {
+            if ("video".equalsIgnoreCase(message.getMediaType())) return "🎥 Video";
+            if ("file".equalsIgnoreCase(message.getMediaType())) return "📎 " + (message.getMediaName() != null ? message.getMediaName() : "Tệp đính kèm");
+            return "📷 Ảnh";
+        }
+        return message.getContent() != null ? message.getContent() : "";
+    }
+
     private ChatMessageResponse toResponse(ChatMessage m) {
         ChatMessageResponse dto = new ChatMessageResponse();
         dto.setId(m.getId());
@@ -316,6 +393,14 @@ public class ChatService {
         dto.setReceiverId(m.getReceiverId() != null ? Long.valueOf(m.getReceiverId()) : null);
         dto.setGroupId(m.getGroupId());
         dto.setContent(m.getContent());
+        dto.setMediaUrl(m.getMediaUrl());
+        dto.setMediaType(m.getMediaType());
+        dto.setMediaName(m.getMediaName());
+        dto.setMediaSize(m.getMediaSize());
+        dto.setMessageType(m.getMessageType());
+        dto.setCallId(m.getCallId());
+        dto.setCallType(m.getCallType());
+        dto.setCallStatus(m.getCallStatus());
         dto.setRead(m.isRead());
         dto.setSentAt(m.getSentAt() != null ? m.getSentAt() : LocalDateTime.now());
         dto.setTimeAgo(TimeAgoUtil.format(m.getSentAt()));

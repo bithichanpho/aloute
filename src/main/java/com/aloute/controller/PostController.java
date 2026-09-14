@@ -1,6 +1,7 @@
 package com.aloute.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.CreatePostRequest;
+import com.aloute.dto.response.LikeResponse;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.FriendService;
@@ -89,11 +91,20 @@ public class PostController {
         return ApiResponse.success("Đã xóa bài viết", null);
     }
 
-    /** Bật/tắt like — trả về trạng thái mới (đã like hay chưa) để JS cập nhật UI. */
+    /**
+     * Đặt trạng thái like mong muốn. Front-end có thể bấm liên tục mà không phải
+     * chờ request trước hoàn tất; backend xử lý idempotent và trả cả likeCount.
+     */
     @PostMapping("/{postId}/like")
-    public ApiResponse<Boolean> toggleLike(Authentication authentication, @PathVariable String postId) {
+    public ApiResponse<LikeResponse> setLike(
+            Authentication authentication, @PathVariable String postId,
+            @RequestBody(required = false) Map<String, Object> body) {
         Long currentUserId = requireUserId(authentication);
-        return ApiResponse.success(likeService.toggleLike(postId, currentUserId));
+        boolean liked = true;
+        if (body != null && body.get("liked") != null) {
+            liked = Boolean.parseBoolean(String.valueOf(body.get("liked")));
+        }
+        return ApiResponse.success(likeService.setLike(postId, currentUserId, liked));
     }
 
     private Long requireUserId(Authentication authentication) {

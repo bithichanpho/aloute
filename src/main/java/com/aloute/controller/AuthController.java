@@ -85,11 +85,6 @@ public class AuthController {
         return ApiResponse.success("Đặt lại mật khẩu thành công, vui lòng đăng nhập lại", null);
     }
 
-    /**
-     * Gắn JWT vào cả body (để app.js lưu tạm nếu cần) lẫn cookie HttpOnly
-     * (để mọi request tiếp theo — kể cả tải lại trang HTML hay bắt tay WebSocket —
-     * tự động mang theo, không cần JS set thủ công header Authorization).
-     */
     private ResponseEntity<ApiResponse<AuthResponse>> withAuthCookie(AuthResponse auth, String message) {
         ResponseCookie cookie = ResponseCookie.from(JwtAuthFilter.COOKIE_NAME, auth.getAccessToken())
                 .httpOnly(true)
