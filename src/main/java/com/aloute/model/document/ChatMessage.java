@@ -7,6 +7,11 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document(collection = "chat_messages")
+@org.springframework.data.mongodb.core.index.CompoundIndexes({
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "conversation_sent_index", def = "{'conversationId': 1, 'sentAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "chat_unread_sender", def = "{'receiverId': 1, 'read': 1, 'senderId': 1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "chat_sender_sent", def = "{'senderId': 1, 'sentAt': -1}")
+})
 public class ChatMessage {
 
     @Id

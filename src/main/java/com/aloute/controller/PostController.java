@@ -72,9 +72,11 @@ public class PostController {
 
     @GetMapping("/user/{userId}")
     public ApiResponse<List<PostResponse>> getPostsByUser(
-            Authentication authentication, @PathVariable Long userId) {
+            Authentication authentication, @PathVariable Long userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
-        return ApiResponse.success(postService.getPostsByUser(userId, currentUserId));
+        return ApiResponse.success(postService.getPostsByUser(userId, currentUserId, page, size));
     }
 
     @PostMapping

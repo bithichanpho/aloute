@@ -8,6 +8,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.aloute.common.exception.BadRequestException;
@@ -102,12 +104,14 @@ public class ChatService {
         return dto;
     }
 
-    /** Lịch sử tin nhắn giữa 2 người, cũ -> mới. */
+    /** Lịch sử tin nhắn giữa 2 người, cũ -> mới; mặc định lấy 50 tin gần nhất. */
     public List<ChatMessageResponse> getMessages(Long currentUserId, Long otherUserId) {
+        return getMessages(currentUserId, otherUserId, 0);
+    }
+
+    public List<ChatMessageResponse> getMessages(Long currentUserId, Long otherUserId, int page) {
         String conversationId = ChatMessage.buildConversationId(String.valueOf(currentUserId), String.valueOf(otherUserId));
-        return chatMessageRepository.findByConversationIdOrderBySentAtAsc(conversationId).stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return history(conversationId, page);
     }
 
     /**
@@ -224,15 +228,17 @@ public class ChatService {
         return dto;
     }
 
-    /** Lịch sử tin nhắn trong nhóm, cũ -> mới. */
+    /** Lịch sử tin nhắn trong nhóm, cũ -> mới; mặc định lấy 50 tin gần nhất. */
     public List<ChatMessageResponse> getGroupMessages(Long groupId, Long currentUserId) {
+        return getGroupMessages(groupId, currentUserId, 0);
+    }
+
+    public List<ChatMessageResponse> getGroupMessages(Long groupId, Long currentUserId, int page) {
         if (!groupService.isMember(groupId, currentUserId)) {
             throw new UnauthorizedException("Bạn không phải thành viên của nhóm này");
         }
         String conversationId = ChatMessage.buildGroupConversationId(groupId);
-        return chatMessageRepository.findByConversationIdOrderBySentAtAsc(conversationId).stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return history(conversationId, page);
     }
 
     /** Cập nhật mốc "đã đọc đến lúc này" của user trong nhóm — dùng để tính lại unreadCount. */
@@ -386,7 +392,32 @@ public class ChatService {
         return message.getContent() != null ? message.getContent() : "";
     }
 
+    private List<ChatMessageResponse> history(String conversationId, int page) {
+        int safePage = Math.max(0, page);
+        var messages = new java.util.ArrayList<>(chatMessageRepository.findByConversationIdOrderBySentAtDesc(
+                conversationId, PageRequest.of(safePage, 50, Sort.by(Sort.Direction.DESC, "sentAt", "id"))));
+        java.util.Collections.reverse(messages);
+
+        var senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .filter(java.util.Objects::nonNull)
+                .map(Long::valueOf)
+                .collect(Collectors.toSet());
+        var users = userRepository.findAllById(senderIds).stream()
+                .collect(Collectors.toMap(User::getId, java.util.function.Function.identity()));
+
+        return messages.stream()
+                .map(m -> toResponse(m, users.get(m.getSenderId() != null ? Long.valueOf(m.getSenderId()) : null)))
+                .collect(Collectors.toList());
+    }
+
     private ChatMessageResponse toResponse(ChatMessage m) {
+        User sender = m.getSenderId() == null ? null
+                : userRepository.findById(Long.valueOf(m.getSenderId())).orElse(null);
+        return toResponse(m, sender);
+    }
+
+    private ChatMessageResponse toResponse(ChatMessage m, User sender) {
         ChatMessageResponse dto = new ChatMessageResponse();
         dto.setId(m.getId());
         dto.setSenderId(Long.valueOf(m.getSenderId()));
@@ -405,12 +436,11 @@ public class ChatService {
         dto.setSentAt(m.getSentAt() != null ? m.getSentAt() : LocalDateTime.now());
         dto.setTimeAgo(TimeAgoUtil.format(m.getSentAt()));
 
-        userRepository.findById(Long.valueOf(m.getSenderId())).ifPresent(sender -> {
+        if (sender != null) {
             dto.setSenderUsername(sender.getUsername());
             dto.setSenderFullName(sender.getFullName());
             dto.setSenderAvatarUrl(sender.getAvatarUrl());
-        });
-
+        }
         return dto;
     }
 }

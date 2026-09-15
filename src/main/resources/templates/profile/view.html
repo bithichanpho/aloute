@@ -91,6 +91,9 @@
     </div>
   </div>
 
-</section>
+    <button type="button" class="btn-outline" data-load-posts
+            th:if="${#lists.size(userPosts) == 20}"
+            th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'}">Tải thêm</button>
+  </section>
 </body>
 </html>

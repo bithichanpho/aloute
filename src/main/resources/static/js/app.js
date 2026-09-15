@@ -354,26 +354,40 @@ window.Aloute = (function () {
     });
   }
 
-  async function loadComments(postId, listEl) {
-    listEl.innerHTML = '<span class="comment-list__loading">Dang tai binh luan...</span>';
+  async function loadComments(postId, listEl, page = 0) {
+    if (page === 0) listEl.innerHTML = '<span class="comment-list__loading">Dang tai binh luan...</span>';
     try {
-      const comments = await api('/api/posts/' + postId + '/comments');
-      if (!comments.length) {
+      const comments = await api('/api/posts/' + postId + '/comments?page=' + page + '&size=50');
+      listEl.querySelector('[data-more-comments]')?.remove();
+      if (!comments.length && page === 0) {
         listEl.innerHTML = '<span class="comment-list__empty">Chua co binh luan nao.</span>';
         return;
       }
-      listEl.innerHTML = comments.map(c => (
+      if (page === 0) listEl.innerHTML = '';
+      listEl.insertAdjacentHTML('beforeend', comments.map(c => (
         '<div class="comment-item">' +
         '  <img src="' + escapeHtml(c.userAvatarUrl || 'https://i.pravatar.cc/150?img=1') + '" alt="avatar">' +
         '  <div class="comment-item__body">' +
-        '    <span class="comment-item__username">' + escapeHtml(c.username) + '</span>' +
+        '    <span class="comment-item__username">' + escapeHtml(c.username || '') + '</span>' +
         '    <p>' + escapeHtml(c.content) + '</p>' +
         '    <span class="comment-item__time">' + timeAgo(c.createdAt) + '</span>' +
         '  </div>' +
         '</div>'
-      )).join('');
+      )).join(''));
+      if (comments.length === 50) {
+        const more = document.createElement('button');
+        more.type = 'button'; more.className = 'btn-outline';
+        more.dataset.moreComments = '1'; more.textContent = 'Tải thêm bình luận';
+        more.addEventListener('click', async () => {
+          more.disabled = true;
+          try { await loadComments(postId, listEl, page + 1); }
+          finally { more.disabled = false; }
+        });
+        listEl.appendChild(more);
+      }
     } catch (err) {
-      listEl.innerHTML = '<span class="comment-list__empty">Khong tai duoc binh luan.</span>';
+      if (page === 0) listEl.innerHTML = '<span class="comment-list__empty">Khong tai duoc binh luan.</span>';
+      else toast(err.message, true);
     }
   }
 
@@ -835,12 +849,41 @@ window.Aloute = (function () {
   // ============================================================
   // Khoi dong khi DOM san sang
   // ============================================================
+  function initPostPagination() {
+    document.querySelectorAll('[data-load-posts]').forEach(button => {
+      let page = 1;
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const url = new URL(button.dataset.url, window.location.origin);
+          url.searchParams.set('page', page);
+          const response = await fetch(url, { credentials: 'same-origin' });
+          if (!response.ok || response.redirected) throw new Error('Khong tai duoc bai viet');
+          const fragment = document.createElement('template');
+          fragment.innerHTML = await response.text();
+          const posts = fragment.content.querySelectorAll('.post');
+          const count = posts.length;
+          posts.forEach(post => button.before(post));
+          page++;
+          button.hidden = count < 20;
+          initFeedInteractions();
+          formatInitialCounts();
+        } catch (err) {
+          toast(err.message, true);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     const userId = document.body.dataset.currentUserId;
     if (userId) {
       connectRealtime();
     }
     initFeedInteractions();
+    initPostPagination();
     formatInitialCounts();
     initQuickComposeBox();
     initComposePage();

@@ -159,6 +159,31 @@ public class ViewController {
         return "search/index";
     }
 
+    @GetMapping("/api/posts/feed-fragment")
+    public String feedFragment(Authentication authentication, Model model,
+            @RequestParam(defaultValue = "foryou") String tab,
+            @RequestParam(defaultValue = "0") int page) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+        model.addAttribute("posts", "following".equalsIgnoreCase(tab)
+                ? postService.getFeedByFollowing(userId, friendService.getFollowingIds(userId), page, 20)
+                : postService.getFeed(userId, page, 20));
+        var currentUser = new UserProfileDto();
+        currentUser.setId(userId);
+        model.addAttribute("currentUser", currentUser);
+        return "feed/index :: .post";
+    }
+
+    @GetMapping("/api/posts/user/{userId}/fragment")
+    public String profileFragment(Authentication authentication, Model model, @PathVariable Long userId,
+            @RequestParam(defaultValue = "0") int page) {
+        Long currentUserId = requireLogin(authentication);
+        if (currentUserId == null) return "redirect:/login";
+        model.addAttribute("userPosts", postService.getPostsByUser(userId, currentUserId, page, 20));
+        model.addAttribute("isOwnProfile", currentUserId.equals(userId));
+        return "profile/view :: .post";
+    }
+
     @GetMapping("/activity")
     public String activity(Authentication authentication, Model model) {
         Long userId = requireLogin(authentication);

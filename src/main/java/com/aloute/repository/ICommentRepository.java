@@ -8,7 +8,12 @@ import com.aloute.model.document.Comment;
 
 public interface ICommentRepository extends MongoRepository<Comment, String> {
 
-    List<Comment> findByPostIdOrderByCreatedAtAsc(String postId);
+    List<Comment> findByPostIdOrderByCreatedAtAsc(String postId, org.springframework.data.domain.Pageable pageable);
+
+    /** Backward-compatible helper for callers that really need all comments. */
+    default List<Comment> findByPostIdOrderByCreatedAtAsc(String postId) {
+        return findByPostIdOrderByCreatedAtAsc(postId, org.springframework.data.domain.PageRequest.of(0, 50));
+    }
 
     long countByPostId(String postId);
     

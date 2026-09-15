@@ -8,7 +8,7 @@ import com.aloute.model.document.ChatMessage;
 
 public interface IChatMessageRepository extends MongoRepository<ChatMessage, String> {
 
-    List<ChatMessage> findByConversationIdOrderBySentAtAsc(String conversationId);
+    List<ChatMessage> findByConversationIdOrderBySentAtDesc(String conversationId, org.springframework.data.domain.Pageable pageable);
 
     List<ChatMessage> findBySenderIdOrReceiverIdOrderBySentAtDesc(String senderId, String receiverId);
 

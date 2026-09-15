@@ -452,6 +452,7 @@
   function appendBubble(msg, opts) {
     opts = opts || {};
     const messageList = document.getElementById('messageList');
+    if (!messageList) return null;
     const emptyEl = messageList.querySelector('.empty-state');
     if (emptyEl) emptyEl.remove();
 
@@ -463,9 +464,11 @@
     const sameCluster = !dividerInserted && lastRenderedSenderId === String(msg.senderId) &&
         (sentAtMs - lastRenderedAt) < 5 * 60 * 1000;
 
-    // Bubble liền trước không còn là cuối cụm nữa -> bỏ mốc giờ của nó đi
+    // Một message row có thể chứa text bubble, media card hoặc call card.
+    // Chúng được render như các sibling độc lập để media/call không bao giờ bị bọc
+    // bên trong nền bubble trắng/xám của tin nhắn văn bản.
     if (sameCluster && lastRenderedBubbleEl) {
-      const oldTime = lastRenderedBubbleEl.querySelector('.bubble__time');
+      const oldTime = lastRenderedBubbleEl.querySelector('.msg-row__timestamp');
       if (oldTime) oldTime.remove();
       lastRenderedBubbleEl.classList.remove('bubble--cluster-last');
     }
@@ -483,28 +486,44 @@
       avatarHtml = showAvatar
         ? '<img class="msg-row__avatar" src="' + Aloute.escapeHtml(msg.senderAvatarUrl || 'https://i.pravatar.cc/150?img=32') + '" alt="avatar">'
         : '<span class="msg-row__avatar-spacer"></span>';
-      // Trong nhóm có nhiều người gửi khác nhau -> ghi rõ tên ngay trong bubble đầu cụm để khỏi nhầm ai nói gì
       if (activeGroupId && showAvatar) {
         senderNameHtml = '<span class="bubble__sender-name">' + Aloute.escapeHtml(msg.senderFullName || msg.senderUsername || '') + '</span>';
       }
     }
 
     const pendingClass = opts.pending ? ' bubble--pending' : '';
-    let specialCallHtml = '';
     const isCallMessage = String(msg.messageType || '').toUpperCase() === 'CALL';
+    const hasText = String(msg.content || '').trim().length > 0;
+
+    let contentHtml = '';
+    if (hasText) {
+      contentHtml = '<div class="bubble ' + (mine ? 'bubble--mine' : 'bubble--theirs') + pendingClass + ' bubble--cluster-last">' +
+        senderNameHtml +
+        '<span class="bubble__text">' + Aloute.escapeHtml(msg.content || '') + '</span>' +
+      '</div>';
+    } else if (senderNameHtml) {
+      // Tên người gửi trong group chat vẫn cần xuất hiện kể cả khi message chỉ có media/call.
+      contentHtml += '<div class="msg-row__sender-name">' + senderNameHtml + '</div>';
+    }
+
+    let specialCallHtml = '';
     if (isCallMessage) {
       const isAudioCall = String(msg.callType || '').toLowerCase() === 'audio';
       const isMissed = String(msg.callStatus || '').toUpperCase() === 'MISSED';
       const callLabel = isAudioCall ? 'Cuộc gọi thoại' : 'Cuộc gọi video';
-      const title = isMissed ? (mine ? (callLabel + ' · Không được trả lời') : (callLabel + ' nhỡ')) : callLabel;
-      const actionText = isMissed ? 'Gọi lại' : 'Chi tiết cuộc gọi';
+      const title = isMissed
+        ? (mine ? (callLabel + ' · Không được trả lời') : (callLabel + ' nhỡ'))
+        : callLabel;
       const icon = isAudioCall
         ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.29-1.29a2 2 0 0 1 2.11-.45c.84.29 1.71.5 2.61.62A2 2 0 0 1 22 16.92Z"/></svg>'
         : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m23 7-7 5 7 5V7Z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>';
-      specialCallHtml = '<div class="bubble__call ' + (isMissed ? 'bubble__call--missed' : '') + '">' +
+      const callAgainTarget = isMissed ? (mine ? msg.receiverId : msg.senderId) : null;
+      const callAgainAttrs = callAgainTarget
+        ? ' data-call-again="' + Aloute.escapeHtml(String(callAgainTarget)) + '" data-call-type="' + (isAudioCall ? 'audio' : 'video') + '" role="button" tabindex="0" aria-label="Gọi lại" title="Nhấn để gọi lại"'
+        : '';
+      specialCallHtml = '<div class="bubble__call ' + (isMissed ? 'bubble__call--missed' : 'bubble__call--completed') + '"' + callAgainAttrs + '>' +
         '<span class="bubble__call-icon">' + icon + '</span>' +
-        '<span class="bubble__call-body"><strong>' + title + '</strong><span>' + formatClock(sentAt) + ' · ' + (isMissed ? (mine ? 'Không có phản hồi' : 'Cuộc gọi đến không được trả lời') : 'Cuộc gọi') + '</span></span>' +
-        (isMissed && !mine ? '<button type="button" class="bubble__call-action" data-call-again="' + Aloute.escapeHtml(String(msg.senderId || '')) + '" data-call-type="' + (isAudioCall ? 'audio' : 'video') + '">' + actionText + '</button>' : '') +
+        '<span class="bubble__call-body"><strong>' + title + '</strong><span>' + formatClock(sentAt) + (isMissed ? ' · ' + (mine ? 'Không có phản hồi' : 'Cuộc gọi đến không được trả lời') : ' · Đã kết thúc') + '</span></span>' +
       '</div>';
     }
 
@@ -513,32 +532,37 @@
       const safeUrl = Aloute.escapeHtml(msg.mediaUrl);
       const mediaType = String(msg.mediaType || '').toLowerCase();
       if (mediaType === 'video') {
-        mediaHtml = '<a class="bubble__media" href="' + safeUrl + '" target="_blank" rel="noopener"><video src="' + safeUrl + '" controls playsinline preload="metadata"></video></a>';
+        mediaHtml = '<a class="chat-attachment chat-attachment--media" href="' + safeUrl + '" target="_blank" rel="noopener" aria-label="Mở video"><video src="' + safeUrl + '" controls playsinline preload="metadata"></video></a>';
       } else if (mediaType === 'file') {
         const name = Aloute.escapeHtml(msg.mediaName || 'Tệp đính kèm');
         const size = formatFileSize(msg.mediaSize);
-        mediaHtml = '<a class="bubble__file" href="' + safeUrl + '" target="_blank" rel="noopener download"><span class="bubble__file-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></svg></span><span class="bubble__file-body"><span class="bubble__file-name">' + name + '</span><span class="bubble__file-meta">' + size + '</span></span></a>';
+        mediaHtml = '<a class="chat-attachment chat-attachment--file" href="' + safeUrl + '" target="_blank" rel="noopener" download><span class="bubble__file-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/></svg></span><span class="bubble__file-body"><span class="bubble__file-name">' + name + '</span><span class="bubble__file-meta">' + size + '</span></span><span class="chat-attachment__download">↓</span></a>';
       } else {
-        mediaHtml = '<a class="bubble__media" href="' + safeUrl + '" target="_blank" rel="noopener"><img src="' + safeUrl + '" alt="ảnh đính kèm" loading="lazy"></a>';
+        mediaHtml = '<a class="chat-attachment chat-attachment--image" href="' + safeUrl + '" target="_blank" rel="noopener"><img src="' + safeUrl + '" alt="Ảnh đính kèm" loading="lazy"></a>';
       }
     }
 
-    row.innerHTML =
-      avatarHtml +
-      '<div class="bubble ' + (mine ? 'bubble--mine' : 'bubble--theirs') + ' bubble--cluster-last' + pendingClass + '">' +
-      senderNameHtml +
-      (isCallMessage ? specialCallHtml : ('  <span class="bubble__text">' + Aloute.escapeHtml(msg.content || '') + '</span>' + mediaHtml +
-        '  <span class="bubble__time">' + formatClock(sentAt) + '</span>')) +
-      '</div>';
+    let visualHtml = '';
+    if (isCallMessage) {
+      visualHtml = specialCallHtml;
+    } else {
+      visualHtml = contentHtml + mediaHtml;
+    }
 
+    const timestampHtml = '<span class="msg-row__timestamp">' + formatClock(sentAt) + '</span>';
+    const payload = document.createElement('div');
+    payload.className = 'msg-row__content' + (isCallMessage ? ' msg-row__content--call' : '');
+    payload.innerHTML = visualHtml + timestampHtml;
+
+    row.innerHTML = avatarHtml;
+    row.appendChild(payload);
     messageList.appendChild(row);
 
     lastRenderedSenderId = String(msg.senderId);
     lastRenderedAt = sentAtMs;
-    lastRenderedBubbleEl = row.querySelector('.bubble');
+    lastRenderedBubbleEl = payload;
 
     if (mine) lastMineBubbleEl = row;
-
     if (!opts.isHistory) scrollToBottom(false);
     return row;
   }
@@ -833,13 +857,26 @@
     if (videoCallModal) videoCallModal.hidden = true;
   }
 
-  document.addEventListener('click', e => {
-    const btn = e.target.closest('[data-call-again]');
-    if (!btn) return;
-    const targetId = Number(btn.dataset.callAgain);
+  function retryCallFromCard(card) {
+    if (!card) return;
+    const targetId = Number(card.dataset.callAgain);
     if (!targetId) return;
     const targetName = document.getElementById('chatThreadName')?.textContent || 'Bạn bè';
-    startCall(targetId, targetName, btn.dataset.callType === 'audio' ? 'audio' : 'video');
+    startCall(targetId, targetName, card.dataset.callType === 'audio' ? 'audio' : 'video');
+  }
+
+  document.addEventListener('click', e => {
+    const card = e.target.closest('[data-call-again]');
+    if (!card) return;
+    retryCallFromCard(card);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('[data-call-again]');
+    if (!card) return;
+    e.preventDefault();
+    retryCallFromCard(card);
   });
 
   document.addEventListener('aloute:call-signal', e => { handleCallSignal(e.detail).catch(() => closeVideoCall(false)); });
@@ -1145,11 +1182,11 @@
     const pending = pendingByClientId.get(clientId);
     if (!pending) return;
     pendingByClientId.delete(clientId);
-    const bubble = pending.el.querySelector('.bubble');
+    const bubble = pending.el.querySelector('.bubble, .chat-attachment, .bubble__call');
     if (bubble) {
       bubble.classList.remove('bubble--pending');
       bubble.classList.add('bubble--failed');
-      const timeEl = bubble.querySelector('.bubble__time');
+      const timeEl = pending.el.querySelector('.msg-row__timestamp');
       if (timeEl) timeEl.textContent = 'Gửi thất bại · nhấn để gửi lại';
       bubble.addEventListener('click', () => retryPending(pending), { once: true });
     }
@@ -1168,10 +1205,10 @@
     if (!pending) return false;
     clearTimeout(pending.timeoutId);
     pendingByClientId.delete(msg.clientId);
-    const bubble = pending.el.querySelector('.bubble');
+    const bubble = pending.el.querySelector('.bubble, .chat-attachment, .bubble__call');
     if (bubble) {
       bubble.classList.remove('bubble--pending');
-      const timeEl = bubble.querySelector('.bubble__time');
+      const timeEl = pending.el.querySelector('.msg-row__timestamp');
       if (timeEl) timeEl.textContent = formatClock(msg.sentAt);
     }
     pending.el.dataset.messageId = msg.id || '';

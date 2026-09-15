@@ -6,6 +6,10 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document(collection = "posts")
+@org.springframework.data.mongodb.core.index.CompoundIndexes({
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "posts_created_desc", def = "{'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "posts_user_created", def = "{'userId': 1, 'createdAt': -1}")
+})
 public class Post {
 
     @Id

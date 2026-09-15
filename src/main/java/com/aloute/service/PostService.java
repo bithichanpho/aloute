@@ -71,7 +71,7 @@ public class PostService {
 
     /** Feed đơn giản: toàn bộ bài viết APPROVED, mới nhất trước. */
     public List<PostResponse> getFeed(Long currentUserId, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, Math.min(20, size)), Sort.by(Sort.Direction.DESC, "createdAt"));
         List<Post> posts = postRepository.findAllByOrderByCreatedAtDesc(pageable);
 
         return toResponses(posts, currentUserId);
@@ -83,7 +83,7 @@ public class PostService {
             return Collections.emptyList();
         }
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, Math.min(20, size)), Sort.by(Sort.Direction.DESC, "createdAt"));
         List<String> ids = followingIds.stream().map(String::valueOf).collect(Collectors.toList());
         List<Post> posts = postRepository.findByUserIdInOrderByCreatedAtDesc(ids, pageable);
 
@@ -91,7 +91,14 @@ public class PostService {
     }
 
     public List<PostResponse> getPostsByUser(Long userId, Long currentUserId) {
-        List<Post> posts = postRepository.findByUserIdOrderByCreatedAtDesc(String.valueOf(userId));
+        return getPostsByUser(userId, currentUserId, 0, 20);
+    }
+
+    /** Profile posts with bounded pagination to avoid loading an unbounded history. */
+    public List<PostResponse> getPostsByUser(Long userId, Long currentUserId, int page, int size) {
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, Math.min(20, size)),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        List<Post> posts = postRepository.findByUserIdOrderByCreatedAtDesc(String.valueOf(userId), pageable);
         return toResponses(posts, currentUserId);
     }
 

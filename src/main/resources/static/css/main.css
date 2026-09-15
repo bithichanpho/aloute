@@ -1553,71 +1553,381 @@ img { max-width: 100%; display: block; }
 .audio-call-profile span { color:#8d8d92; font-size:13px; }
 @media (max-width: 768px) { .audio-call-profile { min-height:260px; } }
 
-
 /* ---------- Call log / missed-call message ---------- */
-.bubble--call {
-  padding: 0;
+/* CALL phải override nền/padding của .bubble--mine/.bubble--theirs để không xuất hiện
+   một khung sáng lớn bao quanh card cuộc gọi. */
+.bubble--call,
+.bubble.bubble--call {
+  width: fit-content;
+  max-width: min(340px, 78vw);
+  padding: 0 !important;
+  margin: 0;
   background: transparent !important;
-  border: 0;
-  box-shadow: none;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: inherit;
 }
+
 .bubble__call {
-  width: min(320px, 72vw);
+  width: min(300px, 76vw);
+  max-width: 100%;
   display: grid;
-  grid-template-columns: 42px minmax(0,1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
-  gap: 11px;
-  padding: 12px 13px;
-  border-radius: 16px;
-  background: #1d1d20;
-  border: 1px solid #2e2e33;
-  box-shadow: 0 4px 14px rgba(0,0,0,.16);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #1c1c20;
+  border: 1px solid #2b2b30;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  transition: background .15s ease, border-color .15s ease, transform .12s ease;
 }
-.bubble--mine .bubble__call {
-  background: #29292d;
-  border-color: #39393f;
+
+.bubble__call[role="button"] {
+  cursor: pointer;
+  user-select: none;
+  outline: none;
 }
-.bubble__call--missed .bubble__call-icon {
-  color: #ff5c72;
-  background: rgba(255,92,114,.13);
+
+.bubble__call[role="button"]:hover {
+  background: #222227;
+  border-color: #38383e;
 }
+
+.bubble__call[role="button"]:focus-visible {
+  border-color: rgba(255,255,255,.42);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.08);
+}
+
+.bubble__call[role="button"]:active {
+  transform: scale(.985);
+}
+
+.bubble__call--missed {
+  background: #1d1c20;
+}
+
 .bubble__call-icon {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #f4f4f5;
-  background: rgba(255,255,255,.08);
-}
-.bubble__call-icon svg { width: 20px; height: 20px; }
-.bubble__call-body { min-width: 0; display:flex; flex-direction:column; gap:3px; }
-.bubble__call-body strong { font-size: 13px; line-height: 1.25; color: #f7f7f8; }
-.bubble__call-body span { font-size: 11px; color: #9a9aa3; }
-.bubble__call-action {
-  grid-column: 1 / -1;
-  width: 100%;
-  border: 0;
-  border-radius: 10px;
-  padding: 8px 10px;
-  background: #4a4650;
-  color: #fff;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background .16s ease, transform .16s ease;
-}
-.bubble__call-action:hover { background: #5a5260; }
-.bubble__call-action:active { transform: scale(.985); }
-.bubble--mine .bubble__call-action { background: #454049; }
-@media (max-width: 760px) {
-  .bubble__call { width: min(300px, 78vw); }
+  color: #e8e8eb;
+  background: rgba(255,255,255,.07);
+  flex-shrink: 0;
 }
 
-.bubble.bubble--call {
-  padding: 0;
-  background: transparent !important;
-  box-shadow: none;
+.bubble__call--missed .bubble__call-icon {
+  color: #ff5c72;
+  background: rgba(255,92,114,.12);
+}
+
+.bubble__call-icon svg { width: 19px; height: 19px; }
+
+.bubble__call-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bubble__call-body strong {
+  font-size: 13px;
+  line-height: 1.28;
+  color: #f4f4f5;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bubble__call-body span {
+  font-size: 11px;
+  line-height: 1.25;
+  color: #92929a;
+}
+
+@media (max-width: 760px) {
+  .bubble--call,
+  .bubble.bubble--call { max-width: 84vw; }
+  .bubble__call { width: min(280px, 84vw); }
+}
+
+/* ===== Messenger-style attachments & call cards =====
+   Media/call are siblings of the text bubble, never children of .bubble.
+   This prevents the light message background from wrapping images/files/calls. */
+.msg-row__content {
+  min-width: 0;
+  max-width: min(74%, 640px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+.msg-row--mine .msg-row__content { align-items: flex-end; }
+.msg-row--theirs .msg-row__content { align-items: flex-start; }
+.msg-row__content .bubble { max-width: 100%; }
+
+.msg-row__sender-name { line-height: 1; margin-bottom: 1px; }
+.msg-row__sender-name .bubble__sender-name { margin: 0; }
+
+.msg-row__timestamp {
+  display: inline-block;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #707077;
+  user-select: none;
+}
+.msg-row--mine .msg-row__timestamp { color: #6f6f74; }
+
+/* Standalone photo/video — no bubble background, no extra outer panel. */
+.chat-attachment {
+  display: block;
+  position: relative;
+  max-width: min(460px, 72vw);
+  text-decoration: none;
+  overflow: hidden;
+}
+.chat-attachment--image,
+.chat-attachment--media {
+  border-radius: 16px;
+  background: transparent;
   border: 0;
+  box-shadow: none;
+}
+.chat-attachment--image img,
+.chat-attachment--media video {
+  display: block;
+  width: auto;
+  max-width: min(460px, 72vw);
+  max-height: 520px;
+  object-fit: contain;
+  border-radius: 16px;
+  background: #080808;
+}
+.chat-attachment--image img {
+  min-width: 60px;
+  min-height: 40px;
+}
+.chat-attachment--media video { max-height: 520px; }
+
+/* File card is also independent from .bubble. */
+.chat-attachment--file {
+  width: min(360px, 72vw);
+  min-height: 68px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: #19191c;
+  border: 1px solid #2a2a2f;
+  color: #f4f4f5;
+  transition: background .14s ease, border-color .14s ease, transform .12s ease;
+}
+.chat-attachment--file:hover {
+  background: #222226;
+  border-color: #36363c;
+}
+.msg-row--mine .chat-attachment--file {
+  background: #242427;
+  border-color: #343438;
+}
+.msg-row--mine .chat-attachment--file:hover { background: #2b2b2f; }
+.chat-attachment--file .bubble__file-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgba(255,255,255,.07);
+  color: #f0f0f2;
+}
+.chat-attachment--file .bubble__file-icon svg { width: 19px; height: 19px; }
+.chat-attachment--file .bubble__file-body { min-width: 0; flex: 1; }
+.chat-attachment--file .bubble__file-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+.chat-attachment--file .bubble__file-meta { font-size: 11px; color: #96969d; }
+.chat-attachment__download {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.07);
+  color: #e9e9eb;
+  font-size: 18px;
+}
+
+/* Call card is an independent message object, matching Messenger's compact call log. */
+.bubble__call {
+  width: min(310px, 72vw);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 15px;
+  background: #1d1d21;
+  border: 1px solid #2b2b30;
+  box-shadow: none;
+  color: #f4f4f5;
+}
+.bubble__call--completed { background: #18181b; }
+.bubble__call--missed { background: #1d1c20; }
+.bubble__call[role="button"] {
+  cursor: pointer;
+  user-select: none;
+  transition: background .14s ease, border-color .14s ease, transform .12s ease;
+}
+.bubble__call[role="button"]:hover { background: #252529; border-color: #3a3a40; }
+.bubble__call[role="button"]:active { transform: translateY(1px) scale(.99); }
+.bubble__call-icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,.07);
+  color: #dcdce0;
+}
+.bubble__call--missed .bubble__call-icon {
+  background: rgba(255,92,114,.13);
+  color: #ff6277;
+}
+.bubble__call-icon svg { width: 19px; height: 19px; }
+.bubble__call-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bubble__call-body strong {
+  font-size: 13px;
+  line-height: 1.28;
+  color: #f4f4f5;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bubble__call-body span { font-size: 11px; line-height: 1.25; color: #92929a; }
+
+/* Failed optimistic message can be either a text bubble or a standalone attachment. */
+.chat-attachment.bubble--failed,
+.bubble__call.bubble--failed {
+  cursor: pointer;
+  border-color: rgba(240,23,63,.45);
+  box-shadow: 0 0 0 1px rgba(240,23,63,.08);
+}
+.chat-attachment.bubble--pending,
+.bubble__call.bubble--pending { opacity: .55; }
+
+@media (max-width: 900px) {
+  .msg-row__content { max-width: 82%; }
+  .chat-attachment,
+  .chat-attachment--image img,
+  .chat-attachment--media video { max-width: min(460px, 82vw); }
+  .chat-attachment--file,
+  .bubble__call { width: min(310px, 82vw); }
+}
+
+/* =====================================================================
+   ALOUTE CHAT — layout hardening (prevents long media/call history from
+   pushing the composer outside the viewport)
+   ===================================================================== */
+.chat-shell {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-thread {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-thread__header,
+.chat-thread__input {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.chat-thread__messages {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+}
+
+.msg-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.msg-row__content {
+  min-width: 0;
+  max-width: min(74%, 640px);
+}
+
+/* Standalone attachments and call logs must never stretch the message pane. */
+.chat-attachment,
+.bubble__call {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-attachment--image img,
+.chat-attachment--media video {
+  max-width: min(460px, 100%);
+  height: auto;
+}
+
+.chat-attachment--file {
+  max-width: min(360px, 100%);
+}
+
+.bubble__call {
+  width: min(310px, 100%);
+}
+
+@media (max-width: 900px) {
+  .chat-thread {
+    height: 100%;
+  }
+
+  .chat-thread__messages {
+    padding-bottom: 12px;
+  }
+
+  .msg-row__content {
+    max-width: 82%;
+  }
+
+  .chat-attachment,
+  .chat-attachment--image img,
+  .chat-attachment--media video,
+  .chat-attachment--file,
+  .bubble__call {
+    max-width: 100%;
+  }
 }

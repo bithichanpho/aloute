@@ -62,6 +62,10 @@
       </div>
     </div>
 
+
+    <button type="button" class="btn-outline" data-load-posts
+            th:if="${#lists.size(posts) == 20}"
+            th:attr="data-url=@{/api/posts/feed-fragment(tab=${activeTab})}">Tải thêm</button>
   </div>
 </section>
 </body>

@@ -31,8 +31,10 @@ public class CommentController {
     }
 
     @GetMapping("/posts/{postId}/comments")
-    public ApiResponse<List<CommentResponse>> getComments(@PathVariable String postId) {
-        return ApiResponse.success(commentService.getComments(postId));
+    public ApiResponse<List<CommentResponse>> getComments(@PathVariable String postId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "50") int size) {
+        return ApiResponse.success(commentService.getComments(postId, page, size));
     }
 
     @PostMapping("/posts/{postId}/comments")

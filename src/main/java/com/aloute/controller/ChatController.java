@@ -61,9 +61,10 @@ public class ChatController {
 
     @GetMapping("/api/chat/messages/{otherUserId}")
     public ApiResponse<List<ChatMessageResponse>> getMessages(
-            Authentication authentication, @PathVariable Long otherUserId) {
+            Authentication authentication, @PathVariable Long otherUserId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page) {
         Long userId = requireUserId(authentication);
-        return ApiResponse.success(chatService.getMessages(userId, otherUserId));
+        return ApiResponse.success(chatService.getMessages(userId, otherUserId, page));
     }
 
     @PostMapping("/api/chat/read/{otherUserId}")
@@ -76,9 +77,10 @@ public class ChatController {
     /** Lịch sử tin nhắn trong 1 nhóm — chỉ thành viên nhóm mới xem được. */
     @GetMapping("/api/chat/group/{groupId}/messages")
     public ApiResponse<List<ChatMessageResponse>> getGroupMessages(
-            Authentication authentication, @PathVariable Long groupId) {
+            Authentication authentication, @PathVariable Long groupId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page) {
         Long userId = requireUserId(authentication);
-        return ApiResponse.success(chatService.getGroupMessages(groupId, userId));
+        return ApiResponse.success(chatService.getGroupMessages(groupId, userId, page));
     }
 
     /** Đánh dấu đã đọc hội thoại nhóm đến thời điểm hiện tại. */
