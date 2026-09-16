@@ -2,43 +2,75 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title th:text="${profileUser != null ? profileUser.fullName + ' — ALOUTE' : 'Hồ sơ — ALOUTE'}">Hồ sơ — ALOUTE</title></head>
 <body>
-<section>
+<section class="content-inner">
 
-  <div class="profile-header" th:if="${profileUser != null}">
-    <div class="profile-header__top">
-      <div>
-        <p class="profile-header__name" th:text="${profileUser.fullName}">Họ tên</p>
-        <p class="profile-header__username" th:text="'@' + ${profileUser.username}">@username</p>
+  <div class="profile-cover" th:if="${profileUser != null}">
+
+    <div class="profile-cover__main">
+      <div class="profile-cover__avatar-wrap">
+        <img class="profile-cover__avatar" th:src="${profileUser.avatarUrl}"
+             src="/images/avatar_default.png" alt="Ảnh đại diện">
       </div>
-      <img class="profile-header__avatar"
-           th:src="${profileUser.avatarUrl != null ? profileUser.avatarUrl : 'https://i.pravatar.cc/150?img=12'}"
-           src="https://i.pravatar.cc/150?img=12" alt="avatar">
+
+      <div class="profile-cover__side">
+        <div class="profile-cover__identity">
+          <h1 class="profile-cover__username" th:text="${profileUser.username}">username</h1>
+
+          <div class="profile-cover__actions" th:if="${isOwnProfile}">
+            <button type="button" class="btn-profile" onclick="location.href='/profile/edit'">Chỉnh sửa trang cá nhân</button>
+            <button type="button" class="btn-profile" onclick="location.href='/saved'">Đã lưu</button>
+          </div>
+
+          <div class="profile-cover__actions" th:unless="${isOwnProfile}">
+            <button class="btn-profile btn-profile--primary btn-follow"
+                    th:classappend="${profileUser.followedByCurrentUser} ? ' is-following' : ''"
+                    th:attr="data-user-id=${profileUser.id}"
+                    th:text="${profileUser.followedByCurrentUser} ? 'Đang theo dõi' : 'Theo dõi'">Theo dõi</button>
+
+            <!-- Nhắn tin: chỉ bấm được khi đã theo dõi lẫn nhau, đúng điều kiện backend -->
+            <button class="btn-profile"
+                    th:classappend="${!profileUser.mutualFriend} ? ' is-disabled' : ''"
+                    th:disabled="${!profileUser.mutualFriend}"
+                    th:attr="title=${profileUser.mutualFriend} ? null : 'Hai bạn cần theo dõi lẫn nhau để nhắn tin'"
+                    th:onclick="|location.href='/chat?userId=' + ${profileUser.id}|">Nhắn tin</button>
+
+            <button th:if="${profileUser.mutualFriend and profileUser.closeFriendStatus != 'PENDING_RECEIVED'}"
+                    class="btn-profile btn-close-friend"
+                    th:with="cfAccepted=${profileUser.closeFriendStatus == 'ACCEPTED'}, cfPending=${profileUser.closeFriendStatus == 'PENDING_SENT'}"
+                    th:classappend="${cfAccepted ? ' is-close' : (cfPending ? ' is-pending' : '')}"
+                    th:attr="data-user-id=${profileUser.id}, data-status=${profileUser.closeFriendStatus}"
+                    th:text="${cfAccepted ? '★ Bạn thân' : (cfPending ? 'Đã gửi lời mời' : '+ Bạn thân')}">+ Bạn thân</button>
+          </div>
+        </div>
+
+        <!-- Hàng số liệu: bấm vào từng con số để mở danh sách người tương ứng -->
+        <div class="profile-stats" th:attr="data-profile-user-id=${profileUser.id}">
+          <span class="profile-stat profile-stat--static">
+            <strong th:text="${postCount}">0</strong>
+            <span>bài viết</span>
+          </span>
+          <button type="button" class="profile-stat" data-people-tab="followers">
+            <strong th:text="${profileUser.followerCount}">0</strong>
+            <span>người theo dõi</span>
+          </button>
+          <button type="button" class="profile-stat" data-people-tab="following">
+            <strong th:text="${profileUser.followingCount}">0</strong>
+            <span>đang theo dõi</span>
+          </button>
+          <button type="button" class="profile-stat" data-people-tab="close">
+            <strong th:text="${profileUser.closeFriendCount}">0</strong>
+            <span>bạn thân</span>
+          </button>
+        </div>
+
+        <div class="profile-cover__bio">
+          <p class="profile-cover__fullname" th:text="${profileUser.fullName}">Họ tên</p>
+          <p class="profile-cover__text"
+             th:if="${profileUser.bio != null and !#strings.isEmpty(profileUser.bio)}"
+             th:text="${profileUser.bio}">Tiểu sử</p>
+        </div>
+      </div>
     </div>
-
-    <p class="profile-header__bio" th:if="${profileUser.bio != null and !#strings.isEmpty(profileUser.bio)}" th:text="${profileUser.bio}">Tiểu sử</p>
-    <p class="profile-header__stats">
-      <span th:text="${profileUser.followerCount}">0</span> người theo dõi ·
-      <span th:text="${profileUser.followingCount}">0</span> đang theo dõi
-    </p>
-
-    <button th:if="${isOwnProfile}" class="btn-outline" onclick="location.href='/profile/edit'">Chỉnh sửa trang cá nhân</button>
-
-    <div th:unless="${isOwnProfile}" class="profile-header__actions">
-      <button class="btn-follow" th:classappend="${profileUser.followedByCurrentUser} ? ' is-following' : ''"
-              th:attr="data-user-id=${profileUser.id}"
-              th:text="${profileUser.followedByCurrentUser} ? 'Đang theo dõi' : 'Theo dõi'">Theo dõi</button>
-      <!-- Nhắn tin: chỉ bật khi đã là bạn bè (follow lẫn nhau) — đúng điều kiện để chat được -->
-      <button th:if="${profileUser.mutualFriend}" class="btn-message"
-              th:onclick="|location.href='/chat?userId=' + ${profileUser.id}|">Nhắn tin</button>
-    </div>
-
-    <!-- Bạn thân: chỉ hiện khi đã là bạn bè (follow lẫn nhau) với người này -->
-    <button th:if="${!isOwnProfile and profileUser.mutualFriend and profileUser.closeFriendStatus != 'PENDING_RECEIVED'}"
-            class="btn-close-friend"
-            th:with="cfAccepted=${profileUser.closeFriendStatus == 'ACCEPTED'}, cfPending=${profileUser.closeFriendStatus == 'PENDING_SENT'}"
-            th:classappend="${cfAccepted ? ' is-close' : (cfPending ? ' is-pending' : '')}"
-            th:attr="data-user-id=${profileUser.id}, data-status=${profileUser.closeFriendStatus}"
-            th:text="${cfAccepted ? '★ Bạn thân' : (cfPending ? 'Đã gửi lời mời' : '+ Bạn thân')}">+ Bạn thân</button>
 
     <!-- Họ vừa gửi lời mời kết bạn thân cho mình -> cho chấp nhận/từ chối ngay tại đây -->
     <div th:if="${!isOwnProfile and profileUser.closeFriendStatus == 'PENDING_RECEIVED'}"
@@ -50,8 +82,21 @@
       </div>
     </div>
 
-    <div class="profile-tabs">
-      <div class="profile-tabs__item profile-tabs__item--active">Bài viết</div>
+    <!-- Chuyển giữa dạng lưới ảnh và dạng dòng thời gian -->
+    <div class="profile-views">
+      <button type="button" class="profile-view is-active" data-profile-view="grid">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <span>Lưới</span>
+      </button>
+      <button type="button" class="profile-view" data-profile-view="list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+        <span>Dòng thời gian</span>
+      </button>
     </div>
   </div>
 
@@ -62,11 +107,31 @@
     <span th:unless="${isOwnProfile}">Người dùng này chưa có bài viết nào.</span>
   </div>
 
+  <!-- Dạng lưới: bấm vào một ô sẽ chuyển sang dòng thời gian và cuộn tới đúng bài đó -->
+  <div class="profile-grid" id="profileGrid" th:if="${profileUser != null and !#lists.isEmpty(userPosts)}">
+    <button type="button" class="grid-tile" th:each="post : ${userPosts}"
+            th:attr="data-goto-post=${post.id}">
+      <img class="grid-tile__image" th:if="${post.imageUrl != null}" th:src="${post.imageUrl}" alt="">
+      <span class="grid-tile__text" th:unless="${post.imageUrl != null}" th:text="${post.content}">Nội dung</span>
+      <span class="grid-tile__overlay">
+        <span class="grid-tile__stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>
+          <span th:text="${post.likeCount}">0</span>
+        </span>
+        <span class="grid-tile__stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-8.6 8.4c-1.3 0-2.6-.3-3.7-.9L3 20l1.1-5.4a8.3 8.3 0 0 1-.7-3.1A8.4 8.4 0 0 1 12.1 3a8.4 8.4 0 0 1 8.9 8.5Z"/></svg>
+          <span th:text="${post.commentCount}">0</span>
+        </span>
+      </span>
+    </button>
+  </div>
+
+  <div class="profile-posts" id="profilePosts">
   <div class="post" th:each="post : ${userPosts}" th:attr="data-post-id=${post.id}">
     <div class="post__avatar-col">
       <img class="post__avatar"
-           th:src="${post.userAvatarUrl != null ? post.userAvatarUrl : 'https://i.pravatar.cc/150?img=12'}"
-           src="https://i.pravatar.cc/150?img=12" alt="avatar">
+           th:src="${post.userAvatarUrl != null ? post.userAvatarUrl : '/images/avatar_default.png'}"
+           src="/images/avatar_default.png" alt="avatar">
     </div>
     <div class="post__body">
       <div class="post__header">
@@ -91,9 +156,38 @@
     </div>
   </div>
 
+  </div>
+
     <button type="button" class="btn-outline" data-load-posts
             th:if="${#lists.size(userPosts) == 20}"
             th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'}">Tải thêm</button>
+
+  <!-- Hộp thoại danh sách kết nối: người theo dõi / đang theo dõi / bạn thân -->
+  <div class="people-modal" id="peopleModal" th:if="${profileUser != null}" hidden>
+    <div class="people-modal__backdrop" data-people-close></div>
+    <div class="people-modal__panel" role="dialog" aria-modal="true" aria-labelledby="peopleModalTitle">
+      <div class="people-modal__head">
+        <h2 class="people-modal__title" id="peopleModalTitle" th:text="${profileUser.fullName}">Kết nối</h2>
+        <button type="button" class="people-modal__close" data-people-close aria-label="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="people-modal__tabs">
+        <button type="button" class="people-tab" data-tab="followers">
+          Người theo dõi <span th:text="${profileUser.followerCount}">0</span>
+        </button>
+        <button type="button" class="people-tab" data-tab="following">
+          Đang theo dõi <span th:text="${profileUser.followingCount}">0</span>
+        </button>
+        <button type="button" class="people-tab" data-tab="close">
+          Bạn thân <span th:text="${profileUser.closeFriendCount}">0</span>
+        </button>
+      </div>
+      <div class="people-modal__body" id="peopleModalBody"></div>
+    </div>
+  </div>
   </section>
 </body>
 </html>

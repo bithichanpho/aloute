@@ -1,7 +1,6 @@
 package com.aloute.controller;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,10 +57,12 @@ public class FriendController {
         return ApiResponse.success(toProfiles(ids, currentUserId));
     }
 
+    /**
+     * Dựng hồ sơ theo lô: ~5 query cho cả danh sách, thay vì ~9 query mỗi người
+     * như bản cũ (gọi getProfile trong vòng lặp).
+     */
     private List<UserProfileDto> toProfiles(List<Long> ids, Long currentUserId) {
-        return ids.stream()
-                .map(id -> userService.getProfile(id, currentUserId))
-                .collect(Collectors.toList());
+        return userService.getProfiles(ids, currentUserId);
     }
 
     private Long requireUserId(Authentication authentication) {

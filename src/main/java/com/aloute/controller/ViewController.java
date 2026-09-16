@@ -18,6 +18,11 @@ import com.aloute.service.FriendService;
 import com.aloute.service.NotificationService;
 import com.aloute.service.PostService;
 import com.aloute.service.UserService;
+import com.aloute.service.GroupService;
+import com.aloute.service.PresenceService;
+import com.aloute.service.DiscoveryService;
+import com.aloute.model.entity.ChatGroup;
+import com.aloute.model.entity.User;
 
 /**
  * ViewController — trả về tên template Thymeleaf tương ứng cho từng URL, kèm
@@ -36,18 +41,27 @@ public class ViewController {
     private final FriendService friendService;
     private final NotificationService notificationService;
     private final ChatService chatService;
+    private final GroupService groupService;
+    private final PresenceService presenceService;
+    private final DiscoveryService discoveryService;
 
     public ViewController(
             PostService postService,
             UserService userService,
             FriendService friendService,
             NotificationService notificationService,
-            ChatService chatService) {
+            ChatService chatService,
+            GroupService groupService,
+            PresenceService presenceService,
+            DiscoveryService discoveryService) {
         this.postService = postService;
         this.userService = userService;
         this.friendService = friendService;
         this.notificationService = notificationService;
         this.chatService = chatService;
+        this.groupService = groupService;
+        this.presenceService = presenceService;
+        this.discoveryService = discoveryService;
     }
 
     @GetMapping("/")
@@ -99,6 +113,24 @@ public class ViewController {
 
         model.addAttribute("posts", posts);
         model.addAttribute("activeTab", tab);
+
+        // Dữ liệu cho rail bên phải của feed: nhóm đang tham gia + bạn bè đang online.
+        // Đây chỉ là dữ liệu hiển thị, không thay đổi logic feed hiện tại.
+        List<ChatGroup> feedGroups = groupService.getMyGroups(userId);
+
+        List<User> activeFriends = friendService.getMutualFriendIds(userId).stream()
+                .map(userService::findUserBasicInfo)
+                .flatMap(java.util.Optional::stream)
+                .filter(user -> presenceService.isOnline(user.getId()))
+                .limit(8)
+                .collect(java.util.stream.Collectors.toList());
+
+        // Gợi ý kết bạn: dùng chung với trang /search (xem DiscoveryService).
+        // Trước đây khối này nạp toàn bộ bảng users rồi dựng hồ sơ đầy đủ cho từng người.
+        model.addAttribute("feedGroups", feedGroups.stream().limit(8).collect(java.util.stream.Collectors.toList()));
+        model.addAttribute("activeFriends", activeFriends);
+        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, 6));
+
         addCommonAttributes(model, userId, "feed");
         return "feed/index";
     }
@@ -218,6 +250,7 @@ public class ViewController {
         UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
         model.addAttribute("profileUser", profile);
         model.addAttribute("userPosts", postService.getPostsByUser(profileUserId, currentUserId));
+        model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
         model.addAttribute("isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
         if (currentUserId != null) {
             addCommonAttributes(model, currentUserId, "profile");
@@ -228,7 +261,7 @@ public class ViewController {
     private void addCommonAttributes(Model model, Long currentUserId, String activeNav) {
         model.addAttribute("activeNav", activeNav);
         if (currentUserId == null) return;
-        model.addAttribute("currentUser", userService.getProfile(currentUserId, currentUserId));
+        model.addAttribute("currentUser", userService.getLiteProfile(currentUserId));
         model.addAttribute("unreadCount", notificationService.countUnread(currentUserId));
         model.addAttribute("unreadMessageCount", chatService.countUnreadTotal(currentUserId));
     }

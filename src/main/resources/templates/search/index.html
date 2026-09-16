@@ -2,19 +2,76 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Tìm kiếm — ALOUTE</title></head>
 <body>
-<section>
+<section class="content-inner search-page">
 
-  <div class="page-header">
-    <h1>Tìm kiếm</h1>
+  <div class="page-header search-page__header">
+    <div>
+      <h1>Tìm kiếm</h1>
+      <p class="search-page__subtitle">Tìm bạn bè, bài viết và những chủ đề đang được quan tâm</p>
+    </div>
   </div>
 
-  <div class="feed-panel">
-    <div class="search-box">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input type="text" id="searchInput" placeholder="Tìm theo tên hoặc @username" autocomplete="off">
-    </div>
+  <!-- Ô tìm kiếm dính trên đầu khi cuộn, giống Threads -->
+  <div class="search-bar" id="searchBar">
+    <svg class="search-bar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+    </svg>
+    <input type="text" id="searchInput" placeholder="Tìm kiếm" autocomplete="off" spellcheck="false">
+    <button type="button" class="search-bar__clear" id="searchClear" aria-label="Xóa từ khóa" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 6 6 18M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
 
-    <div id="searchResults"></div>
+  <!-- Tab kết quả: chỉ hiện khi đang có từ khóa -->
+  <div class="search-tabs" id="searchTabs" hidden>
+    <button type="button" class="search-tab is-active" data-tab="users">Mọi người</button>
+    <button type="button" class="search-tab" data-tab="posts">Bài viết</button>
+  </div>
+
+  <div class="search-results" id="searchResults" hidden></div>
+
+  <!-- Khu vực khám phá: gợi ý kết bạn + xu hướng (hiện khi ô tìm kiếm trống) -->
+  <div class="search-discover" id="searchDiscover">
+
+    <section class="discover-card">
+      <div class="discover-card__head">
+        <div>
+          <h2 class="discover-card__title">Gợi ý cho bạn</h2>
+          <p class="discover-card__sub">Những người bạn có thể quen</p>
+        </div>
+      </div>
+      <div class="discover-card__body" id="suggestionList">
+        <div class="skeleton-row" th:each="i : ${#numbers.sequence(1, 3)}">
+          <div class="skeleton skeleton--avatar"></div>
+          <div class="skeleton-row__lines">
+            <div class="skeleton skeleton--line" style="width:42%"></div>
+            <div class="skeleton skeleton--line" style="width:28%"></div>
+          </div>
+          <div class="skeleton skeleton--pill"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="discover-card">
+      <div class="discover-card__head">
+        <div>
+          <h2 class="discover-card__title"><span class="discover-card__mark">Xu hướng</span></h2>
+          <p class="discover-card__sub">Chủ đề đang được nhắc tới nhiều nhất</p>
+        </div>
+      </div>
+      <div class="discover-card__body" id="trendingList">
+        <div class="skeleton-row" th:each="i : ${#numbers.sequence(1, 3)}">
+          <div class="skeleton-row__lines">
+            <div class="skeleton skeleton--line" style="width:55%"></div>
+            <div class="skeleton skeleton--line" style="width:80%"></div>
+          </div>
+          <div class="skeleton skeleton--thumb"></div>
+        </div>
+      </div>
+    </section>
+
   </div>
 
 </section>

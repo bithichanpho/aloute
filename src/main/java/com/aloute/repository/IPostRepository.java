@@ -14,4 +14,7 @@ public interface IPostRepository extends MongoRepository<Post, String> {
     List<Post> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
     List<Post> findByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
+
+    /** Tổng số bài của 1 người — hiện trên trang cá nhân, rẻ hơn nhiều so với tải hết bài về đếm. */
+    long countByUserId(String userId);
 }

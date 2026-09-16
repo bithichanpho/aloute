@@ -1,6 +1,8 @@
-<nav class="sidebar" th:fragment="navbar">
+<nav class="sidebar"
+     th:classappend="${activeNav == 'chat' ? 'sidebar--chat-collapsed' : (activeNav == 'feed' ? 'sidebar--feed-collapsed' : '')}"
+     th:fragment="navbar">
 
-  <a class="sidebar__logo" href="/feed" th:href="@{/feed}">
+  <a class="sidebar__logo" title="ALOUTE" href="/feed" th:href="@{/feed}">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
     </svg>
@@ -9,28 +11,28 @@
 
   <div class="sidebar__nav">
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'feed'} ? 'sidebar__row--active' : ''" href="/feed" th:href="@{/feed}">
+    <a class="sidebar__row" title="Dành cho bạn" th:classappend="${activeNav == 'feed'} ? 'sidebar__row--active' : ''" href="/feed" th:href="@{/feed}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/>
       </svg>
       <span>Dành cho bạn</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'compose'} ? 'sidebar__row--active' : ''" href="/compose" th:href="@{/compose}">
+    <a class="sidebar__row" title="Bài viết mới" th:classappend="${activeNav == 'compose'} ? 'sidebar__row--active' : ''" href="/compose" th:href="@{/compose}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 5v14M5 12h14"/>
       </svg>
       <span>Bài viết mới</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'search'} ? 'sidebar__row--active' : ''" href="/search" th:href="@{/search}">
+    <a class="sidebar__row" title="Tìm kiếm" th:classappend="${activeNav == 'search'} ? 'sidebar__row--active' : ''" href="/search" th:href="@{/search}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
       </svg>
       <span>Tìm kiếm</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'chat'} ? 'sidebar__row--active' : ''" href="/chat" th:href="@{/chat}">
+    <a class="sidebar__row" title="Tin nhắn" th:classappend="${activeNav == 'chat'} ? 'sidebar__row--active' : ''" href="/chat" th:href="@{/chat}">
       <span class="sidebar__icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>
@@ -40,7 +42,7 @@
       <span>Tin nhắn</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'activity'} ? 'sidebar__row--active' : ''" href="/activity" th:href="@{/activity}">
+    <a class="sidebar__row" title="Hoạt động" th:classappend="${activeNav == 'activity'} ? 'sidebar__row--active' : ''" href="/activity" th:href="@{/activity}">
       <span class="sidebar__icon-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 20.5s-7.5-4.6-9.3-9.4C1.6 7.9 3.2 5 6.2 4.6c1.9-.3 3.5.6 4.4 2 .5-.9 1.5-1.6 2.6-1.9 3-.6 5 2 4.6 4.9-.7 5-9.8 10.9-9.8 10.9Z"/>
@@ -50,21 +52,21 @@
       <span>Hoạt động</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" href="/profile/me" th:href="@{/profile/me}">
-      <img src="https://i.pravatar.cc/150?img=8"
-           th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : 'https://i.pravatar.cc/150?img=8'}"
+    <a class="sidebar__row" title="Trang cá nhân" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" href="/profile/me" th:href="@{/profile/me}">
+      <img src="/images/avatar_default.png"
+           th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}"
            alt="avatar"/>
       <span>Trang cá nhân</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'insights'} ? 'sidebar__row--active' : ''" href="/insights" th:href="@{/insights}">
+    <a class="sidebar__row" title="Thông tin chi tiết" th:classappend="${activeNav == 'insights'} ? 'sidebar__row--active' : ''" href="/insights" th:href="@{/insights}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 20V10M12 20V4M20 20v-7"/>
       </svg>
       <span>Thông tin chi tiết</span>
     </a>
 
-    <a class="sidebar__row" th:classappend="${activeNav == 'saved'} ? 'sidebar__row--active' : ''" href="/saved" th:href="@{/saved}">
+    <a class="sidebar__row" title="Đã lưu" th:classappend="${activeNav == 'saved'} ? 'sidebar__row--active' : ''" href="/saved" th:href="@{/saved}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path d="M6 4h12v17l-6-4-6 4V4Z"/>
       </svg>
@@ -81,7 +83,7 @@
     </a>
   </div>
 
-  <a class="sidebar__row sidebar__more" href="#" id="logoutBtn">
+  <a class="sidebar__row sidebar__more" title="Đăng xuất" href="#" id="logoutBtn">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>
     </svg>

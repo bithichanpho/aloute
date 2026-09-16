@@ -1,7 +1,6 @@
 package com.aloute.controller;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -68,9 +67,9 @@ public class CloseFriendController {
     @GetMapping("/{userId}")
     public ApiResponse<List<UserProfileDto>> list(Authentication authentication, @PathVariable Long userId) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
-        List<UserProfileDto> profiles = closeFriendService.getCloseFriendIds(userId).stream()
-                .map(id -> userService.getProfile(id, currentUserId))
-                .collect(Collectors.toList());
+        // Dựng theo lô: số query không tăng theo số bạn thân
+        List<UserProfileDto> profiles =
+                userService.getProfiles(closeFriendService.getCloseFriendIds(userId), currentUserId);
         return ApiResponse.success(profiles);
     }
 

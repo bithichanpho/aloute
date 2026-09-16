@@ -1,5 +1,6 @@
 package com.aloute.service;
 
+import com.aloute.common.util.AvatarUtil;
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.exception.UnauthorizedException;
@@ -184,7 +185,7 @@ public class GroupService {
             userRepository.findById(gm.getUserId()).ifPresent((User u) -> {
                 dto.setUsername(u.getUsername());
                 dto.setFullName(u.getFullName());
-                dto.setAvatarUrl(u.getAvatarUrl());
+                dto.setAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
             });
             return dto;
         }).collect(Collectors.toList());

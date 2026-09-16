@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" th:href="@{/css/main.css}">
 </head>
-<body th:attr="data-current-user-id=${currentUser != null ? currentUser.id : ''}">
+<body th:classappend="${activeNav == 'chat'} ? 'page-chat' : (${activeNav == 'feed'} ? 'page-feed' : '')" th:attr="data-current-user-id=${currentUser != null ? currentUser.id : ''}">
 
 <div id="toastHost"></div>
 
@@ -16,7 +16,7 @@
 
   <div th:replace="~{fragments/navbar :: navbar}"></div>
 
-  <div class="main-column">
+  <div class="main-column" th:classappend="${activeNav == 'feed'} ? 'main-column--feed' : ''">
     <div class="content-inner" th:replace="${content}"></div>
   </div>
 

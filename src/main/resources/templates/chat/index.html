@@ -20,6 +20,14 @@
         <input type="text" id="chatSearchInput" placeholder="Tìm kiếm" autocomplete="off">
       </label>
 
+      <section class="chat-notes" id="chatNotes" aria-label="Bạn bè đang hoạt động và ghi chú" hidden>
+        <div class="chat-notes__header">
+          <span>Ghi chú</span>
+          <span class="chat-notes__online-count" id="chatNotesOnlineCount"></span>
+        </div>
+        <div class="chat-notes__track" id="chatNotesTrack" role="list"></div>
+      </section>
+
       <div class="chat-list__scroll" id="chatListScroll">
 
         <div th:if="${#lists.isEmpty(conversations)}" class="empty-state empty-state--chat">
@@ -68,8 +76,8 @@
                       data-last-message-at=${conv.lastMessageAt}">
           <span class="chat-item__avatar-wrap">
             <img class="chat-item__avatar"
-                 th:src="${conv.otherAvatarUrl != null ? conv.otherAvatarUrl : 'https://i.pravatar.cc/150?img=32'}"
-                 src="https://i.pravatar.cc/150?img=32" alt="avatar">
+                 th:src="${conv.otherAvatarUrl != null ? conv.otherAvatarUrl : '/images/avatar_default.png'}"
+                 src="/images/avatar_default.png" alt="avatar">
             <span class="presence-dot" th:if="${conv.online}"></span>
           </span>
           <div class="chat-item__body">
@@ -102,7 +110,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           </button>
           <span class="chat-thread__avatar-wrap">
-            <img id="chatThreadAvatar" src="https://i.pravatar.cc/150?img=32" alt="avatar">
+            <img id="chatThreadAvatar" src="/images/avatar_default.png" alt="avatar">
             <span class="presence-dot" id="chatThreadPresenceDot" hidden></span>
           </span>
           <div class="chat-thread__identity">
@@ -160,7 +168,7 @@
     <aside class="chat-details" id="chatDetails" hidden>
       <div class="chat-details__profile">
         <div class="chat-details__avatar-wrap">
-          <img id="chatDetailsAvatar" src="https://i.pravatar.cc/240?img=32" alt="Ảnh đại diện">
+          <img id="chatDetailsAvatar" src="/images/avatar_default.png" alt="Ảnh đại diện">
           <span class="presence-dot chat-details__presence-dot" id="chatDetailsPresenceDot" hidden></span>
         </div>
         <h2 id="chatDetailsName">Người dùng</h2>
@@ -216,7 +224,7 @@
   <div class="modal-overlay" id="videoCallModal" hidden>
     <div class="modal-card video-call-card">
       <div class="incoming-call-profile" id="incomingCallProfile" hidden>
-        <img id="incomingCallAvatar" src="https://i.pravatar.cc/160?img=32" alt="Người gọi">
+        <img id="incomingCallAvatar" src="/images/avatar_default.png" alt="Người gọi">
       </div>
       <div class="modal-card__header">
         <h2 id="videoCallTitle">Cuộc gọi video</h2>
@@ -227,7 +235,7 @@
         <video id="localVideo" autoplay playsinline muted></video>
       </div>
       <div class="audio-call-profile" id="audioCallProfile" hidden>
-        <img id="audioCallAvatar" src="https://i.pravatar.cc/160?img=32" alt="Người gọi">
+        <img id="audioCallAvatar" src="/images/avatar_default.png" alt="Người gọi">
         <strong id="audioCallName">Cuộc gọi thoại</strong>
         <span>Không cần camera</span>
       </div>

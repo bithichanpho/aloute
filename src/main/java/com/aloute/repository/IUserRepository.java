@@ -21,4 +21,10 @@ public interface IUserRepository extends JpaRepository<User, Long> {
     Optional<User> findByResetPasswordToken(String resetPasswordToken);
     
     List<User> findByUsernameContainingIgnoreCaseOrFullNameContainingIgnoreCase(String username, String fullName);
+
+    /**
+     * Pool ứng viên cho phần gợi ý. Trước đây phần gợi ý nạp TOÀN BỘ bảng users rồi mới
+     * lọc xuống 6 người — với dữ liệu lớn dần đây là nguyên nhân chính làm trang feed chậm.
+     */
+    List<User> findTop60ByOrderByIdDesc();
 }

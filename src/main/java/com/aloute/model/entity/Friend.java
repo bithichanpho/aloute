@@ -5,9 +5,16 @@ import java.time.LocalDateTime;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "friends", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"follower_id", "followed_id"})
-})
+@Table(name = "friends",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"follower_id", "followed_id"})
+        },
+        // Hai chiều tra cứu nóng nhất: "tôi đang follow ai" và "ai đang follow tôi".
+        // Thiếu index, mỗi lần dựng feed/gợi ý là một lần quét toàn bảng.
+        indexes = {
+                @Index(name = "idx_friends_follower", columnList = "follower_id"),
+                @Index(name = "idx_friends_followed", columnList = "followed_id")
+        })
 public class Friend {
 
     @Id

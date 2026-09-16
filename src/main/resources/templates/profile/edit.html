@@ -2,7 +2,7 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Chỉnh sửa trang cá nhân — ALOUTE</title></head>
 <body>
-<section>
+<section class="content-inner">
 
   <div class="page-header">
     <h1>Chỉnh sửa trang cá nhân</h1>
@@ -11,8 +11,8 @@
   <div class="feed-panel" style="padding: 24px 22px;">
 
     <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px;">
-      <img th:src="${profileUser.avatarUrl != null ? profileUser.avatarUrl : 'https://i.pravatar.cc/150?img=12'}"
-           src="https://i.pravatar.cc/150?img=12" alt="avatar"
+      <img th:src="${profileUser.avatarUrl != null ? profileUser.avatarUrl : '/images/avatar_default.png'}"
+           src="/images/avatar_default.png" alt="avatar"
            style="width:72px; height:72px; border-radius:50%; object-fit:cover;">
       <div>
         <label class="btn-outline" style="display:inline-block; width:auto; padding:8px 16px; cursor:pointer;">

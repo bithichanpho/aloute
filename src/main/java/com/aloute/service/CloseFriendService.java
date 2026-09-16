@@ -1,7 +1,9 @@
 package com.aloute.service;
 
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -132,6 +134,31 @@ public class CloseFriendService {
         }
 
         return "NONE";
+    }
+
+    /**
+     * Toàn bộ quan hệ bạn thân của một người, gói trong 2 query, dưới dạng
+     * map otherUserId -> trạng thái nhìn từ góc độ người đó.
+     *
+     * Dùng khi cần dựng nhiều hồ sơ cùng lúc (tìm kiếm, gợi ý, danh sách follower):
+     * gọi {@link #getStatus} cho từng người sẽ tốn 2 query mỗi người.
+     */
+    public Map<Long, String> getStatusMap(Long currentUserId) {
+        if (currentUserId == null) {
+            return Map.of();
+        }
+
+        Map<Long, String> statuses = new HashMap<>();
+        for (CloseFriend cf : closeFriendRepository.findByRequesterId(currentUserId)) {
+            statuses.put(cf.getReceiverId(),
+                    CloseFriend.ACCEPTED.equals(cf.getStatus()) ? "ACCEPTED" : "PENDING_SENT");
+        }
+        for (CloseFriend cf : closeFriendRepository.findByReceiverId(currentUserId)) {
+            String incoming = CloseFriend.ACCEPTED.equals(cf.getStatus()) ? "ACCEPTED" : "PENDING_RECEIVED";
+            // Nếu tồn tại quan hệ ở cả 2 chiều thì ACCEPTED luôn thắng
+            statuses.merge(cf.getRequesterId(), incoming, (a, b) -> "ACCEPTED".equals(a) ? a : b);
+        }
+        return statuses;
     }
 
     /** Danh sách userId đang là bạn thân (đã ACCEPTED, xét cả 2 chiều) với userId. */

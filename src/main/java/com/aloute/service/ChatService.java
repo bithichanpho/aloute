@@ -1,5 +1,6 @@
 package com.aloute.service;
 
+import com.aloute.common.util.AvatarUtil;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -329,7 +330,7 @@ public class ChatService {
         userRepository.findById(otherId).ifPresent(u -> {
             dto.setOtherUsername(u.getUsername());
             dto.setOtherFullName(u.getFullName());
-            dto.setOtherAvatarUrl(u.getAvatarUrl());
+            dto.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
         });
 
         return dto;
@@ -347,7 +348,7 @@ public class ChatService {
         userRepository.findById(friendId).ifPresent(u -> {
             dto.setOtherUsername(u.getUsername());
             dto.setOtherFullName(u.getFullName());
-            dto.setOtherAvatarUrl(u.getAvatarUrl());
+            dto.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
         });
 
         return dto;
@@ -439,7 +440,7 @@ public class ChatService {
         if (sender != null) {
             dto.setSenderUsername(sender.getUsername());
             dto.setSenderFullName(sender.getFullName());
-            dto.setSenderAvatarUrl(sender.getAvatarUrl());
+            dto.setSenderAvatarUrl(AvatarUtil.resolve(sender.getAvatarUrl()));
         }
         return dto;
     }

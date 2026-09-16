@@ -18,6 +18,9 @@
   const emptyState = document.getElementById('chatEmptyState');
   const template = document.getElementById('chatThreadTemplate');
   const searchInput = document.getElementById('chatSearchInput');
+  const chatNotes = document.getElementById('chatNotes');
+  const chatNotesTrack = document.getElementById('chatNotesTrack');
+  const chatNotesOnlineCount = document.getElementById('chatNotesOnlineCount');
   const chatDetails = document.getElementById('chatDetails');
   const chatDetailsAvatar = document.getElementById('chatDetailsAvatar');
   const chatDetailsName = document.getElementById('chatDetailsName');
@@ -102,6 +105,88 @@
     });
   }
 
+  // ---------- Instagram-style Notes / online friends ----------
+  // Backend hiện đã có /api/users/{id}/friends và /api/chat/online/{id}.
+  // Ta dùng bio ngắn của bạn bè làm nội dung Note hiển thị trong chat hub,
+  // chỉ đưa lên strip những người đang online và có nội dung để chia sẻ.
+  async function loadChatNotes() {
+    if (!chatNotes || !chatNotesTrack || !currentUserId || !window.Aloute || typeof Aloute.api !== 'function') return;
+
+    try {
+      const friends = await Aloute.api('/api/users/' + encodeURIComponent(currentUserId) + '/friends');
+      const list = Array.isArray(friends) ? friends : [];
+
+      const onlineStates = await Promise.all(list.map(async friend => {
+        const existing = chatList && chatList.querySelector('.chat-item[data-user-id="' + String(friend.id) + '"]');
+        const knownOnline = existing ? existing.dataset.online === 'true' : null;
+        let online = knownOnline;
+        if (online === null) {
+          try { online = !!(await Aloute.api('/api/chat/online/' + encodeURIComponent(friend.id))); }
+          catch (_) { online = false; }
+        }
+        return { friend, online };
+      }));
+
+      const notes = onlineStates
+        .filter(x => x.online && x.friend && x.friend.bio && String(x.friend.bio).trim())
+        .slice(0, 8);
+
+      chatNotesTrack.innerHTML = '';
+      if (!notes.length) {
+        chatNotes.hidden = true;
+        if (chatNotesOnlineCount) chatNotesOnlineCount.textContent = '';
+        return;
+      }
+
+      notes.forEach(({ friend }) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'chat-note';
+        item.setAttribute('role', 'listitem');
+        item.dataset.userId = String(friend.id);
+        item.dataset.username = friend.username || '';
+        item.title = friend.bio || '';
+
+        const avatar = document.createElement('span');
+        avatar.className = 'chat-note__avatar-wrap';
+        avatar.innerHTML = '<img class="chat-note__avatar" alt="">' + '<span class="chat-note__online-dot"></span>';
+        const img = avatar.querySelector('img');
+        img.src = friend.avatarUrl || '/images/avatar_default.png';
+
+        const bubble = document.createElement('span');
+        bubble.className = 'chat-note__bubble';
+        bubble.textContent = String(friend.bio).trim();
+
+        const name = document.createElement('span');
+        name.className = 'chat-note__name';
+        name.textContent = friend.fullName || friend.username || 'Bạn bè';
+
+        item.appendChild(avatar);
+        item.appendChild(bubble);
+        item.appendChild(name);
+        item.addEventListener('click', () => {
+          const target = chatList && chatList.querySelector('.chat-item[data-user-id="' + String(friend.id) + '"]');
+          if (target) {
+            openConversation(target);
+            target.scrollIntoView({ block: 'nearest' });
+          } else if (friend.id) {
+            window.location.href = '/chat?userId=' + encodeURIComponent(friend.id);
+          }
+        });
+        chatNotesTrack.appendChild(item);
+      });
+
+      chatNotes.hidden = false;
+      if (chatNotesOnlineCount) {
+        chatNotesOnlineCount.textContent = notes.length + ' đang hoạt động';
+      }
+    } catch (err) {
+      // Notes là lớp UI phụ; không được phép làm hỏng luồng chat chính.
+      chatNotes.hidden = true;
+    }
+  }
+
+
   // ---------- Sắp xếp hội thoại theo tin nhắn mới nhất ----------
   function chatItemTime(item) {
     const raw = item && item.dataset ? item.dataset.lastMessageAt : '';
@@ -146,6 +231,7 @@
 
   // Đồng bộ thứ tự ngay khi tải trang: mới nhất ở trên cùng, giống Messenger.
   sortChatListItems();
+  loadChatNotes();
 
   // ---------- Đến từ nút "Nhắn tin" trên trang cá nhân (/chat?userId=X) -> mở sẵn đúng hội thoại ----------
   if (chatShell && chatShell.dataset.openUserId) {
@@ -172,7 +258,7 @@
 
     const userId = item.dataset.userId;
     const fullName = item.dataset.fullname || item.dataset.username || 'Người dùng';
-    const avatar = item.dataset.avatar || 'https://i.pravatar.cc/150?img=32';
+    const avatar = item.dataset.avatar || '/images/avatar_default.png';
     const online = item.dataset.online === 'true';
     activeGroupId = null;
     activeUserId = userId;
@@ -331,7 +417,7 @@
 
     chatDetails.hidden = false;
 
-    if (chatDetailsAvatar) chatDetailsAvatar.src = avatar || 'https://i.pravatar.cc/240?img=32';
+    if (chatDetailsAvatar) chatDetailsAvatar.src = avatar || '/images/avatar_default.png';
     if (chatDetailsName) chatDetailsName.textContent = name || 'Người dùng';
 
     if (chatDetailsPresenceDot) chatDetailsPresenceDot.hidden = !!isGroup || !online;
@@ -484,7 +570,7 @@
     if (!mine) {
       const showAvatar = !sameCluster;
       avatarHtml = showAvatar
-        ? '<img class="msg-row__avatar" src="' + Aloute.escapeHtml(msg.senderAvatarUrl || 'https://i.pravatar.cc/150?img=32') + '" alt="avatar">'
+        ? '<img class="msg-row__avatar" src="' + Aloute.escapeHtml(msg.senderAvatarUrl || '/images/avatar_default.png') + '" alt="avatar">'
         : '<span class="msg-row__avatar-spacer"></span>';
       if (activeGroupId && showAvatar) {
         senderNameHtml = '<span class="bubble__sender-name">' + Aloute.escapeHtml(msg.senderFullName || msg.senderUsername || '') + '</span>';
@@ -783,7 +869,7 @@
       clearCallTimers();
       pendingIncomingOffer = signal;
       const fromName = signal.fromFullName || signal.fromUsername || 'Bạn bè';
-      const fromAvatar = signal.fromAvatarUrl || 'https://i.pravatar.cc/160?img=32';
+      const fromAvatar = signal.fromAvatarUrl || '/images/avatar_default.png';
       activeCallType = signal.callType === 'audio' ? 'audio' : 'video';
       configureCallUi(activeCallType, fromName, fromAvatar, true);
       videoCallStatus.textContent = 'Cuộc gọi ' + (activeCallType === 'audio' ? 'thoại' : 'video') + ' đến...';
@@ -1412,6 +1498,8 @@
     if (activeUserId && String(userId) === String(activeUserId)) {
       setThreadPresence(online);
     }
+    // Cập nhật lại strip Notes khi trạng thái online thay đổi.
+    loadChatNotes();
   });
 
   // ---------- Lỗi gửi tin nhắn (app.js phát 'aloute:chat-error' từ /queue/errors) ----------
@@ -1535,7 +1623,7 @@
 
   function memberRowHtml(user, opts) {
     opts = opts || {};
-    const avatar = user.avatarUrl || 'https://i.pravatar.cc/150?img=32';
+    const avatar = user.avatarUrl || '/images/avatar_default.png';
     const name = user.fullName || user.username;
     let right = '';
     if (opts.checkbox) {

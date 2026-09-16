@@ -2,7 +2,7 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Bài viết mới — ALOUTE</title></head>
 <body>
-<section>
+<section class="content-inner">
 
   <div class="page-header">
     <h1>Bài viết mới</h1>
@@ -12,8 +12,8 @@
     <form id="composeForm">
       <div class="compose">
         <img class="compose__avatar"
-             th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : 'https://i.pravatar.cc/150?img=8'}"
-             src="https://i.pravatar.cc/150?img=8" alt="avatar của tôi">
+             th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}"
+             src="/images/avatar_default.png" alt="avatar của tôi">
         <div class="compose__body" style="flex-direction:column;align-items:stretch;">
           <textarea id="composeContent" maxlength="2000" placeholder="Có gì mới?"></textarea>
           <div id="composePreview"></div>

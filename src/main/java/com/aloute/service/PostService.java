@@ -1,5 +1,6 @@
 package com.aloute.service;
 
+import com.aloute.common.util.AvatarUtil;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -102,6 +103,29 @@ public class PostService {
         return toResponses(posts, currentUserId);
     }
 
+    /**
+     * Tìm bài viết theo nội dung (dùng cho trang /search).
+     * Từ khóa được Pattern.quote để ký tự đặc biệt như "#" hay "(" không bị
+     * hiểu thành cú pháp regex.
+     */
+    public List<PostResponse> searchPosts(String keyword, Long currentUserId, int limit) {
+        if (keyword == null || keyword.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        Query query = Query.query(Criteria.where("content")
+                        .regex(java.util.regex.Pattern.quote(keyword.trim()), "i"))
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                .limit(Math.max(1, Math.min(30, limit)));
+
+        return toResponses(mongoTemplate.find(query, Post.class), currentUserId);
+    }
+
+    /** Tổng số bài viết của một người (dùng cho con số trên trang cá nhân). */
+    public long countPostsByUser(Long userId) {
+        return postRepository.countByUserId(String.valueOf(userId));
+    }
+
     public void deletePost(String postId, Long currentUserId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài viết"));
@@ -147,7 +171,7 @@ public class PostService {
 
         userRepository.findById(postUserId).ifPresent(user -> {
             dto.setUsername(user.getUsername());
-            dto.setUserAvatarUrl(user.getAvatarUrl());
+            dto.setUserAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
         });
 
         if (currentUserId != null) {
@@ -205,7 +229,7 @@ public class PostService {
 
             if (author != null) {
                 dto.setUsername(author.getUsername());
-                dto.setUserAvatarUrl(author.getAvatarUrl());
+                dto.setUserAvatarUrl(AvatarUtil.resolve(author.getAvatarUrl()));
             }
 
             dto.setLikedByCurrentUser(finalLikedPostIds.contains(post.getId()));

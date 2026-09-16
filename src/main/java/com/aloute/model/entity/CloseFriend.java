@@ -17,9 +17,14 @@ import jakarta.persistence.*;
  * Từ chối lời mời / hủy lời mời đã gửi / xóa khỏi bạn thân đều đơn giản là xóa hàng này đi.
  */
 @Entity
-@Table(name = "close_friends", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"requester_id", "receiver_id"})
-})
+@Table(name = "close_friends",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"requester_id", "receiver_id"})
+        },
+        indexes = {
+                @Index(name = "idx_close_friends_requester", columnList = "requester_id, status"),
+                @Index(name = "idx_close_friends_receiver", columnList = "receiver_id, status")
+        })
 public class CloseFriend {
 
     public static final String PENDING = "PENDING";

@@ -1,5 +1,6 @@
 package com.aloute.service;
 
+import com.aloute.common.util.AvatarUtil;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -144,7 +145,7 @@ public class CommentService {
         var user = users.get(userId);
         if (user != null) {
             dto.setUsername(user.getUsername());
-            dto.setUserAvatarUrl(user.getAvatarUrl());
+            dto.setUserAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
         }
 
         var parent = parents.get(comment.getParentCommentId());

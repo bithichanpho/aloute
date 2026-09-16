@@ -10,9 +10,11 @@ public class UserProfileDto {
     private String bio;
     private long followerCount;
     private long followingCount;
+    private long closeFriendCount;
     private boolean isFollowedByCurrentUser;
     private boolean mutualFriend; // true nếu 2 người đã follow lẫn nhau ("bạn bè")
     private String closeFriendStatus = "NONE"; // NONE | PENDING_SENT | PENDING_RECEIVED | ACCEPTED
+    private String suggestionReason;
 
     public Long getId() {
         return id;
@@ -78,6 +80,14 @@ public class UserProfileDto {
         this.followingCount = followingCount;
     }
 
+    public long getCloseFriendCount() {
+        return closeFriendCount;
+    }
+
+    public void setCloseFriendCount(long closeFriendCount) {
+        this.closeFriendCount = closeFriendCount;
+    }
+
     public boolean isFollowedByCurrentUser() {
         return isFollowedByCurrentUser;
     }
@@ -100,5 +110,13 @@ public class UserProfileDto {
 
     public void setCloseFriendStatus(String closeFriendStatus) {
         this.closeFriendStatus = closeFriendStatus;
+    }
+
+    public String getSuggestionReason() {
+        return suggestionReason;
+    }
+
+    public void setSuggestionReason(String suggestionReason) {
+        this.suggestionReason = suggestionReason;
     }
 }
