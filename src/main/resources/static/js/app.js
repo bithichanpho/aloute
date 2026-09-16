@@ -102,9 +102,57 @@ window.Aloute = (function () {
   // ============================================================
   let stompClient = null;
   let stompConnected = false;
+  let realtimeStarting = false;
+  let realtimeLibsPromise = null;
   const readyCallbacks = [];
 
+  // SockJS + Stomp nang ~60KB va CHI can cho realtime. Truoc day chung duoc nhung
+  // bang <script> cung trong layout nen MOI trang (ke ca trang tinh nhu /profile,
+  // /search) deu phai tai va parse chung truoc khi app.js chay. Gio chi tai khi
+  // that su sap ket noi, va tai bat dong bo nen khong chan hien thi trang.
+  const REALTIME_LIBS = [
+    'https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js'
+  ];
+
+  function loadScriptOnce(src) {
+    return new Promise(function (resolve, reject) {
+      const el = document.createElement('script');
+      el.src = src;
+      el.async = true;
+      el.onload = function () { resolve(); };
+      el.onerror = function () { reject(new Error('Khong tai duoc ' + src)); };
+      document.head.appendChild(el);
+    });
+  }
+
+  function ensureRealtimeLibs() {
+    if (window.SockJS && window.Stomp) return Promise.resolve();
+    if (!realtimeLibsPromise) {
+      realtimeLibsPromise = REALTIME_LIBS.reduce(function (chain, src) {
+        return chain.then(function () { return loadScriptOnce(src); });
+      }, Promise.resolve()).catch(function (err) {
+        realtimeLibsPromise = null;
+        throw err;
+      });
+    }
+    return realtimeLibsPromise;
+  }
+
+  /** Tai thu vien (neu chua co) roi mo ket noi STOMP. */
   function connectRealtime() {
+    if (stompClient || realtimeStarting) return;
+    realtimeStarting = true;
+    ensureRealtimeLibs().then(function () {
+      realtimeStarting = false;
+      openStompConnection();
+    }).catch(function () {
+      realtimeStarting = false;
+      setTimeout(connectRealtime, 5000);
+    });
+  }
+
+  function openStompConnection() {
     if (stompClient) return;
     const socket = new SockJS('/ws');
     stompClient = Stomp.over(socket);
@@ -1056,22 +1104,21 @@ window.Aloute = (function () {
   // ---------- Trang ca nhan: chuyen giua dang luoi va dong thoi gian ----------
   function initProfileViewToggle() {
     const buttons = Array.from(document.querySelectorAll('[data-profile-view]'));
+    const gridWrap = document.getElementById('profileGridWrap');
     const grid = document.getElementById('profileGrid');
     const list = document.getElementById('profilePosts');
     if (!buttons.length || !list) return;
 
-    const loadMore = document.querySelector('[data-load-posts]');
-
     function apply(view) {
       buttons.forEach(b => b.classList.toggle('is-active', b.dataset.profileView === view));
-      if (grid) grid.hidden = view !== 'grid';
+      if (gridWrap) gridWrap.hidden = view !== 'grid';
       list.hidden = view !== 'list';
-      // Nut "Tai them" chi noi them vao dong thoi gian nen an di o che do luoi
-      if (loadMore) loadMore.hidden = view !== 'list' || loadMore.dataset.exhausted === '1';
+      try { history.replaceState(null, '', view === 'grid' ? '#luoi' : location.pathname); } catch (e) {}
     }
 
     buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.profileView)));
-    apply(grid ? 'grid' : 'list');
+    // MAC DINH: dong thoi gian (kieu threads). Luoi chi la che do xem phu.
+    apply(location.hash === '#luoi' && gridWrap ? 'grid' : 'list');
 
     if (grid) {
       grid.addEventListener('click', (e) => {
@@ -1163,8 +1210,11 @@ window.Aloute = (function () {
       e.preventDefault();
       const fullName = document.getElementById('editFullName').value.trim();
       const bio = document.getElementById('editBio').value.trim();
+      const privateToggle = document.getElementById('editPrivateAccount');
+      const payload = { fullName, bio };
+      if (privateToggle) payload.privateAccount = privateToggle.checked;
       try {
-        await api('/api/users/me', { method: 'PUT', body: { fullName, bio } });
+        await api('/api/users/me', { method: 'PUT', body: payload });
         toast('Da luu thay doi');
         window.location.href = '/profile/me';
       } catch (err) {
@@ -1255,6 +1305,32 @@ window.Aloute = (function () {
   // ============================================================
   // Khoi dong khi DOM san sang
   // ============================================================
+  // Bai moi tai them cung phai xuat hien trong tab "Luoi" neu co anh,
+  // de bam vao o luoi luon nhay dung toi bai do trong dong thoi gian.
+  function appendGridTiles(posts) {
+    const grid = document.getElementById('profileGrid');
+    if (!grid) return;
+    posts.forEach(post => {
+      const img = post.querySelector('.post__image');
+      if (!img) return;
+      const likeCount = post.querySelector('.action--like span');
+      const replyCount = post.querySelector('.action--reply span');
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'grid-tile';
+      tile.dataset.gotoPost = post.dataset.postId || '';
+      tile.innerHTML =
+        '<img class="grid-tile__image" loading="lazy" decoding="async" alt="" src="' + escapeHtml(img.getAttribute('src')) + '">' +
+        '<span class="grid-tile__overlay">' +
+          '<span class="grid-tile__stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg><span>' +
+            escapeHtml(likeCount ? likeCount.textContent : '0') + '</span></span>' +
+          '<span class="grid-tile__stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 11.5a8.4 8.4 0 0 1-8.6 8.4c-1.3 0-2.6-.3-3.7-.9L3 20l1.1-5.4a8.3 8.3 0 0 1-.7-3.1A8.4 8.4 0 0 1 12.1 3a8.4 8.4 0 0 1 8.9 8.5Z"/></svg><span>' +
+            escapeHtml(replyCount ? replyCount.textContent : '0') + '</span></span>' +
+        '</span>';
+      grid.appendChild(tile);
+    });
+  }
+
   function initPostPagination() {
     document.querySelectorAll('[data-load-posts]').forEach(button => {
       let page = 1;
@@ -1269,10 +1345,10 @@ window.Aloute = (function () {
           fragment.innerHTML = await response.text();
           const posts = fragment.content.querySelectorAll('.post');
           const count = posts.length;
-          // Trang ca nhan boc bai viet trong #profilePosts (de an/hien khi doi che do xem),
-          // nen phai noi vao dung container thay vi chen truoc nut.
-          const listContainer = document.getElementById('profilePosts');
-          posts.forEach(post => listContainer ? listContainer.appendChild(post) : button.before(post));
+          // Nut "Tai them" nam ngay trong container bai viet, nen luon chen TRUOC nut
+          // de thu tu dong thoi gian khong bi vo.
+          posts.forEach(post => button.before(post));
+          appendGridTiles(posts);
           page++;
           if (count < 20) button.dataset.exhausted = '1';
           button.hidden = count < 20;

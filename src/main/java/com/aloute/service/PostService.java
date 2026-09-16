@@ -1,6 +1,7 @@
 package com.aloute.service;
 
 import com.aloute.common.util.AvatarUtil;
+import com.aloute.common.util.TimeAgoUtil;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -165,6 +166,7 @@ public class PostService {
         dto.setLikeCount(post.getLikeCount());
         dto.setCommentCount(post.getCommentCount());
         dto.setCreatedAt(post.getCreatedAt());
+        dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
 
         Long postUserId = Long.valueOf(post.getUserId());
         dto.setUserId(postUserId);
@@ -221,6 +223,7 @@ public class PostService {
             dto.setLikeCount(post.getLikeCount());
             dto.setCommentCount(post.getCommentCount());
             dto.setCreatedAt(post.getCreatedAt());
+            dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
 
             Long authorId = Long.valueOf(post.getUserId());
             dto.setUserId(authorId);

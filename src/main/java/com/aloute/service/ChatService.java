@@ -62,8 +62,8 @@ public class ChatService {
      * qua /user/{username}/queue/messages, đồng thời đẩy lại cho chính người gửi
      * để đồng bộ nếu họ đang mở nhiều tab/thiết bị.
      *
-     * Chỉ cho phép nhắn tin giữa 2 người đã follow lẫn nhau ("bạn bè") — khớp với
-     * yêu cầu: theo dõi lẫn nhau xong mới xuất hiện/nhắn được trong phần tin nhắn.
+     * Quyền nhắn tin: mở cho tất cả mọi người. Riêng tài khoản bật chế độ riêng tư
+     * (users.is_private = true) thì chỉ bạn bè (theo dõi lẫn nhau) mới nhắn được.
      */
     public ChatMessageResponse sendMessage(Long senderId, Long receiverId, String content, String clientId) {
         return sendMessage(senderId, receiverId, content, clientId, null, null, null, null);
@@ -76,14 +76,17 @@ public class ChatService {
         if (senderId.equals(receiverId)) {
             throw new BadRequestException("Không thể tự nhắn tin cho chính mình");
         }
-        if (!friendService.isFriend(senderId, receiverId)) {
-            throw new BadRequestException("Hai người cần theo dõi lẫn nhau (trở thành bạn bè) mới có thể nhắn tin");
-        }
 
         User sender = userRepository.findById(senderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người gửi"));
         User receiver = userRepository.findById(receiverId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người nhận"));
+
+        // Mặc định ai cũng nhắn tin được. Chỉ khi người nhận bật "tài khoản riêng tư"
+        // thì mới bắt buộc hai bên phải theo dõi lẫn nhau (bạn bè).
+        if (receiver.isPrivateAccount() && !friendService.isFriend(senderId, receiverId)) {
+            throw new BadRequestException("Tài khoản này ở chế độ riêng tư — hai bạn cần theo dõi lẫn nhau mới nhắn tin được");
+        }
 
         ChatMessage message = new ChatMessage();
         message.setConversationId(ChatMessage.buildConversationId(String.valueOf(senderId), String.valueOf(receiverId)));
@@ -260,6 +263,25 @@ public class ChatService {
     // ================= DANH SÁCH HỘI THOẠI HỢP NHẤT (1-1 + nhóm) =================
 
     /**
+     * Như {@link #getConversations(Long)} nhưng đảm bảo luôn có sẵn ô hội thoại với
+     * {@code ensureOtherUserId} — dùng khi người dùng bấm "Nhắn tin" từ trang cá nhân
+     * của một người chưa từng nhắn và cũng chưa phải bạn bè.
+     */
+    public List<ConversationResponse> getConversations(Long userId, Long ensureOtherUserId) {
+        List<ConversationResponse> conversations = getConversations(userId);
+        if (ensureOtherUserId == null || ensureOtherUserId.equals(userId)) {
+            return conversations;
+        }
+        boolean already = conversations.stream()
+                .anyMatch(c -> !c.isGroup() && ensureOtherUserId.equals(c.getOtherUserId()));
+        if (!already && userRepository.existsById(ensureOtherUserId)) {
+            conversations.add(0, toFriendPreviewResponse(ensureOtherUserId));
+            fillOtherUserInfo(conversations);
+        }
+        return conversations;
+    }
+
+    /**
      * Gộp chung hội thoại 1-1 và nhóm vào 1 danh sách duy nhất cho cột trái
      * trang /chat, sắp theo thời điểm tin nhắn mới nhất trước.
      */
@@ -294,6 +316,9 @@ public class ChatService {
             result.add(toGroupConversationResponse(group, userId));
         }
 
+        // Gop tra cuu user thanh 1 query, phai chay TRUOC sort vi sort dung otherFullName.
+        fillOtherUserInfo(result);
+
         result.sort((a, b) -> {
             LocalDateTime ta = a.getLastMessageAt();
             LocalDateTime tb = b.getLastMessageAt();
@@ -326,13 +351,7 @@ public class ChatService {
         dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
         dto.setUnreadCount(chatMessageRepository.countByReceiverIdAndSenderIdAndReadFalse(currentUserIdStr, otherIdStr));
         dto.setOnline(presenceService.isOnline(otherId));
-
-        userRepository.findById(otherId).ifPresent(u -> {
-            dto.setOtherUsername(u.getUsername());
-            dto.setOtherFullName(u.getFullName());
-            dto.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
-        });
-
+        // Ten/avatar duoc do vao sau bang MOT query gop (xem fillOtherUserInfo).
         return dto;
     }
 
@@ -344,14 +363,33 @@ public class ChatService {
         dto.setHasConversation(false);
         dto.setUnreadCount(0);
         dto.setOnline(presenceService.isOnline(friendId));
-
-        userRepository.findById(friendId).ifPresent(u -> {
-            dto.setOtherUsername(u.getUsername());
-            dto.setOtherFullName(u.getFullName());
-            dto.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
-        });
-
         return dto;
+    }
+
+    /**
+     * Đổ tên/avatar cho toàn bộ hội thoại 1-1 bằng ĐÚNG MỘT query tới bảng users.
+     *
+     * Trước đây mỗi ô hội thoại tự gọi userRepository.findById() — danh sách 40 người
+     * là 40 query chỉ để lấy cái tên, đây là nguyên nhân chính khiến trang /chat ì.
+     */
+    private void fillOtherUserInfo(List<ConversationResponse> conversations) {
+        Set<Long> ids = conversations.stream()
+                .filter(c -> !c.isGroup() && c.getOtherUserId() != null && c.getOtherUsername() == null)
+                .map(ConversationResponse::getOtherUserId)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) return;
+
+        Map<Long, User> byId = userRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+
+        for (ConversationResponse c : conversations) {
+            if (c.isGroup() || c.getOtherUserId() == null) continue;
+            User u = byId.get(c.getOtherUserId());
+            if (u == null) continue;
+            c.setOtherUsername(u.getUsername());
+            c.setOtherFullName(u.getFullName());
+            c.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
+        }
     }
 
     private ConversationResponse toGroupConversationResponse(ChatGroup group, Long currentUserId) {

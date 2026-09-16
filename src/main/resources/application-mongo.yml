@@ -1,3 +1,13 @@
+# LƯU Ý: Spring Boot đọc URI MongoDB ở khóa "spring.data.mongodb.uri".
+# Khóa "spring.mongodb.uri" bên dưới KHÔNG được Spring Boot bind, nên hiện tại
+# biến môi trường MONGO_URI đang bị bỏ qua và ứng dụng nối vào database mặc định
+# (mongodb://localhost:27017/test). Nếu bạn muốn dùng đúng aloute_db / MONGO_URI,
+# hãy đổi sang khối "data" đã comment sẵn bên dưới — nhưng nhớ là dữ liệu cũ đang
+# nằm ở database "test", cần dump/restore sang trước khi đổi.
 spring:
   mongodb:
     uri: ${MONGO_URI:mongodb://localhost:27017/aloute_db}
+
+#  data:
+#    mongodb:
+#      uri: ${MONGO_URI:mongodb://localhost:27017/aloute_db}

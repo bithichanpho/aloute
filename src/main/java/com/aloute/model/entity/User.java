@@ -36,6 +36,17 @@ public class User {
     @Column(length = 300)
     private String bio;
 
+    /**
+     * Tài khoản riêng tư.
+     * false (mặc định): ai cũng có thể bấm "Nhắn tin" với người này.
+     * true: chỉ người đã theo dõi lẫn nhau (bạn bè) mới nhắn tin được.
+     *
+     * Dùng kiểu Boolean (nullable) để ddl-auto=update thêm cột vào bảng đã có
+     * dữ liệu mà không vướng ràng buộc NOT NULL; getter bên dưới coi null = false.
+     */
+    @Column(name = "is_private")
+    private Boolean privateAccount = Boolean.FALSE;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
@@ -138,6 +149,14 @@ public class User {
 
     public void setBio(String bio) {
         this.bio = bio;
+    }
+
+    public boolean isPrivateAccount() {
+        return Boolean.TRUE.equals(privateAccount);
+    }
+
+    public void setPrivateAccount(boolean privateAccount) {
+        this.privateAccount = privateAccount;
     }
 
     public Role getRole() {

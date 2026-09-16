@@ -14,6 +14,8 @@ public class UserProfileDto {
     private boolean isFollowedByCurrentUser;
     private boolean mutualFriend; // true nếu 2 người đã follow lẫn nhau ("bạn bè")
     private String closeFriendStatus = "NONE"; // NONE | PENDING_SENT | PENDING_RECEIVED | ACCEPTED
+    private boolean privateAccount;  // chủ tài khoản bật chế độ riêng tư
+    private boolean canMessage;      // người đang xem có được phép nhắn tin không
     private String suggestionReason;
 
     public Long getId() {
@@ -110,6 +112,22 @@ public class UserProfileDto {
 
     public void setCloseFriendStatus(String closeFriendStatus) {
         this.closeFriendStatus = closeFriendStatus;
+    }
+
+    public boolean isPrivateAccount() {
+        return privateAccount;
+    }
+
+    public void setPrivateAccount(boolean privateAccount) {
+        this.privateAccount = privateAccount;
+    }
+
+    public boolean isCanMessage() {
+        return canMessage;
+    }
+
+    public void setCanMessage(boolean canMessage) {
+        this.canMessage = canMessage;
     }
 
     public String getSuggestionReason() {

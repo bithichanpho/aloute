@@ -4,9 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title th:replace="${title}">ALOUTE</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+
+  <!-- CSS cua chinh minh tai truoc va la thu duy nhat chan render -->
   <link rel="stylesheet" th:href="@{/css/main.css}">
+
+  <!-- Font tai khong chan render: trinh duyet ve trang bang font he thong truoc,
+       doi font Inter ve thi doi lai. Bo di ~200-400ms trang trang tren mang cham. -->
+  <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <noscript>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  </noscript>
 </head>
 <body th:classappend="${activeNav == 'chat'} ? 'page-chat' : (${activeNav == 'feed'} ? 'page-feed' : '')" th:attr="data-current-user-id=${currentUser != null ? currentUser.id : ''}">
 
@@ -25,8 +38,8 @@
   </button>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<!-- SockJS/Stomp KHONG con nhung o day: app.js tu tai chung bat dong bo,
+     va chi khi nguoi dung da dang nhap (xem ensureRealtimeLibs trong app.js). -->
 <script th:src="@{/js/app.js}"></script>
 </body>
 </html>

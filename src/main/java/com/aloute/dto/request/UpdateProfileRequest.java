@@ -9,6 +9,17 @@ public class UpdateProfileRequest {
     @Size(max = 300, message = "Giới thiệu bản thân tối đa 300 ký tự")
     private String bio;
 
+    /** null = khong doi; true/false = bat/tat che do tai khoan rieng tu. */
+    private Boolean privateAccount;
+
+    public Boolean getPrivateAccount() {
+        return privateAccount;
+    }
+
+    public void setPrivateAccount(Boolean privateAccount) {
+        this.privateAccount = privateAccount;
+    }
+
     public String getFullName() {
         return fullName;
     }

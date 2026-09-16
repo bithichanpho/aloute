@@ -48,6 +48,14 @@ public class UserService {
         return userRepository.findById(userId);
     }
 
+    /** Nap nhieu user bang 1 query (thay cho vong lap findUserBasicInfo). */
+    public List<User> findUsersByIds(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return userRepository.findAllById(userIds);
+    }
+
     public UserProfileDto getProfile(Long targetUserId, Long currentUserId) {
         User user = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
@@ -62,6 +70,7 @@ public class UserService {
         dto.setFollowerCount(friendRepository.countByFollowedId(targetUserId));
         dto.setFollowingCount(friendRepository.countByFollowerId(targetUserId));
         dto.setCloseFriendCount(closeFriendService.getCloseFriendIds(targetUserId).size());
+        dto.setPrivateAccount(user.isPrivateAccount());
 
         if (currentUserId != null) {
             dto.setFollowedByCurrentUser(
@@ -69,8 +78,17 @@ public class UserService {
             dto.setMutualFriend(friendService.isFriend(currentUserId, targetUserId));
             dto.setCloseFriendStatus(closeFriendService.getStatus(currentUserId, targetUserId));
         }
+        // Nhắn tin: mở cho mọi người, TRỪ khi chủ tài khoản bật riêng tư —
+        // lúc đó phải là bạn bè (theo dõi lẫn nhau) mới nhắn được.
+        dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, targetUserId));
 
         return dto;
+    }
+
+    /** Quy tắc dùng chung cho cả DTO lẫn ChatService: ai được nhắn tin cho ai. */
+    public static boolean canMessage(User target, boolean mutualFriend, Long currentUserId, Long targetUserId) {
+        if (currentUserId == null || currentUserId.equals(targetUserId)) return false;
+        return mutualFriend || !target.isPrivateAccount();
     }
 
     public UserProfileDto updateProfile(Long userId, UpdateProfileRequest request) {
@@ -82,6 +100,9 @@ public class UserService {
         }
         if (request.getBio() != null) {
             user.setBio(request.getBio());
+        }
+        if (request.getPrivateAccount() != null) {
+            user.setPrivateAccount(request.getPrivateAccount());
         }
         userRepository.save(user);
         return getProfile(userId, userId);
@@ -170,12 +191,14 @@ public class UserService {
             dto.setCoverUrl(user.getCoverUrl());
             dto.setBio(user.getBio());
             dto.setFollowerCount(followerCounts.getOrDefault(id, 0L));
+            dto.setPrivateAccount(user.isPrivateAccount());
 
             if (currentUserId != null) {
                 boolean iFollow = followingSet.contains(id);
                 dto.setFollowedByCurrentUser(iFollow);
                 dto.setMutualFriend(iFollow && followerSet.contains(id));
                 dto.setCloseFriendStatus(closeStatuses.getOrDefault(id, "NONE"));
+                dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, id));
             }
             result.add(dto);
         }

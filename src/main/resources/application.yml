@@ -6,6 +6,59 @@ spring:
       max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
       max-request-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
       file-size-threshold: 2MB
+
+  # ===== Tốc độ: template & tài nguyên tĩnh =====
+  thymeleaf:
+    # Cache template đã biên dịch. Khi đang sửa .html thì chạy với
+    # -Dspring.thymeleaf.cache=false hoặc dùng spring-boot-devtools.
+    cache: ${THYMELEAF_CACHE:true}
+
+  web:
+    resources:
+      # Gắn mã băm nội dung vào tên file (/css/main-a1b2c3.css) nên có thể
+      # cache rất lâu mà vẫn tự động hết hạn mỗi lần file đổi nội dung.
+      chain:
+        enabled: true
+        cache: true
+        compressed: true
+        strategy:
+          content:
+            enabled: true
+            paths: /**
+      cache:
+        cachecontrol:
+          max-age: 30d
+          cache-public: true
+
+  jpa:
+    # Không giữ EntityManager/kết nối DB suốt vòng đời request.
+    # An toàn ở đây vì entity duy nhất có quan hệ (User.role) đang là EAGER.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 30
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:15}
+      minimum-idle: ${DB_POOL_MIN:3}
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      keepalive-time: 120000
+
+  data:
+    mongodb:
+      # Tự tạo các index đã khai báo bằng @CompoundIndex/@Indexed trong
+      # Post, Like, ChatMessage. Từ Spring Boot 3 mặc định là false, nên
+      # nếu không bật thì mọi truy vấn feed/chat đều phải quét toàn bộ collection.
+      auto-index-creation: true
+
   config:
     import:
       - application-db.yml
@@ -17,6 +70,23 @@ spring:
 
 server:
   port: 8889
+
+  # ===== Tốc độ: nén phản hồi trên đường truyền =====
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,image/svg+xml
+    min-response-size: 1024
+
+  http2:
+    enabled: true
+
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:150}
+      min-spare: ${TOMCAT_MIN_SPARE_THREADS:15}
+    max-connections: 8192
+    accept-count: 200
+    connection-timeout: 20s
 
 app:
   upload:

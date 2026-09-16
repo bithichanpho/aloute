@@ -118,12 +118,15 @@ public class ViewController {
         // Đây chỉ là dữ liệu hiển thị, không thay đổi logic feed hiện tại.
         List<ChatGroup> feedGroups = groupService.getMyGroups(userId);
 
-        List<User> activeFriends = friendService.getMutualFriendIds(userId).stream()
-                .map(userService::findUserBasicInfo)
-                .flatMap(java.util.Optional::stream)
-                .filter(user -> presenceService.isOnline(user.getId()))
+        // Chi nap ho so cua nhung nguoi DANG ONLINE, va nap theo lo bang 1 query.
+        // Truoc day doan nay nap tung ban be mot (N query) roi moi loc online.
+        List<Long> onlineFriendIds = friendService.getMutualFriendIds(userId).stream()
+                .filter(presenceService::isOnline)
                 .limit(8)
                 .collect(java.util.stream.Collectors.toList());
+        List<User> activeFriends = onlineFriendIds.isEmpty()
+                ? java.util.List.of()
+                : userService.findUsersByIds(onlineFriendIds);
 
         // Gợi ý kết bạn: dùng chung với trang /search (xem DiscoveryService).
         // Trước đây khối này nạp toàn bộ bảng users rồi dựng hồ sơ đầy đủ cho từng người.
@@ -150,7 +153,9 @@ public class ViewController {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
 
-        List<ConversationResponse> conversations = chatService.getConversations(currentUserId);
+        // userId != null: đến từ nút "Nhắn tin" trên trang cá nhân — đảm bảo luôn có
+        // sẵn ô hội thoại với người đó kể cả khi hai bên chưa từng nhắn/chưa là bạn bè.
+        List<ConversationResponse> conversations = chatService.getConversations(currentUserId, userId);
         model.addAttribute("conversations", conversations);
         // Được điều hướng tới từ nút "Nhắn tin" trên trang cá nhân -> mở sẵn đúng hội thoại đó
         model.addAttribute("openUserId", userId);
@@ -248,8 +253,14 @@ public class ViewController {
 
     private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
         UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
+        List<PostResponse> userPosts = postService.getPostsByUser(profileUserId, currentUserId);
+
         model.addAttribute("profileUser", profile);
-        model.addAttribute("userPosts", postService.getPostsByUser(profileUserId, currentUserId));
+        model.addAttribute("userPosts", userPosts);
+        // Lưới chỉ hiển thị bài CÓ ẢNH (bài chỉ có chữ nằm ở tab Dòng thời gian).
+        model.addAttribute("mediaPosts", userPosts.stream()
+                .filter(post -> post.getImageUrl() != null && !post.getImageUrl().isBlank())
+                .collect(java.util.stream.Collectors.toList()));
         model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
         model.addAttribute("isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
         if (currentUserId != null) {
