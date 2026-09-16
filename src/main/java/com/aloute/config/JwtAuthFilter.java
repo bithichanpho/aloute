@@ -18,6 +18,18 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+/**
+ * Lọc JWT cho MỌI request (kể cả các trang Thymeleaf permitAll như /feed, /chat...).
+ *
+ * Vì ứng dụng vừa là REST API (gọi bằng fetch từ app.js) vừa render HTML server-side
+ * (Thymeleaf), token được chấp nhận từ 2 nguồn:
+ *  1) Header "Authorization: Bearer xxx"  — dùng khi gọi API thuần (Postman, mobile...)
+ *  2) Cookie "ALOUTE_TOKEN"               — tự động gửi kèm mọi request cùng origin,
+ *     kể cả khi load lại trang /feed, /chat bằng URL trực tiếp (F5), giúp
+ *     ViewController biết "ai đang đăng nhập" để đổ dữ liệu vào model.
+ *
+ * Cookie này được AuthController set (HttpOnly) ngay khi đăng nhập/đăng ký thành công.
+ */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -53,6 +65,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     }
                 }
             } catch (Exception e) {
+                // Token hỏng/hết hạn/user không còn tồn tại — coi như request chưa đăng nhập,
+                // không throw để các route permitAll (trang HTML) vẫn render bình thường.
                 SecurityContextHolder.clearContext();
             }
         }

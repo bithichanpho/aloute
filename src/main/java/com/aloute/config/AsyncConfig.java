@@ -8,6 +8,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+/**
+ * Thread pool riêng cho các tác vụ @Async (chủ yếu là NotificationService.notify)
+ * và cho bộ đếm giờ của cuộc gọi.
+ *
+ * Trước đây mỗi lượt like/comment/follow phải CHỜ xong việc tạo notification + đẩy
+ * WebSocket rồi mới trả response cho client -> nút thả tym/bình luận có cảm giác chậm.
+ * Giờ các tác vụ này chạy trên thread nền, API trả kết quả ngay sau khi ghi xong dữ liệu chính.
+ */
 @Configuration
 public class AsyncConfig {
 

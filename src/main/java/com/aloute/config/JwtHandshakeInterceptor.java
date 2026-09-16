@@ -13,6 +13,15 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 
+/**
+ * Chạy trước khi nâng cấp kết nối HTTP -> WebSocket (kể cả các request
+ * xhr-streaming/polling của SockJS). Đọc cookie ALOUTE_TOKEN — CÙNG cookie
+ * mà trình duyệt tự gửi kèm khi tải trang /chat — để xác thực, không đòi hỏi
+ * JavaScript phải tự tay đọc/gắn token vào đâu cả.
+ *
+ * Username hợp lệ được lưu vào "attributes" của WebSocketSession, và
+ * AloutueHandshakeHandler (bên dưới) dùng nó để gán Principal thật cho phiên.
+ */
 public class JwtHandshakeInterceptor implements HandshakeInterceptor {
 
     public static final String ATTR_USERNAME = "username";
@@ -38,11 +47,12 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                         attributes.put(ATTR_USERNAME, username);
                     }
                 } catch (Exception ignored) {
-                  
+                    // token hỏng/hết hạn — để trống, sẽ bị từ chối khi subscribe kênh riêng tư
                 }
             }
         }
-
+        // Vẫn cho bắt tay tiếp tục dù chưa xác thực được — client chưa đăng nhập vẫn
+        // kết nối được nhưng sẽ không nhận/gửi được tin nhắn (không có Principal).
         return true;
     }
 

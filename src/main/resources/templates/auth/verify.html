@@ -25,6 +25,16 @@
       </div>
       <div id="verifyError" class="form-error" style="display:none;"></div>
 
+      <div id="resendBox" style="display:none;margin-top:14px;">
+        <div class="field">
+          <input type="text" id="resendIdentifier" placeholder="Email hoặc tên đăng nhập">
+        </div>
+        <button type="button" class="btn-outline" id="resendBtn">
+          Gửi lại email xác thực
+        </button>
+        <div id="resendMessage" style="margin-top:10px;font-size:13.5px;"></div>
+      </div>
+
       <p class="auth-switch">
         <a th:href="@{/feed}">Về trang chủ</a> · <a th:href="@{/login}">Đăng nhập</a>
       </p>
@@ -37,12 +47,35 @@
     const pendingBox = document.getElementById('verifyPending');
     const successBox = document.getElementById('verifySuccess');
     const errorBox = document.getElementById('verifyError');
+    const resendBox = document.getElementById('resendBox');
+
+    document.getElementById('resendBtn').addEventListener('click', async function () {
+      const identifier = document.getElementById('resendIdentifier').value.trim();
+      const message = document.getElementById('resendMessage');
+      if (!identifier) {
+        message.textContent = 'Vui lòng nhập email hoặc tên đăng nhập.';
+        return;
+      }
+      this.disabled = true;
+      try {
+        const result = await Aloute.api('/api/auth/resend-verification', {
+          method: 'POST',
+          body: JSON.stringify({ identifier })
+        });
+        message.textContent = result?.message || 'Nếu tài khoản hợp lệ, email mới đã được gửi.';
+      } catch (err) {
+        message.textContent = err.message || 'Không thể gửi lại email.';
+      } finally {
+        this.disabled = false;
+      }
+    });
 
     (async function () {
       if (!token) {
         pendingBox.style.display = 'none';
         errorBox.textContent = 'Thiếu mã xác thực trong đường dẫn.';
         errorBox.style.display = 'block';
+        resendBox.style.display = 'block';
         return;
       }
       try {
@@ -53,6 +86,7 @@
         pendingBox.style.display = 'none';
         errorBox.textContent = err.message || 'Xác thực thất bại, đường dẫn có thể đã hết hạn hoặc được dùng rồi.';
         errorBox.style.display = 'block';
+        resendBox.style.display = 'block';
       }
     })();
   </script>

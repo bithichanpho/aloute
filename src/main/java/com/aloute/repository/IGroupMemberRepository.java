@@ -19,4 +19,13 @@ public interface IGroupMemberRepository extends JpaRepository<GroupMember, Long>
     void deleteByGroupIdAndUserId(Long groupId, Long userId);
 
     long countByGroupId(Long groupId);
+
+    interface MemberCount {
+        Long getGroupId();
+        Long getTotal();
+    }
+
+    /** Đếm thành viên cho NHIỀU nhóm trong 1 query, thay cho N lần countByGroupId. */
+    @org.springframework.data.jpa.repository.Query("select m.groupId as groupId, count(m) as total from GroupMember m where m.groupId in :ids group by m.groupId")
+    List<MemberCount> countMembers(@org.springframework.data.repository.query.Param("ids") java.util.Collection<Long> ids);
 }

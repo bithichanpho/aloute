@@ -5,6 +5,11 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:3}
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:30000}
   jpa:
     hibernate:
       ddl-auto: ${DB_DDL_AUTO:update}
@@ -16,8 +21,9 @@ spring:
           time_zone: UTC
         # Keep JPA server-side access isolated from Supabase's Data API surface.
         default_schema: ${DB_SCHEMA:public}
-  mongodb:
-    uri: ${MONGO_URI}
+  data:
+    mongodb:
+      uri: ${MONGO_URI}
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}

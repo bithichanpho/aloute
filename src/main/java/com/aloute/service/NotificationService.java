@@ -89,12 +89,12 @@ public class NotificationService {
         } catch (Exception e) {
             // Chạy nền nên không có ai "catch" được lỗi này nữa — chỉ log lại,
             // tuyệt đối không để lỗi tạo notification làm hỏng thao tác chính (like/comment/follow).
-            log.warn("Gửi notification thất bại (receiverId={}, type={}): {}", receiverId, type, e.getMessage());
+            log.warn("Gửi notification thất bại (receiverId={}, type={}, error={})", receiverId, type, e.getClass().getSimpleName());
         }
     }
 
     public List<NotificationResponse> getMyNotifications(Long userId) {
-        return notificationRepository.findByReceiverIdOrderByCreatedAtDesc(userId).stream()
+        return notificationRepository.findByReceiverIdOrderByCreatedAtDesc(userId, org.springframework.data.domain.PageRequest.of(0, 50)).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -104,9 +104,7 @@ public class NotificationService {
     }
 
     public void markAllAsRead(Long userId) {
-        List<Notification> list = notificationRepository.findByReceiverIdOrderByCreatedAtDesc(userId);
-        list.forEach(n -> n.setRead(true));
-        notificationRepository.saveAll(list);
+        notificationRepository.markAllRead(userId);
     }
 
     private NotificationResponse toResponse(Notification n) {

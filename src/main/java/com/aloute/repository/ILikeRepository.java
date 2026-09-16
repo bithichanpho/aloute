@@ -20,4 +20,7 @@ public interface ILikeRepository extends MongoRepository<Like, String> {
             List<String> postIds,
             String userId
     );
+
+    /** Dọn like khi bài viết bị xóa — nếu không, like mồ côi ở lại vĩnh viễn. */
+    long deleteByPostId(String postId);
 }

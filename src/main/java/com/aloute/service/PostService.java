@@ -27,7 +27,9 @@ import com.aloute.model.document.Like;
 import com.aloute.model.document.ModerationStatus;
 import com.aloute.model.document.Post;
 import com.aloute.model.entity.User;
+import com.aloute.repository.ICommentRepository;
 import com.aloute.repository.ILikeRepository;
+import com.aloute.repository.INotificationRepository;
 import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IUserRepository;
 
@@ -40,6 +42,9 @@ public class PostService {
     private final ModerationService moderationService;
     private final NotificationService notificationService;
     private final MongoTemplate mongoTemplate;
+    private final ICommentRepository commentRepository;
+    private final INotificationRepository notificationRepository;
+    private final ImageStorageService imageStorageService;
 
     public PostService(
             IPostRepository postRepository,
@@ -47,13 +52,19 @@ public class PostService {
             ILikeRepository likeRepository,
             ModerationService moderationService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate) {
+            MongoTemplate mongoTemplate,
+            ICommentRepository commentRepository,
+            INotificationRepository notificationRepository,
+            ImageStorageService imageStorageService) {
         this.postRepository = postRepository;
         this.userRepository = userRepository;
         this.likeRepository = likeRepository;
         this.moderationService = moderationService;
         this.notificationService = notificationService;
         this.mongoTemplate = mongoTemplate;
+        this.commentRepository = commentRepository;
+        this.notificationRepository = notificationRepository;
+        this.imageStorageService = imageStorageService;
     }
 
     public PostResponse createPost(Long currentUserId, CreatePostRequest request) {
@@ -134,7 +145,21 @@ public class PostService {
         if (!post.getUserId().equals(String.valueOf(currentUserId))) {
             throw new UnauthorizedException("Bạn không có quyền xóa bài viết này");
         }
+
+        // Xóa kèm dữ liệu phụ thuộc. Nếu chỉ xóa mỗi document post thì like,
+        // comment và notification trỏ tới nó sẽ mồ côi: badge thông báo vẫn đếm,
+        // và bấm vào thông báo sẽ mở ra một bài viết không còn tồn tại.
+        likeRepository.deleteByPostId(postId);
+        commentRepository.deleteByPostId(postId);
         postRepository.delete(post);
+        notificationRepository.deleteByReferenceId(postId);
+
+        // Ảnh trên Cloudinary cũng nên được dọn, nhưng lỗi phía Cloudinary
+        // KHÔNG được phép làm hỏng thao tác xóa bài đã thực hiện xong.
+        try {
+            imageStorageService.deleteAlouteImageByUrl(post.getImageUrl());
+        } catch (Exception ignored) {
+        }
     }
 
     public void adjustLikeCount(String postId, int delta) {

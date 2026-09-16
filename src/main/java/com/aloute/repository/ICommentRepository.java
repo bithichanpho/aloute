@@ -18,4 +18,7 @@ public interface ICommentRepository extends MongoRepository<Comment, String> {
     long countByPostId(String postId);
     
     long countByParentCommentId(String parentCommentId);
+
+    /** Dọn bình luận khi bài viết bị xóa. */
+    long deleteByPostId(String postId);
 }

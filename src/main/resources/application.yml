@@ -69,7 +69,7 @@ spring:
       - application-actuator.yml
 
 server:
-  port: 8889
+  port: 8080
 
   # ===== Tốc độ: nén phản hồi trên đường truyền =====
   compression:

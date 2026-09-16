@@ -2,15 +2,20 @@ package com.aloute.service;
 
 import com.aloute.common.util.AvatarUtil;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.bson.Document;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import com.aloute.common.exception.BadRequestException;
@@ -37,6 +42,7 @@ public class ChatService {
     private final SimpMessagingTemplate messagingTemplate;
     private final FriendService friendService;
     private final PresenceService presenceService;
+    private final MongoTemplate mongoTemplate;
 
     public ChatService(
             IChatMessageRepository chatMessageRepository,
@@ -45,7 +51,8 @@ public class ChatService {
             GroupService groupService,
             SimpMessagingTemplate messagingTemplate,
             FriendService friendService,
-            PresenceService presenceService) {
+            PresenceService presenceService,
+            MongoTemplate mongoTemplate) {
         this.chatMessageRepository = chatMessageRepository;
         this.userRepository = userRepository;
         this.groupReadStatusRepository = groupReadStatusRepository;
@@ -53,6 +60,7 @@ public class ChatService {
         this.messagingTemplate = messagingTemplate;
         this.friendService = friendService;
         this.presenceService = presenceService;
+        this.mongoTemplate = mongoTemplate;
     }
 
     // ================= CHAT 1-1 =================
@@ -124,13 +132,18 @@ public class ChatService {
      * thấy bubble mình vừa gửi chuyển thành "Đã xem" ngay lập tức, không cần tải lại.
      */
     public void markAsRead(Long currentUserId, Long otherUserId) {
-        List<ChatMessage> unread = chatMessageRepository.findByReceiverIdAndSenderIdAndReadFalse(
-                String.valueOf(currentUserId), String.valueOf(otherUserId));
-        if (unread.isEmpty()) {
+        // MỘT lệnh update duy nhất dưới Mongo. Bản cũ tải toàn bộ tin chưa đọc lên
+        // JVM rồi saveAll() — mở chat có 500 tin chưa đọc là 500 document đi về
+        // qua mạng chỉ để lật một cờ boolean.
+        long updated = mongoTemplate.updateMulti(
+                Query.query(Criteria.where("receiverId").is(String.valueOf(currentUserId))
+                        .and("senderId").is(String.valueOf(otherUserId))
+                        .and("read").is(false)
+                        .and("groupId").is(null)),
+                new Update().set("read", true), ChatMessage.class).getModifiedCount();
+        if (updated == 0) {
             return;
         }
-        unread.forEach(m -> m.setRead(true));
-        chatMessageRepository.saveAll(unread);
 
         userRepository.findById(otherUserId).ifPresent(otherUser -> messagingTemplate.convertAndSendToUser(
                 otherUser.getUsername(), "/queue/read-receipts",
@@ -181,9 +194,8 @@ public class ChatService {
 
     public long countUnreadTotal(Long userId) {
         long directUnread = chatMessageRepository.countByReceiverIdAndReadFalse(String.valueOf(userId));
-        long groupUnread = groupService.getMyGroups(userId).stream()
-                .mapToLong(g -> countGroupUnread(g.getId(), userId))
-                .sum();
+        long groupUnread = groupUnreadCounts(groupService.getMyGroups(userId), userId).values().stream()
+                .mapToLong(Long::longValue).sum();
         return directUnread + groupUnread;
     }
 
@@ -253,6 +265,35 @@ public class ChatService {
         groupReadStatusRepository.save(status);
     }
 
+    /**
+     * Đếm tin chưa đọc cho TẤT CẢ nhóm của một người bằng đúng 2 truy vấn
+     * (1 SQL lấy mốc đã đọc + 1 aggregation Mongo), thay cho 2 query mỗi nhóm.
+     */
+    private Map<String, Long> groupUnreadCounts(List<ChatGroup> groups, Long userId) {
+        if (groups.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, LocalDateTime> readTimes = groupReadStatusRepository.findByUserId(userId).stream()
+                .collect(Collectors.toMap(GroupReadStatus::getGroupId, GroupReadStatus::getLastReadAt));
+
+        Criteria[] filters = groups.stream().map(g -> {
+            Criteria c = Criteria.where("conversationId").is(ChatMessage.buildGroupConversationId(g.getId()));
+            if (readTimes.containsKey(g.getId())) {
+                c = c.and("sentAt").gt(readTimes.get(g.getId()));
+            }
+            return c;
+        }).toArray(Criteria[]::new);
+
+        Map<String, Long> counts = new java.util.HashMap<>();
+        mongoTemplate.aggregate(Aggregation.newAggregation(
+                        Aggregation.match(new Criteria().orOperator(filters)),
+                        Aggregation.group("conversationId").count().as("count")),
+                ChatMessage.class, Document.class)
+                .forEach(d -> counts.put(d.getString("_id"), ((Number) d.get("count")).longValue()));
+        return counts;
+    }
+
     private long countGroupUnread(Long groupId, Long userId) {
         String conversationId = ChatMessage.buildGroupConversationId(groupId);
         return groupReadStatusRepository.findByGroupIdAndUserId(groupId, userId)
@@ -287,17 +328,35 @@ public class ChatService {
      */
     public List<ConversationResponse> getConversations(Long userId) {
         String userIdStr = String.valueOf(userId);
-        List<ChatMessage> all = chatMessageRepository.findBySenderIdOrReceiverIdOrderBySentAtDesc(userIdStr, userIdStr);
 
-        Map<String, ChatMessage> latestDirectByConversation = new LinkedHashMap<>();
-        for (ChatMessage m : all) {
-            if (m.getGroupId() == null) {
-                latestDirectByConversation.putIfAbsent(m.getConversationId(), m);
-            }
-        }
+        // Lấy TIN MỚI NHẤT của mỗi hội thoại 1-1 ngay trong Mongo.
+        // Bản cũ kéo TOÀN BỘ tin nhắn của người dùng về JVM rồi mới lọc ra tin cuối
+        // của từng hội thoại — tài khoản nhắn nhiều là mỗi lần mở /chat phải tải
+        // hàng chục nghìn document chỉ để hiển thị vài dòng preview.
+        List<ChatMessage> latestDirect = mongoTemplate.aggregate(Aggregation.newAggregation(
+                        Aggregation.match(new Criteria().andOperator(
+                                Criteria.where("groupId").is(null),
+                                new Criteria().orOperator(
+                                        Criteria.where("senderId").is(userIdStr),
+                                        Criteria.where("receiverId").is(userIdStr)))),
+                        Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
+                        Aggregation.group("conversationId").first(Aggregation.ROOT).as("latest"),
+                        Aggregation.replaceRoot("latest"),
+                        Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
+                        Aggregation.limit(100)),
+                ChatMessage.class, ChatMessage.class).getMappedResults();
 
-        List<ConversationResponse> result = latestDirectByConversation.values().stream()
-                .map(latest -> toDirectConversationResponse(userIdStr, latest))
+        // Số tin chưa đọc theo từng người gửi — 1 aggregation thay cho 1 query mỗi ô hội thoại.
+        Map<String, Long> unreadBySender = new java.util.HashMap<>();
+        mongoTemplate.aggregate(Aggregation.newAggregation(
+                        Aggregation.match(Criteria.where("receiverId").is(userIdStr)
+                                .and("read").is(false).and("groupId").is(null)),
+                        Aggregation.group("senderId").count().as("count")),
+                ChatMessage.class, Document.class)
+                .forEach(d -> unreadBySender.put(d.getString("_id"), ((Number) d.get("count")).longValue()));
+
+        List<ConversationResponse> result = latestDirect.stream()
+                .map(latest -> toDirectConversationResponse(userIdStr, latest, unreadBySender))
                 .collect(Collectors.toList());
 
         // Bạn bè (đã follow lẫn nhau) nhưng CHƯA từng nhắn tin — vẫn hiện sẵn trong
@@ -312,8 +371,31 @@ public class ChatService {
             }
         }
 
-        for (ChatGroup group : groupService.getMyGroups(userId)) {
-            result.add(toGroupConversationResponse(group, userId));
+        // Nhóm: gộp tin mới nhất + số thành viên + số chưa đọc thành vài truy vấn,
+        // thay vì 3 truy vấn nhân với số nhóm.
+        List<ChatGroup> groups = groupService.getMyGroups(userId);
+        Map<String, Long> groupUnread = groupUnreadCounts(groups, userId);
+        Map<Long, Integer> memberCounts = groupService.getMemberCounts(
+                groups.stream().map(ChatGroup::getId).collect(Collectors.toList()));
+
+        Map<String, ChatMessage> latestGroupMessages = new java.util.HashMap<>();
+        if (!groups.isEmpty()) {
+            mongoTemplate.aggregate(Aggregation.newAggregation(
+                            Aggregation.match(Criteria.where("conversationId").in(groups.stream()
+                                    .map(g -> ChatMessage.buildGroupConversationId(g.getId()))
+                                    .collect(Collectors.toList()))),
+                            Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
+                            Aggregation.group("conversationId").first(Aggregation.ROOT).as("latest"),
+                            Aggregation.replaceRoot("latest")),
+                    ChatMessage.class, ChatMessage.class)
+                    .forEach(m -> latestGroupMessages.put(m.getConversationId(), m));
+        }
+
+        for (ChatGroup group : groups) {
+            String conversationId = ChatMessage.buildGroupConversationId(group.getId());
+            result.add(toGroupConversationResponse(group, latestGroupMessages.get(conversationId),
+                    memberCounts.getOrDefault(group.getId(), 0),
+                    groupUnread.getOrDefault(conversationId, 0L)));
         }
 
         // Gop tra cuu user thanh 1 query, phai chay TRUOC sort vi sort dung otherFullName.
@@ -338,7 +420,8 @@ public class ChatService {
         return name != null ? name : "";
     }
 
-    private ConversationResponse toDirectConversationResponse(String currentUserIdStr, ChatMessage latest) {
+    private ConversationResponse toDirectConversationResponse(String currentUserIdStr, ChatMessage latest,
+            Map<String, Long> unreadBySender) {
         boolean iAmSender = latest.getSenderId().equals(currentUserIdStr);
         String otherIdStr = iAmSender ? latest.getReceiverId() : latest.getSenderId();
         Long otherId = Long.valueOf(otherIdStr);
@@ -349,7 +432,7 @@ public class ChatService {
         dto.setLastMessage(previewText(latest));
         dto.setLastMessageAt(latest.getSentAt());
         dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
-        dto.setUnreadCount(chatMessageRepository.countByReceiverIdAndSenderIdAndReadFalse(currentUserIdStr, otherIdStr));
+        dto.setUnreadCount(unreadBySender.getOrDefault(otherIdStr, 0L));
         dto.setOnline(presenceService.isOnline(otherId));
         // Ten/avatar duoc do vao sau bang MOT query gop (xem fillOtherUserInfo).
         return dto;
@@ -392,26 +475,26 @@ public class ChatService {
         }
     }
 
-    private ConversationResponse toGroupConversationResponse(ChatGroup group, Long currentUserId) {
-        String conversationId = ChatMessage.buildGroupConversationId(group.getId());
+    private ConversationResponse toGroupConversationResponse(ChatGroup group, ChatMessage latest,
+            int memberCount, long unreadCount) {
 
         ConversationResponse dto = new ConversationResponse();
         dto.setGroup(true);
         dto.setGroupId(group.getId());
         dto.setGroupName(group.getName());
         dto.setOtherAvatarUrl(group.getAvatarUrl());
-        dto.setMemberCount(groupService.getMemberCount(group.getId()));
-        dto.setUnreadCount(countGroupUnread(group.getId(), currentUserId));
+        dto.setMemberCount(memberCount);
+        dto.setUnreadCount(unreadCount);
 
-        chatMessageRepository.findFirstByConversationIdOrderBySentAtDesc(conversationId).ifPresentOrElse(latest -> {
+        if (latest != null) {
             dto.setLastMessage(previewText(latest));
             dto.setLastMessageAt(latest.getSentAt());
             dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
-        }, () -> {
+        } else {
             dto.setLastMessage("Nhóm vừa được tạo");
             dto.setLastMessageAt(group.getCreatedAt());
             dto.setLastMessageTimeAgo(TimeAgoUtil.format(group.getCreatedAt()));
-        });
+        }
 
         return dto;
     }

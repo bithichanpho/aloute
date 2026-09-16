@@ -25,6 +25,7 @@ public class JwtUtil {
         this.expirationMs = expirationMs;
     }
 
+    /** Sinh token mới cho username, kèm claim "userId" và "role". */
     public String generateToken(String username, Long userId, String role) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
@@ -39,6 +40,7 @@ public class JwtUtil {
                 .compact();
     }
 
+    /** Thời hạn token (ms) — dùng để set maxAge cho cookie ALOUTE_TOKEN ở AuthController. */
     public long getExpirationMs() {
         return expirationMs;
     }

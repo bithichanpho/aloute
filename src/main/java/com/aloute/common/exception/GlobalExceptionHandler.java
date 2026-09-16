@@ -14,32 +14,37 @@ import com.aloute.common.response.ApiResponse;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiResponse<Object>> handleNotFound(ResourceNotFoundException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
-    }
+	@ExceptionHandler(ResourceNotFoundException.class)
+	public ResponseEntity<ApiResponse<Object>> handleNotFound(ResourceNotFoundException ex) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(ex.getMessage()));
+	}
 
-    @ExceptionHandler(UnauthorizedException.class)
-    public ResponseEntity<ApiResponse<Object>> handleUnauthorized(UnauthorizedException ex) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(ex.getMessage()));
-    }
+	@ExceptionHandler(UnauthorizedException.class)
+	public ResponseEntity<ApiResponse<Object>> handleUnauthorized(UnauthorizedException ex) {
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(ex.getMessage()));
+	}
 
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<ApiResponse<Object>> handleBadRequest(BadRequestException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
-    }
+	@ExceptionHandler(BadRequestException.class)
+	public ResponseEntity<ApiResponse<Object>> handleBadRequest(BadRequestException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(ex.getMessage()));
+	}
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Object>> handleValidation(MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
-                .collect(Collectors.joining("; "));
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(message));
-    }
+	@ExceptionHandler(MethodArgumentNotValidException.class)
+	public ResponseEntity<ApiResponse<Object>> handleValidation(MethodArgumentNotValidException ex) {
+		String message = ex.getBindingResult().getFieldErrors().stream().map(FieldError::getDefaultMessage)
+				.collect(Collectors.joining("; "));
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(message));
+	}
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Object>> handleGeneral(Exception ex) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("Đã có lỗi xảy ra: " + ex.getMessage()));
-    }
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<ApiResponse<Object>> handleGeneral(Exception ex) {
+		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+				.body(ApiResponse.error("Đã có lỗi xảy ra: " + ex.getMessage()));
+	}
+
+	@ExceptionHandler(TooManyRequestsException.class)
+	public ResponseEntity<ApiResponse<Object>> handleTooManyRequests(TooManyRequestsException ex) {
+
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiResponse.error(ex.getMessage()));
+	}
 }

@@ -89,7 +89,8 @@ public class EmailService {
         } catch (MessagingException e) {
             // Không nên chặn luồng đăng ký chỉ vì gửi mail lỗi (vd: sai cấu
             // hình SMTP lúc dev) — ghi log để biết, nhưng không throw tiếp.
-            System.err.println("Gửi email thất bại: " + e.getMessage());
+            org.slf4j.LoggerFactory.getLogger(EmailService.class)
+                    .warn("Gửi email thất bại ({})", e.getClass().getSimpleName());
         }
     }
 }

@@ -60,6 +60,14 @@ public class User {
     @Column(name = "verification_token", length = 100)
     private String verificationToken;
 
+    /** Hạn dùng của link xác thực (15 phút). Hết hạn phải bấm "gửi lại email". */
+    @Column(name = "verification_token_expiry")
+    private LocalDateTime verificationTokenExpiry;
+
+    /** Lần gửi email xác thực gần nhất — dùng để chặn spam (cooldown 60 giây). */
+    @Column(name = "verification_email_sent_at")
+    private LocalDateTime verificationEmailSentAt;
+
     @Column(name = "reset_password_token", length = 100)
     private String resetPasswordToken;
 
@@ -189,6 +197,22 @@ public class User {
 
     public void setVerificationToken(String verificationToken) {
         this.verificationToken = verificationToken;
+    }
+
+    public LocalDateTime getVerificationTokenExpiry() {
+        return verificationTokenExpiry;
+    }
+
+    public void setVerificationTokenExpiry(LocalDateTime verificationTokenExpiry) {
+        this.verificationTokenExpiry = verificationTokenExpiry;
+    }
+
+    public LocalDateTime getVerificationEmailSentAt() {
+        return verificationEmailSentAt;
+    }
+
+    public void setVerificationEmailSentAt(LocalDateTime verificationEmailSentAt) {
+        this.verificationEmailSentAt = verificationEmailSentAt;
     }
 
     public String getResetPasswordToken() {

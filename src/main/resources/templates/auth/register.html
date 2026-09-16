@@ -78,7 +78,7 @@
           method: 'POST',
           body: JSON.stringify({ fullName, username, email, password })
         });
-        window.location.href = '/feed';
+        window.location.href = '/login?registered=1';
       } catch (err) {
         errorBox.textContent = err.message || 'Đăng ký thất bại, vui lòng thử lại.';
         errorBox.style.display = 'block';

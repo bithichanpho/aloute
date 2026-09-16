@@ -173,6 +173,15 @@ public class GroupService {
                 .collect(Collectors.toList());
     }
 
+    /** Đếm thành viên cho NHIỀU nhóm bằng 1 query — dùng khi dựng danh sách hội thoại. */
+    public Map<Long, Integer> getMemberCounts(java.util.Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        return memberRepository.countMembers(ids).stream().collect(Collectors.toMap(
+                IGroupMemberRepository.MemberCount::getGroupId, c -> c.getTotal().intValue()));
+    }
+
     public int getMemberCount(Long groupId) {
         return (int) memberRepository.countByGroupId(groupId);
     }

@@ -54,7 +54,12 @@ public class LikeService {
 
             if (inserted) {
                 postService.adjustLikeCount(postId, 1);
-                notificationService.notifyPostLiked(postId, currentUserId);
+                try {
+                    notificationService.notifyPostLiked(postId, currentUserId);
+                } catch (org.springframework.core.task.TaskRejectedException ignored) {
+                    // Hàng đợi thông báo đầy: lượt like ĐÃ ghi xong, không được
+                    // để việc gửi thông báo nền làm request thất bại.
+                }
             }
         } else {
             Query query = Query.query(Criteria.where("postId").is(postId).and("userId").is(userIdStr));

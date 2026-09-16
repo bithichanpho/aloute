@@ -1,6 +1,7 @@
 package com.aloute.service;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -110,5 +111,33 @@ public class ImageStorageService {
                 publicId,
                 ObjectUtils.emptyMap()
         );
+    }
+
+    /**
+     * Xóa ảnh trên Cloudinary từ chính URL đang lưu trong DB (post/avatar).
+     * Chỉ đụng tới các asset nằm trong folder "aloute/" để không bao giờ lỡ tay
+     * xóa tài nguyên của ứng dụng khác dùng chung tài khoản Cloudinary.
+     */
+    public void deleteAlouteImageByUrl(String imageUrl) throws IOException {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return;
+        }
+
+        String path = URI.create(imageUrl).getPath();
+        String marker = "/image/upload/";
+        int start = path.indexOf(marker);
+        if (start < 0) {
+            return;
+        }
+
+        String publicId = path.substring(start + marker.length())
+                .replaceFirst("^v\\d+/", "")
+                .replaceFirst("\\.[^.]+$", "");
+
+        if (!publicId.startsWith("aloute/")) {
+            return;
+        }
+
+        deleteImage(publicId);
     }
 }
