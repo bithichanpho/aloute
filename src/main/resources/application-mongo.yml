@@ -1,8 +1,4 @@
-# Spring Boot chỉ bind URI MongoDB ở khóa "spring.data.mongodb.uri".
-# Bản cũ dùng "spring.mongodb.uri" — khóa đó KHÔNG được bind, nên biến môi trường
-# MONGO_URI bị bỏ qua và ứng dụng lặng lẽ nối vào mongodb://localhost:27017/test.
-# Bản merge này dùng đúng khóa. NẾU dữ liệu cũ của bạn đang nằm ở database "test",
-# hãy dump/restore sang aloute_db (hoặc trỏ MONGO_URI về đúng database cũ) trước khi chạy.
+# Spring Boot 4 uses spring.mongodb.uri for the connection URI.
 spring:
   data:
     mongodb:

@@ -250,7 +250,10 @@
     }
   }
 
+  let historyRequestVersion = 0;
+
   async function openDirectConversation(item) {
+    const requestVersion = ++historyRequestVersion;
     chatList.querySelectorAll('.chat-item').forEach(i => i.classList.remove('chat-item--active'));
     item.classList.add('chat-item--active');
     chatList.classList.add('has-active-thread');
@@ -293,9 +296,11 @@
 
     try {
       const messages = await Aloute.api('/api/chat/messages/' + userId);
+      if (requestVersion !== historyRequestVersion) return;
       renderMessages(messages);
       Aloute.api('/api/chat/read/' + userId, { method: 'POST' }).catch(() => {});
     } catch (err) {
+      if (requestVersion !== historyRequestVersion) return;
       messageList.innerHTML = '<div class="empty-state empty-state--thread"><span>Không tải được tin nhắn: ' + Aloute.escapeHtml(err.message) + '</span></div>';
     }
 
@@ -322,6 +327,7 @@
 
   // ---------- Mở 1 luồng chat NHÓM ----------
   async function openGroupConversation(item) {
+    const requestVersion = ++historyRequestVersion;
     chatList.querySelectorAll('.chat-item').forEach(i => i.classList.remove('chat-item--active'));
     item.classList.add('chat-item--active');
     chatList.classList.add('has-active-thread');
@@ -369,9 +375,11 @@
 
     try {
       const messages = await Aloute.api('/api/chat/group/' + groupId + '/messages');
+      if (requestVersion !== historyRequestVersion) return;
       renderMessages(messages);
       Aloute.api('/api/chat/group/' + groupId + '/read', { method: 'POST' }).catch(() => {});
     } catch (err) {
+      if (requestVersion !== historyRequestVersion) return;
       messageList.innerHTML = '<div class="empty-state empty-state--thread"><span>Không tải được tin nhắn: ' + Aloute.escapeHtml(err.message) + '</span></div>';
     }
 

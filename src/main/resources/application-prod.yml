@@ -21,9 +21,8 @@ spring:
           time_zone: UTC
         # Keep JPA server-side access isolated from Supabase's Data API surface.
         default_schema: ${DB_SCHEMA:public}
-  data:
-    mongodb:
-      uri: ${MONGO_URI}
+  mongodb:
+    uri: ${MONGO_URI}
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}

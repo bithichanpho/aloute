@@ -125,6 +125,12 @@ public class CommentService {
         if (!comment.getUserId().equals(String.valueOf(currentUserId))) {
             throw new UnauthorizedException("Bạn không có quyền xóa bình luận này");
         }
+        // Preserve the parent document so existing replies keep their context.
+        if (commentRepository.countByParentCommentId(commentId) > 0) {
+            mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(commentId)),
+                    new Update().set("content", "Bình luận đã bị xóa"), Comment.class);
+            return;
+        }
         long deleted = mongoTemplate.remove(Query.query(Criteria.where("_id").is(commentId)), Comment.class).getDeletedCount();
         if (deleted == 0) return;
         if (comment.getParentCommentId() != null) adjustReplyCount(comment.getParentCommentId(), -1);
