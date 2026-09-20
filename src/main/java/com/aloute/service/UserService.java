@@ -65,7 +65,7 @@ public class UserService {
         dto.setUsername(user.getUsername());
         dto.setFullName(user.getFullName());
         dto.setAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
-        dto.setCoverUrl(user.getCoverUrl());
+        dto.setCoverUrl(com.aloute.common.util.CloudinaryUrlUtil.cover(user.getCoverUrl()));
         dto.setBio(user.getBio());
         dto.setFollowerCount(friendRepository.countByFollowedId(targetUserId));
         dto.setFollowingCount(friendRepository.countByFollowerId(targetUserId));
@@ -188,7 +188,7 @@ public class UserService {
             dto.setUsername(user.getUsername());
             dto.setFullName(user.getFullName());
             dto.setAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
-            dto.setCoverUrl(user.getCoverUrl());
+            dto.setCoverUrl(com.aloute.common.util.CloudinaryUrlUtil.cover(user.getCoverUrl()));
             dto.setBio(user.getBio());
             dto.setFollowerCount(followerCounts.getOrDefault(id, 0L));
             dto.setPrivateAccount(user.isPrivateAccount());

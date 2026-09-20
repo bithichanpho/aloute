@@ -11,7 +11,7 @@ spring:
   thymeleaf:
     # Cache template đã biên dịch. Khi đang sửa .html thì chạy với
     # -Dspring.thymeleaf.cache=false hoặc dùng spring-boot-devtools.
-    cache: ${THYMELEAF_CACHE:true}
+    cache: ${THYMELEAF_CACHE:false}
 
   web:
     resources:
@@ -89,5 +89,10 @@ server:
     connection-timeout: 20s
 
 app:
+  seed:
+    demo-data: ${ALOUTE_SEED_DEMO_DATA:true}
   upload:
     max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
+  db:
+    relationship-migration:
+      enabled: ${ALOUTE_DB_RELATIONSHIP_MIGRATION:true}

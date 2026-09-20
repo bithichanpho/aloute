@@ -1,5 +1,6 @@
 package com.aloute.controller;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.springframework.security.core.Authentication;
@@ -14,6 +15,7 @@ import com.aloute.dto.response.PostResponse;
 import com.aloute.dto.response.UserProfileDto;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.ChatService;
+import com.aloute.service.CommunityService;
 import com.aloute.service.FriendService;
 import com.aloute.service.NotificationService;
 import com.aloute.service.PostService;
@@ -44,6 +46,7 @@ public class ViewController {
     private final GroupService groupService;
     private final PresenceService presenceService;
     private final DiscoveryService discoveryService;
+    private final CommunityService communityService;
 
     public ViewController(
             PostService postService,
@@ -53,7 +56,8 @@ public class ViewController {
             ChatService chatService,
             GroupService groupService,
             PresenceService presenceService,
-            DiscoveryService discoveryService) {
+            DiscoveryService discoveryService,
+            CommunityService communityService) {
         this.postService = postService;
         this.userService = userService;
         this.friendService = friendService;
@@ -62,6 +66,7 @@ public class ViewController {
         this.groupService = groupService;
         this.presenceService = presenceService;
         this.discoveryService = discoveryService;
+        this.communityService = communityService;
     }
 
     @GetMapping("/")
@@ -107,9 +112,10 @@ public class ViewController {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
+        List<Long> followingIds = friendService.getFollowingIds(userId);
         List<PostResponse> posts = "following".equalsIgnoreCase(tab)
-                ? postService.getFeedByFollowing(userId, friendService.getFollowingIds(userId), 0, 20)
-                : postService.getFeed(userId, 0, 20);
+                ? postService.getFeedByFollowing(userId, followingIds, 0, 20)
+                : postService.getFeed(userId, followingIds, 0, 20);
 
         model.addAttribute("posts", posts);
         model.addAttribute("activeTab", tab);
@@ -118,21 +124,22 @@ public class ViewController {
         // Đây chỉ là dữ liệu hiển thị, không thay đổi logic feed hiện tại.
         List<ChatGroup> feedGroups = groupService.getMyGroups(userId);
 
-        // Chi nap ho so cua nhung nguoi DANG ONLINE, va nap theo lo bang 1 query.
-        // Truoc day doan nay nap tung ban be mot (N query) roi moi loc online.
-        List<Long> onlineFriendIds = friendService.getMutualFriendIds(userId).stream()
-                .filter(presenceService::isOnline)
+        // Nạp TOÀN BỘ bạn bè chung (mutual friend) bằng 1 query duy nhất, rồi lọc "đang online"
+        // hoàn toàn trong bộ nhớ (PresenceService chỉ là 1 Map, không đụng DB).
+        // Bản trước gọi presenceService.isOnline(Long) cho từng bạn — hàm đó bên trong lại tự
+        // query DB để đổi userId -> username, tức là tốn thêm N query chỉ để tra 1 Map trong RAM.
+        List<User> mutualFriends = userService.findUsersByIds(friendService.getMutualFriendIds(userId));
+        List<User> activeFriends = mutualFriends.stream()
+                .filter(friend -> presenceService.isOnlineUsername(friend.getUsername()))
                 .limit(8)
                 .collect(java.util.stream.Collectors.toList());
-        List<User> activeFriends = onlineFriendIds.isEmpty()
-                ? java.util.List.of()
-                : userService.findUsersByIds(onlineFriendIds);
 
         // Gợi ý kết bạn: dùng chung với trang /search (xem DiscoveryService).
-        // Trước đây khối này nạp toàn bộ bảng users rồi dựng hồ sơ đầy đủ cho từng người.
+        // Truyền sẵn feedGroups vừa tải ở trên để DiscoveryService không phải tự
+        // query lại danh sách nhóm lần thứ 2 trong cùng 1 request /feed.
         model.addAttribute("feedGroups", feedGroups.stream().limit(8).collect(java.util.stream.Collectors.toList()));
         model.addAttribute("activeFriends", activeFriends);
-        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, 6));
+        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, 6, feedGroups));
 
         addCommonAttributes(model, userId, "feed");
         return "feed/index";
@@ -204,7 +211,7 @@ public class ViewController {
         if (userId == null) return "redirect:/login";
         model.addAttribute("posts", "following".equalsIgnoreCase(tab)
                 ? postService.getFeedByFollowing(userId, friendService.getFollowingIds(userId), page, 20)
-                : postService.getFeed(userId, page, 20));
+                : postService.getFeed(userId, friendService.getFollowingIds(userId), page, 20));
         var currentUser = new UserProfileDto();
         currentUser.setId(userId);
         model.addAttribute("currentUser", currentUser);
@@ -216,9 +223,33 @@ public class ViewController {
             @RequestParam(defaultValue = "0") int page) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
-        model.addAttribute("userPosts", postService.getPostsByUser(userId, currentUserId, page, 20));
+        List<PostResponse> userPosts = postService.getPostsByUser(userId, currentUserId, page, 20);
+        model.addAttribute("userPosts", userPosts);
+        // profile/view được dùng làm template cho fragment .post nên Thymeleaf vẫn
+        // có thể đánh giá các biểu thức của tab Đăng lại. Phải luôn cung cấp list
+        // rỗng thay vì để biến null/missing gây TemplateProcessingException.
+        model.addAttribute("repostPosts", Collections.emptyList());
+        model.addAttribute("mediaPosts", userPosts.stream()
+                .filter(post -> post.getImageUrl() != null && !post.getImageUrl().isBlank())
+                .collect(java.util.stream.Collectors.toList()));
         model.addAttribute("isOwnProfile", currentUserId.equals(userId));
-        return "profile/view :: .post";
+        return "profile/view :: profileTimelinePost";
+    }
+
+    @GetMapping("/api/posts/user/{userId}/reposts/fragment")
+    public String profileRepostFragment(Authentication authentication, Model model, @PathVariable Long userId,
+            @RequestParam(defaultValue = "0") int page) {
+        Long currentUserId = requireLogin(authentication);
+        if (currentUserId == null) return "redirect:/login";
+
+        List<PostResponse> repostPosts = postService.getRepostsByUser(userId, currentUserId, page, 20);
+        // Cung cấp đủ model dùng trong profile/view để fragment không phụ thuộc vào
+        // thứ tự Thymeleaf xử lý các node ngoài phần .post.
+        model.addAttribute("repostPosts", repostPosts);
+        model.addAttribute("userPosts", Collections.emptyList());
+        model.addAttribute("mediaPosts", Collections.emptyList());
+        model.addAttribute("isOwnProfile", currentUserId.equals(userId));
+        return "profile/view :: profileRepostPost";
     }
 
     @GetMapping("/activity")
@@ -249,6 +280,50 @@ public class ViewController {
         return "placeholder/index";
     }
 
+    @GetMapping("/communities")
+    public String communities(Authentication authentication, Model model) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+
+        model.addAttribute("myCommunities", communityService.getMyCommunities(userId));
+        model.addAttribute("discoverCommunities", communityService.getDiscoverList(userId, 30));
+        addCommonAttributes(model, userId, "communities");
+        return "community/index";
+    }
+
+    @GetMapping("/communities/{communityId}")
+    public String communityDetail(Authentication authentication, @PathVariable Long communityId, Model model) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+
+        model.addAttribute("community", communityService.getCommunity(communityId, userId));
+        // Template community/view.html dùng biến này ở cả nhánh mở và khóa.
+        // Phải luôn có giá trị mặc định để SpringEL không ném exception khi user
+        // là thành viên của hội nhóm công khai.
+        model.addAttribute("feedLocked", false);
+        try {
+            model.addAttribute("posts", communityService.getFeed(communityId, userId, 0, 20));
+        } catch (com.aloute.common.exception.UnauthorizedException e) {
+            // Hội nhóm riêng tư và user chưa tham gia -> không xem được bài viết, chỉ xem thông tin chung.
+            model.addAttribute("posts", java.util.Collections.emptyList());
+            model.addAttribute("feedLocked", true);
+        }
+        addCommonAttributes(model, userId, "communities");
+        return "community/view";
+    }
+
+    @GetMapping("/api/communities/{communityId}/posts/fragment")
+    public String communityFeedFragment(Authentication authentication, @PathVariable Long communityId, Model model,
+            @RequestParam(defaultValue = "0") int page) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+        model.addAttribute("posts", communityService.getFeed(communityId, userId, page, 20));
+        var currentUser = new UserProfileDto();
+        currentUser.setId(userId);
+        model.addAttribute("currentUser", currentUser);
+        return "feed/index :: .post";
+    }
+
     // ===== Helpers =====
 
     private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
@@ -261,6 +336,9 @@ public class ViewController {
         model.addAttribute("mediaPosts", userPosts.stream()
                 .filter(post -> post.getImageUrl() != null && !post.getImageUrl().isBlank())
                 .collect(java.util.stream.Collectors.toList()));
+        // Luôn cấp dữ liệu cho tab Đăng lại; trước đây biến này bị bỏ quên khiến
+        // /profile/* nổ TemplateProcessingException ngay tại #lists.size(repostPosts).
+        model.addAttribute("repostPosts", postService.getRepostsByUser(profileUserId, currentUserId, 0, 20));
         model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
         model.addAttribute("isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
         if (currentUserId != null) {
@@ -273,8 +351,11 @@ public class ViewController {
         model.addAttribute("activeNav", activeNav);
         if (currentUserId == null) return;
         model.addAttribute("currentUser", userService.getLiteProfile(currentUserId));
-        model.addAttribute("unreadCount", notificationService.countUnread(currentUserId));
-        model.addAttribute("unreadMessageCount", chatService.countUnreadTotal(currentUserId));
+        // Không chặn việc render cả trang chỉ để đếm badge. Hai con số này được
+        // tải song song sau first paint qua /api/notifications/unread-count và
+        // /api/chat/unread-count, rồi realtime sẽ cập nhật tiếp.
+        model.addAttribute("unreadCount", 0L);
+        model.addAttribute("unreadMessageCount", 0L);
     }
 
     private boolean isLoggedIn(Authentication authentication) {

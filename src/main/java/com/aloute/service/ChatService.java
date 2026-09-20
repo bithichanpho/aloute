@@ -433,8 +433,7 @@ public class ChatService {
         dto.setLastMessageAt(latest.getSentAt());
         dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
         dto.setUnreadCount(unreadBySender.getOrDefault(otherIdStr, 0L));
-        dto.setOnline(presenceService.isOnline(otherId));
-        // Ten/avatar duoc do vao sau bang MOT query gop (xem fillOtherUserInfo).
+        // Ten/avatar/online duoc do vao sau bang MOT query gop (xem fillOtherUserInfo).
         return dto;
     }
 
@@ -445,15 +444,21 @@ public class ChatService {
         dto.setOtherUserId(friendId);
         dto.setHasConversation(false);
         dto.setUnreadCount(0);
-        dto.setOnline(presenceService.isOnline(friendId));
+        // online duoc do vao sau bang MOT query gop (xem fillOtherUserInfo).
         return dto;
     }
 
     /**
-     * Đổ tên/avatar cho toàn bộ hội thoại 1-1 bằng ĐÚNG MỘT query tới bảng users.
+     * Đổ tên/avatar/trạng thái online cho toàn bộ hội thoại 1-1 bằng ĐÚNG MỘT query tới bảng users.
      *
      * Trước đây mỗi ô hội thoại tự gọi userRepository.findById() — danh sách 40 người
      * là 40 query chỉ để lấy cái tên, đây là nguyên nhân chính khiến trang /chat ì.
+     *
+     * Trạng thái online cũng được gộp vào đây thay vì gọi presenceService.isOnline(Long)
+     * riêng cho từng dòng: hàm đó nhận userId nhưng PresenceService chỉ lưu theo username
+     * (một Map trong RAM), nên bản thân nó lại phải tự query DB để đổi id -> username —
+     * tức là mỗi dòng hội thoại âm thầm cõng thêm 1 query chỉ để tra một Map trong bộ nhớ.
+     * Ở đây username đã có sẵn từ query gộp phía trên nên tra online hoàn toàn miễn phí.
      */
     private void fillOtherUserInfo(List<ConversationResponse> conversations) {
         Set<Long> ids = conversations.stream()
@@ -472,6 +477,7 @@ public class ChatService {
             c.setOtherUsername(u.getUsername());
             c.setOtherFullName(u.getFullName());
             c.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
+            c.setOnline(presenceService.isOnlineUsername(u.getUsername()));
         }
     }
 

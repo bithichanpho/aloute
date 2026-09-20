@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
+<rect width="1200" height="360" fill="hsl(141 25% 14%)"/>
+<circle cx="960" cy="90" r="180" fill="hsl(141 55% 52%)" opacity=".22"/>
+<circle cx="180" cy="310" r="220" fill="hsl(231 55% 52%)" opacity=".16"/>
+<text x="70" y="190" font-family="Arial,sans-serif" font-size="42" font-weight="700" fill="white">ALOUTE COMMUNITY</text>
+</svg>

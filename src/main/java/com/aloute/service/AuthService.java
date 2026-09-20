@@ -196,7 +196,15 @@ public class AuthService {
 		 *
 		 * Email phải nhận verificationToken thật.
 		 */
-		emailService.sendVerificationEmail(saved.getEmail(), saved.getFullName(), verificationToken);
+		try {
+			emailService.sendVerificationEmail(saved.getEmail(), saved.getFullName(), verificationToken);
+		} catch (com.aloute.common.exception.EmailDeliveryException ex) {
+			// SMTP thất bại: vẫn giữ PendingUser để token không bị mất, nhưng
+			// không áp cooldown 60 giây cho lần gửi lại.
+			saved.setVerificationEmailSentAt(now.minusMinutes(1));
+			pendingUserRepository.save(saved);
+			throw ex;
+		}
 
 		/*
 		 * Chưa verify:
@@ -472,6 +480,7 @@ public class AuthService {
 	 *
 	 * Mỗi tài khoản phải chờ 60 giây.
 	 */
+	@Transactional
 	public void resendVerificationEmail(String identifier) {
 
 		String value = identifier == null ? "" : identifier.trim();

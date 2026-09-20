@@ -4,6 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.mail.MailException;
+
+import com.aloute.common.exception.EmailDeliveryException;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -31,6 +34,8 @@ public class EmailService {
     public void sendVerificationEmail(String toEmail, String fullName, String verificationToken) {
         String verifyLink = frontendBaseUrl + "/verify-email?token=" + verificationToken;
 
+        String safeFullName = escapeHtml(fullName);
+
         String html = """
                 <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
                   <h2>Chào %s,</h2>
@@ -44,7 +49,7 @@ public class EmailService {
                   <p>Nếu nút không hoạt động, dán link sau vào trình duyệt:<br>%s</p>
                   <p style="color:#888;font-size:13px;">Nếu bạn không tạo tài khoản này, hãy bỏ qua email này.</p>
                 </div>
-                """.formatted(fullName, verifyLink, verifyLink);
+                """.formatted(safeFullName, verifyLink, verifyLink);
 
         sendHtml(toEmail, "Xác thực tài khoản ALOUTE của bạn", html);
     }
@@ -56,6 +61,7 @@ public class EmailService {
      */
     public void sendResetPasswordEmail(String toEmail, String fullName, String resetToken) {
         String resetLink = frontendBaseUrl + "/reset-password?token=" + resetToken;
+        String safeFullName = escapeHtml(fullName);
 
         String html = """
                 <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
@@ -72,9 +78,19 @@ public class EmailService {
                   <p style="color:#888;font-size:13px;">Link có hiệu lực trong 30 phút.
                      Nếu bạn không yêu cầu điều này, hãy bỏ qua email này — mật khẩu của bạn vẫn an toàn.</p>
                 </div>
-                """.formatted(fullName, resetLink, resetLink);
+                """.formatted(safeFullName, resetLink, resetLink);
 
         sendHtml(toEmail, "Yêu cầu đặt lại mật khẩu ALOUTE", html);
+    }
+
+    private static String escapeHtml(String value) {
+        if (value == null) return "";
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     private void sendHtml(String to, String subject, String htmlContent) {
@@ -86,11 +102,13 @@ public class EmailService {
             helper.setSubject(subject);
             helper.setText(htmlContent, true);
             mailSender.send(message);
-        } catch (MessagingException e) {
-            // Không nên chặn luồng đăng ký chỉ vì gửi mail lỗi (vd: sai cấu
-            // hình SMTP lúc dev) — ghi log để biết, nhưng không throw tiếp.
+        } catch (MessagingException | MailException e) {
             org.slf4j.LoggerFactory.getLogger(EmailService.class)
-                    .warn("Gửi email thất bại ({})", e.getClass().getSimpleName());
+                    .error("Gửi email ALOUTE thất bại tới {} ({})", to, e.getClass().getSimpleName(), e);
+            // Email xác thực là một phần bắt buộc của đăng ký. Không được báo
+            // "đăng ký thành công" khi SMTP thực tế chưa nhận được thư.
+            throw new EmailDeliveryException(
+                    "Không thể gửi email lúc này. Vui lòng kiểm tra lại email và thử đăng ký lại sau.", e);
         }
     }
 }

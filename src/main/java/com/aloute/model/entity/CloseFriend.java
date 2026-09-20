@@ -19,7 +19,7 @@ import jakarta.persistence.*;
 @Entity
 @Table(name = "close_friends",
         uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"requester_id", "receiver_id"})
+                @UniqueConstraint(name = "uk_close_friends_requester_receiver", columnNames = {"requester_id", "receiver_id"})
         },
         indexes = {
                 @Index(name = "idx_close_friends_requester", columnList = "requester_id, status"),
@@ -39,6 +39,14 @@ public class CloseFriend {
 
     @Column(name = "receiver_id", nullable = false)
     private Long receiverId;  // người nhận lời mời
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "requester_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User requester;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "receiver_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User receiver;
 
     @Column(nullable = false, length = 20)
     private String status = PENDING;
@@ -75,6 +83,10 @@ public class CloseFriend {
     public void setRequesterId(Long requesterId) {
         this.requesterId = requesterId;
     }
+
+    public User getRequester() { return requester; }
+
+    public User getReceiver() { return receiver; }
 
     public Long getReceiverId() {
         return receiverId;

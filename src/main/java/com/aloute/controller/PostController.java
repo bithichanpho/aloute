@@ -16,9 +16,14 @@ import org.springframework.web.bind.annotation.RestController;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.CreatePostRequest;
+import com.aloute.dto.request.ReactionRequest;
+import com.aloute.dto.request.RepostRequest;
 import com.aloute.dto.response.LikeResponse;
 import com.aloute.dto.response.PostResponse;
+import com.aloute.dto.response.ReactionResponse;
+import com.aloute.dto.response.RepostResponse;
 import com.aloute.security.SecurityUtils;
+import com.aloute.service.AuthRateLimitService;
 import com.aloute.service.FriendService;
 import com.aloute.service.LikeService;
 import com.aloute.service.PostService;
@@ -32,11 +37,14 @@ public class PostController {
     private final PostService postService;
     private final LikeService likeService;
     private final FriendService friendService;
+    private final AuthRateLimitService rateLimitService;
 
-    public PostController(PostService postService, LikeService likeService, FriendService friendService) {
+    public PostController(PostService postService, LikeService likeService, FriendService friendService,
+            AuthRateLimitService rateLimitService) {
         this.postService = postService;
         this.likeService = likeService;
         this.friendService = friendService;
+        this.rateLimitService = rateLimitService;
     }
 
     /**
@@ -61,7 +69,10 @@ public class PostController {
             return ApiResponse.success(postService.getFeedByFollowing(currentUserId, followingIds, page, size));
         }
 
-        return ApiResponse.success(postService.getFeed(currentUserId, page, size));
+        if (currentUserId == null) {
+            throw new UnauthorizedException("Cần đăng nhập để xem feed");
+        }
+        return ApiResponse.success(postService.getFeed(currentUserId, friendService.getFollowingIds(currentUserId), page, size));
     }
 
     @GetMapping("/{postId}")
@@ -83,6 +94,13 @@ public class PostController {
     public ApiResponse<PostResponse> createPost(
             Authentication authentication, @Valid @RequestBody CreatePostRequest request) {
         Long currentUserId = requireUserId(authentication);
+
+        // Chống spam đăng bài hàng loạt: tối đa 20 bài / 10 phút mỗi user.
+        rateLimitService.checkAndRecord("CREATE_POST", String.valueOf(currentUserId),
+                20, java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(10),
+                "Bạn đã đăng bài quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
+                "Bạn đã đăng bài quá nhiều lần trong thời gian ngắn. Tạm khóa đăng bài 10 phút.");
+
         return ApiResponse.success("Đăng bài thành công", postService.createPost(currentUserId, request));
     }
 
@@ -96,6 +114,7 @@ public class PostController {
     /**
      * Đặt trạng thái like mong muốn. Front-end có thể bấm liên tục mà không phải
      * chờ request trước hoàn tất; backend xử lý idempotent và trả cả likeCount.
+     * (Giữ nguyên để tương thích với client cũ — client mới nên dùng /react bên dưới.)
      */
     @PostMapping("/{postId}/like")
     public ApiResponse<LikeResponse> setLike(
@@ -107,6 +126,35 @@ public class PostController {
             liked = Boolean.parseBoolean(String.valueOf(body.get("liked")));
         }
         return ApiResponse.success(likeService.setLike(postId, currentUserId, liked));
+    }
+
+    /**
+     * Đặt reaction đa emoji (LIKE/LOVE/HAHA/WOW/SAD/ANGRY) cho bài viết.
+     * type = null hoặc rỗng nghĩa là bỏ reaction hiện tại.
+     */
+    @PostMapping("/{postId}/react")
+    public ApiResponse<ReactionResponse> setReaction(
+            Authentication authentication, @PathVariable String postId,
+            @RequestBody(required = false) ReactionRequest request) {
+        Long currentUserId = requireUserId(authentication);
+        String type = request != null ? request.getType() : null;
+        return ApiResponse.success(likeService.setReaction(postId, currentUserId, type));
+    }
+
+    /** Toggle đăng lại (repost) 1 bài viết — bấm lần 2 sẽ bỏ đăng lại. */
+    @PostMapping("/{postId}/repost")
+    public ApiResponse<RepostResponse> repost(
+            Authentication authentication, @PathVariable String postId,
+            @RequestBody(required = false) RepostRequest request) {
+        Long currentUserId = requireUserId(authentication);
+
+        // Chống spam đăng lại hàng loạt: tối đa 15 lần / 10 phút mỗi user.
+        rateLimitService.checkAndRecord("REPOST", String.valueOf(currentUserId),
+                15, java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(10),
+                "Bạn đã đăng lại quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
+                "Bạn đã đăng lại quá nhiều lần trong thời gian ngắn. Tạm khóa 10 phút.");
+
+        return ApiResponse.success(postService.repost(currentUserId, postId, request));
     }
 
     private Long requireUserId(Authentication authentication) {

@@ -45,16 +45,44 @@ public class AuthController {
 	}
 
 	@PostMapping("/register")
-	public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
+	public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request,
+			HttpServletRequest httpRequest) {
+
+		// Chặn tạo tài khoản hàng loạt (bot) từ cùng 1 IP: tối đa 8 lần / 15 phút,
+		// vượt quá thì khóa chức năng đăng ký từ IP đó trong 30 phút.
+		authRateLimitService.checkAndRecord("REGISTER", httpRequest.getRemoteAddr(),
+				8, java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(30),
+				"Bạn đã đăng ký quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
+				"Bạn đã thử đăng ký quá nhiều lần. Chức năng đăng ký từ IP này tạm khóa 30 phút.");
+
 		AuthResponse auth = authService.register(request);
 		return ResponseEntity
 				.ok(ApiResponse.success("Đăng ký thành công, vui lòng kiểm tra email để xác thực tài khoản", auth));
 	}
 
 	@PostMapping("/login")
-	public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
-		AuthResponse auth = authService.login(request);
-		return withAuthCookie(auth, "Đăng nhập thành công");
+	public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request,
+			HttpServletRequest httpRequest) {
+
+		// Chống brute-force đoán mật khẩu: tối đa 10 lần đăng nhập SAI liên tiếp / 15 phút
+		// từ cùng 1 IP thì khóa chức năng đăng nhập từ IP đó 15 phút. Chỉ tính request
+		// login THẤT BẠI (sai mật khẩu/tài khoản) — đăng nhập đúng ngay từ đầu không bị
+		// tính vào quota này, tránh làm phiền người dùng hợp lệ dùng chung mạng (NAT/wifi công cộng).
+		String ip = httpRequest.getRemoteAddr();
+		authRateLimitService.rejectIfBlocked("LOGIN", ip,
+				"Bạn đã đăng nhập sai quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.");
+
+		try {
+			AuthResponse auth = authService.login(request);
+			authRateLimitService.reset("LOGIN", ip);
+			return withAuthCookie(auth, "Đăng nhập thành công");
+		} catch (com.aloute.common.exception.UnauthorizedException failed) {
+			authRateLimitService.checkAndRecord("LOGIN", ip,
+					10, java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(15),
+					"Bạn đã đăng nhập sai quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
+					"Bạn đã đăng nhập sai quá nhiều lần. Chức năng đăng nhập từ IP này tạm khóa 15 phút.");
+			throw failed;
+		}
 	}
 
 	@PostMapping("/logout")

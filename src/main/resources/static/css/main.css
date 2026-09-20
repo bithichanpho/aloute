@@ -15,7 +15,7 @@
   --white: #ffffff;
 
   --rail-width: 272px;
-  --feed-width: 620px;
+  --feed-width: 760px;
 
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -53,6 +53,15 @@ img { max-width: 100%; display: block; }
 }
 
 /* ============ Thanh điều hướng (sidebar có nhãn) ============ */
+
+/* Wrapper added so feed/chat can grow as a fixed overlay without changing the rail layout. */
+.sidebar__panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+}
 
 .sidebar {
   position: fixed;
@@ -178,7 +187,7 @@ img { max-width: 100%; display: block; }
 .btn-post {
   background: var(--white); color: var(--black);
   border: none; border-radius: 999px;
-  padding: 9px 20px; font-size: 14px; font-weight: 700;
+  padding: 11px 24px; font-size: 15.5px; font-weight: 700;
   flex-shrink: 0;
 }
 .btn-post:disabled { opacity: 0.3; cursor: default; }
@@ -211,9 +220,11 @@ img { max-width: 100%; display: block; }
 
 .post {
   position: relative;
-  display: flex; gap: 12px;
+  display: flex; flex-wrap: wrap; gap: 12px;
   padding: 12px 22px 16px;
 }
+
+/* Repost banner occupies its own full row above the post body. */
 
 .post__avatar-col { flex-shrink: 0; position: relative; }
 
@@ -250,18 +261,97 @@ img { max-width: 100%; display: block; }
   margin-bottom: 8px; max-height: 420px; object-fit: cover;
 }
 
-.post__actions { display: flex; align-items: center; gap: 18px; }
+.post__actions { display: flex; align-items: center; gap: 22px; }
 
 .action {
   display: flex; align-items: center; gap: 6px;
   background: none; border: none; color: var(--text-secondary);
   padding: 4px 0;
 }
-.action svg { width: 21px; height: 21px; stroke-width: 1.8; }
-.action span { font-size: 13.5px; }
+.action svg { width: 25px; height: 25px; stroke-width: 1.8; }
+.action span { font-size: 14.5px; }
 
 .action--like.is-liked { color: var(--accent-like); }
 .action--like.is-liked svg { fill: var(--accent-like); stroke: var(--accent-like); }
+
+/* ============ Reaction đa emoji (thay cho Like đơn giản) ============ */
+
+.reaction { position: relative; display: inline-flex; }
+
+/* Khi đã chọn 1 emoji cụ thể, ẩn icon trái tim mặc định và hiện emoji tương ứng */
+.action--like__emoji { display: none; font-size: 17px; line-height: 1; }
+.action--like.is-reacted svg { display: none; }
+.action--like.is-reacted .action--like__emoji { display: inline-block; }
+.action--like.is-reacted span:not(.action--like__emoji) { color: var(--text-primary); }
+
+.reacted--LIKE { color: #4b91f7; }
+.reacted--LOVE { color: var(--accent-like); }
+.reacted--HAHA, .reacted--WOW { color: #f7b928; }
+.reacted--SAD { color: #f7b928; }
+.reacted--ANGRY { color: #e0552b; }
+
+/* Bảng chọn emoji — ẩn mặc định, hiện khi hover/focus vào wrapper .reaction (desktop)
+   hoặc khi JS thêm class .reaction-picker--open (long-press trên mobile) */
+.reaction-picker {
+  position: absolute; bottom: calc(100% + 6px); left: -8px;
+  display: flex; gap: 2px;
+  background: var(--bg-panel); border: 1px solid var(--border-strong);
+  border-radius: 999px; padding: 6px 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  opacity: 0; visibility: hidden; transform: translateY(6px) scale(0.94);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 30;
+}
+.reaction:hover .reaction-picker,
+.reaction:focus-within .reaction-picker,
+.reaction-picker--open {
+  opacity: 1; visibility: visible; transform: translateY(0) scale(1);
+}
+.reaction-picker__emoji {
+  background: none; border: none; font-size: 21px; line-height: 1;
+  padding: 5px 6px; border-radius: 50%; transition: transform 0.1s ease;
+}
+.reaction-picker__emoji:hover { transform: scale(1.35); background: var(--bg-hover); }
+
+/* ============ Repost (đăng lại) ============ */
+
+.action--repost.is-reposted { color: #2fbf71; }
+.action--repost.is-reposted svg { stroke: #2fbf71; }
+
+.post--repost { padding-top: 6px; }
+
+.post__repost-banner {
+  flex: 0 0 100%;
+  width: 100%;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+  color: var(--text-secondary); font-size: 12.5px;
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+.post__repost-banner svg { width: 14px; height: 14px; stroke-width: 2; }
+.post__repost-banner a { font-weight: 600; color: var(--text-secondary); }
+.post__repost-banner a:hover { color: var(--text-primary); text-decoration: underline; }
+.post__repost-icon { display:inline-flex; width:14px; height:14px; align-items:center; justify-content:center; font-size:15px; }
+.post__repost-others { position: relative; }
+.post__repost-others summary { cursor:pointer; color: var(--text-secondary); font-weight:600; list-style:none; }
+.post__repost-others summary::-webkit-details-marker { display:none; }
+.post__repost-others-list { position:absolute; left:0; top:calc(100% + 7px); z-index:30; min-width:180px; max-width:260px; max-height:220px; overflow:auto; padding:8px; border:1px solid var(--border-strong); border-radius:10px; background:#151515; box-shadow:0 10px 30px rgba(0,0,0,.35); }
+.post__repost-others-list a { display:block; padding:6px 8px; border-radius:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.post__repost-others-list a:hover { background:var(--bg-hover); }
+
+.post__content--quote { margin-bottom: 10px; }
+
+.repost-card {
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 10px 12px; margin-bottom: 8px;
+}
+.repost-card__header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.repost-card__header img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.repost-card__header a, .repost-card__header span:first-of-type { font-weight: 600; font-size: 13.5px; }
+.repost-card__header span:last-child { color: var(--text-tertiary); font-size: 12.5px; }
+.repost-card p { margin: 0 0 6px; font-size: 14px; white-space: pre-line; word-break: break-word; }
+.repost-card__image { width: 100%; border-radius: 10px; max-height: 300px; object-fit: cover; }
+.repost-card--deleted { color: var(--text-tertiary); font-style: italic; font-size: 13.5px; }
 
 /* Icon lưu bài — nổi bên ngoài panel, hiện khi rê chuột vào bài viết */
 
@@ -1940,153 +2030,6 @@ img { max-width: 100%; display: block; }
 }
 
 
-/* ============================================================
-   INSTAGRAM-STYLE CHAT HUB
-   - Trên /chat, thanh điều hướng ngoài cùng thu gọn thành icon rail.
-   - Hover rail sẽ mở rộng overlay, không làm dịch chuyển vùng chat.
-   - Cột chat + cột thông tin bên phải giữ nguyên bố cục 3 cột.
-   ============================================================ */
-@media (min-width: 761px) {
-  .page-chat .main-column {
-    padding-left: 78px;
-    min-width: 0;
-  }
-
-  .page-chat .sidebar.sidebar--chat-collapsed {
-    width: 78px;
-    padding: 20px 9px;
-    background: #000;
-    border-right: 1px solid #171717;
-    transition: width .18s ease, padding .18s ease, box-shadow .18s ease;
-    z-index: 120;
-  }
-
-  .page-chat .sidebar.sidebar--chat-collapsed:hover,
-  .page-chat .sidebar.sidebar--chat-collapsed:focus-within {
-    width: 272px;
-    padding: 22px 14px;
-    box-shadow: 18px 0 42px rgba(0,0,0,.32);
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__logo {
-    justify-content: center;
-    padding: 0 8px;
-    margin-bottom: 22px;
-    min-height: 28px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__logo span,
-  .page-chat .sidebar--chat-collapsed .sidebar__row > span:not(.sidebar__icon-wrap),
-  .page-chat .sidebar--chat-collapsed .sidebar__section,
-  .page-chat .sidebar--chat-collapsed .sidebar__more > span {
-    width: 0;
-    max-width: 0;
-    margin: 0;
-    opacity: 0;
-    overflow: hidden;
-    pointer-events: none;
-    transition: opacity .08s ease, width .18s ease;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__logo svg {
-    width: 25px;
-    height: 25px;
-    flex: 0 0 25px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row {
-    width: 54px;
-    min-height: 50px;
-    padding: 11px 0;
-    justify-content: center;
-    gap: 0;
-    position: relative;
-    margin: 0 auto;
-    border-radius: 14px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row svg {
-    width: 23px;
-    height: 23px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row img {
-    width: 25px;
-    height: 25px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__icon-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__icon-wrap #chatUnreadBadge,
-  .page-chat .sidebar--chat-collapsed .sidebar__icon-wrap #notifUnreadBadge {
-    position: absolute;
-    top: 6px;
-    right: 9px;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__logo,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__logo {
-    justify-content: flex-start;
-    padding: 0 10px;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__logo span,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__logo span,
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__row > span:not(.sidebar__icon-wrap),
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__row > span:not(.sidebar__icon-wrap),
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__section,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__section,
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__more > span,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__more > span {
-    width: auto;
-    max-width: none;
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__row,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__row {
-    width: auto;
-    min-height: 44px;
-    padding: 11px 14px;
-    justify-content: flex-start;
-    gap: 14px;
-    margin: 0;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__logo svg,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__logo svg,
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__row svg,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__row svg {
-    flex: 0 0 auto;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__row img,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__row img {
-    width: 22px;
-    height: 22px;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__icon-wrap #chatUnreadBadge,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__icon-wrap #chatUnreadBadge,
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__icon-wrap #notifUnreadBadge,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__icon-wrap #notifUnreadBadge {
-    top: -5px;
-    right: -7px;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__section,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__section {
-    width: auto;
-    margin-top: 22px;
-    padding: 0 14px;
-  }
-}
-
 /* Instagram-inspired notes row directly under search. */
 .chat-notes {
   padding: 0 14px 14px;
@@ -2221,138 +2164,6 @@ img { max-width: 100%; display: block; }
 }
 
 /* ============================================================
-   ALOUTE CHAT — compact Instagram-like icon rail
-   Giữ sidebar gọn, cân đối và ít khoảng trống hơn khi ở /chat.
-   ============================================================ */
-@media (min-width: 761px) {
-  .page-chat .main-column {
-    padding-left: 72px;
-  }
-
-  .page-chat .sidebar.sidebar--chat-collapsed {
-    width: 72px;
-    padding: 16px 8px;
-    align-items: center;
-    border-right: 1px solid #171717;
-    box-shadow: none;
-  }
-
-  .page-chat .sidebar.sidebar--chat-collapsed:hover,
-  .page-chat .sidebar.sidebar--chat-collapsed:focus-within {
-    width: 272px;
-    padding: 22px 14px;
-    align-items: stretch;
-    box-shadow: 18px 0 42px rgba(0,0,0,.32);
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__logo {
-    width: 48px;
-    min-height: 48px;
-    padding: 0;
-    margin: 0 0 28px;
-    justify-content: center;
-    border-radius: 12px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__logo svg {
-    width: 24px;
-    height: 24px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__nav {
-    width: 48px;
-    gap: 7px;
-    align-items: center;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row {
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
-    padding: 0;
-    margin: 0;
-    border-radius: 12px;
-    gap: 0;
-    justify-content: center;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row svg {
-    width: 22px;
-    height: 22px;
-    stroke-width: 1.8;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row--active {
-    background: #1f1f20;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__row img {
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__section {
-    display: none;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__more {
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
-    margin: auto 0 0;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__icon-wrap {
-    width: 22px;
-    height: 22px;
-  }
-
-  .page-chat .sidebar--chat-collapsed .sidebar__icon-wrap #chatUnreadBadge,
-  .page-chat .sidebar--chat-collapsed .sidebar__icon-wrap #notifUnreadBadge {
-    top: -5px;
-    right: -8px;
-  }
-
-  /* Khi mở rộng: quay lại sidebar đầy đủ nhưng vẫn gọn theo nhịp Instagram. */
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__logo,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__logo {
-    width: auto;
-    min-height: 28px;
-    margin: 0 0 22px;
-    padding: 0 10px;
-    justify-content: flex-start;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__nav,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__nav {
-    width: auto;
-    gap: 3px;
-    align-items: stretch;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__row,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__row {
-    width: auto;
-    height: 44px;
-    min-height: 44px;
-    padding: 10px 14px;
-    margin: 0;
-    border-radius: 12px;
-    gap: 14px;
-    justify-content: flex-start;
-  }
-
-  .page-chat .sidebar--chat-collapsed:hover .sidebar__more,
-  .page-chat .sidebar--chat-collapsed:focus-within .sidebar__more {
-    width: auto;
-    height: 44px;
-    min-height: 44px;
-    margin-top: auto;
-  }
-}
-
-/* ============================================================
    FEED DESKTOP — responsive 4 khu vực, sidebar rail + feed + gợi ý + kết nối
    ============================================================ */
 .main-column--feed {
@@ -2407,21 +2218,21 @@ img { max-width: 100%; display: block; }
 }
 
 .compose { padding: 16px 20px; }
-.compose__placeholder { font-size: 14px; }
-.btn-post { padding: 8px 16px; }
+.compose__placeholder { font-size: 16px; }
+.btn-post { padding: 11px 22px; font-size: 15.5px; }
 
 .post {
   padding: 16px 20px 18px;
   gap: 12px;
 }
-.post__avatar { width: 36px; height: 36px; }
-.post__username { font-size: 14px; }
-.post__time { font-size: 12px; }
-.post__content { font-size: 14.5px; margin: 5px 0 9px; }
+.post__avatar { width: 38px; height: 38px; }
+.post__username { font-size: 15.5px; }
+.post__time { font-size: 13px; }
+.post__content { font-size: 16px; margin: 5px 0 9px; }
 .post__image { max-height: min(560px, 58vh); border-radius: 12px; }
-.post__actions { gap: 15px; }
-.action svg { width: 19px; height: 19px; }
-.action span { font-size: 12.5px; }
+.post__actions { gap: 22px; }
+.action svg { width: 25px; height: 25px; }
+.action span { font-size: 14.5px; }
 
 /* Cột đề xuất ở giữa: nhẹ hơn rail phải, ưu tiên người có kết nối chung. */
 .feed-suggestions {
@@ -2672,7 +2483,7 @@ img { max-width: 100%; display: block; }
 
 @media (max-width: 1180px) {
   .feed-layout {
-    grid-template-columns: minmax(560px, 1fr) 235px;
+    grid-template-columns: minmax(560px, 1fr) 300px;
     gap: 24px;
   }
   .feed-suggestions { display: block; grid-column: 2; grid-row: 1; }
@@ -2682,7 +2493,7 @@ img { max-width: 100%; display: block; }
 @media (max-width: 980px) {
   .main-column--feed { padding-left: 72px; }
   .main-column--feed .content-inner { padding: 46px 18px 80px; }
-  .feed-layout { grid-template-columns: minmax(0, 1fr) 220px; }
+  .feed-layout { grid-template-columns: minmax(0, 1fr) 260px; }
 }
 
 @media (max-width: 820px) {
@@ -2700,796 +2511,6 @@ img { max-width: 100%; display: block; }
   .feed-main { width: 100%; }
 }
 
-
-/* ============================================================
-   FEED SIDEBAR — collapsed rail, expand on hover like Instagram.
-   It overlays the content instead of pushing the feed horizontally.
-   ============================================================ */
-@media (min-width: 761px) {
-  .page-feed .sidebar.sidebar--feed-collapsed {
-    width: 72px;
-    padding: 16px 8px;
-    align-items: center;
-    border-right: 1px solid #171717;
-    box-shadow: none;
-    transition: width .18s ease, box-shadow .18s ease;
-  }
-
-  .page-feed .sidebar.sidebar--feed-collapsed:hover,
-  .page-feed .sidebar.sidebar--feed-collapsed:focus-within {
-    width: 272px;
-    padding: 22px 14px;
-    align-items: stretch;
-    box-shadow: 18px 0 42px rgba(0,0,0,.32);
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__logo {
-    width: 48px;
-    min-height: 48px;
-    padding: 0;
-    margin: 0 0 24px;
-    justify-content: center;
-    border-radius: 12px;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__logo svg {
-    width: 24px;
-    height: 24px;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__logo span,
-  .page-feed .sidebar--feed-collapsed .sidebar__row > span:not(.sidebar__icon-wrap),
-  .page-feed .sidebar--feed-collapsed .sidebar__section,
-  .page-feed .sidebar--feed-collapsed .sidebar__more > span {
-    display: none;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__nav {
-    width: 48px;
-    gap: 7px;
-    align-items: center;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__row {
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
-    padding: 0;
-    margin: 0;
-    border-radius: 12px;
-    gap: 0;
-    justify-content: center;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__row svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__row img {
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__more {
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
-    margin: auto 0 0;
-  }
-
-  .page-feed .sidebar--feed-collapsed .sidebar__icon-wrap {
-    width: 22px;
-    height: 22px;
-  }
-
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__logo,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__logo {
-    width: auto;
-    min-height: 28px;
-    margin: 0 0 22px;
-    padding: 0 10px;
-    justify-content: flex-start;
-  }
-
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__logo span,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__logo span,
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__row > span:not(.sidebar__icon-wrap),
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__row > span:not(.sidebar__icon-wrap),
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__section,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__section,
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__more > span,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__more > span {
-    display: inline;
-  }
-
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__nav,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__nav {
-    width: auto;
-    gap: 3px;
-    align-items: stretch;
-  }
-
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__row,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__row {
-    width: auto;
-    height: 44px;
-    min-height: 44px;
-    padding: 10px 14px;
-    margin: 0;
-    border-radius: 12px;
-    gap: 14px;
-    justify-content: flex-start;
-  }
-
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__row img,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__row img {
-    width: 22px;
-    height: 22px;
-  }
-
-  .page-feed .sidebar--feed-collapsed:hover .sidebar__more,
-  .page-feed .sidebar--feed-collapsed:focus-within .sidebar__more {
-    width: auto;
-    height: 44px;
-    min-height: 44px;
-    margin-top: auto;
-  }
-}
-
-/* ============================================================
-   FEED LAYOUT — FINAL SPACING / PROPORTION TUNING
-   - Giữ rail trái compact.
-   - Tạo khoảng thở rõ ràng giữa rail → feed → suggestions → connect.
-   - Feed ưu tiên chiều rộng; hai cột phụ thu gọn.
-   - Chừa lề phải để rail kết nối không dính mép màn hình.
-   ============================================================ */
-@media (min-width: 1201px) {
-  .page-feed .main-column--feed {
-    padding-left: 72px;
-  }
-
-  .page-feed .main-column--feed .content-inner {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: clamp(68px, 7vh, 96px) clamp(28px, 3.1vw, 58px) 88px 34px;
-  }
-
-  .page-feed .feed-layout {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    display: grid;
-    grid-template-columns:
-      minmax(650px, clamp(700px, 41vw, 820px))
-      minmax(190px, clamp(205px, 12vw, 245px))
-      minmax(205px, clamp(215px, 12.5vw, 255px));
-    gap: clamp(30px, 2.3vw, 44px);
-    align-items: start;
-    justify-content: start;
-  }
-
-  .page-feed .feed-main {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .page-feed .feed-panel {
-    width: 100%;
-  }
-
-  .page-feed .feed-suggestions {
-    min-width: 0;
-    width: 100%;
-    padding-top: 14px;
-  }
-
-  .page-feed .feed-suggestion {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px;
-    padding-left: 2px;
-    padding-right: 2px;
-  }
-
-  .page-feed .feed-suggestion__profile {
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .page-feed .feed-suggestion__avatar {
-    width: 38px;
-    height: 38px;
-  }
-
-  .page-feed .feed-rail {
-    min-width: 0;
-    width: 100%;
-    padding-top: 14px;
-    padding-right: 4px;
-  }
-
-  .page-feed .feed-rail__card {
-    width: 100%;
-  }
-}
-
-@media (min-width: 1201px) and (max-width: 1500px) {
-  .page-feed .main-column--feed .content-inner {
-    padding-left: 28px;
-    padding-right: 42px;
-  }
-
-  .page-feed .feed-layout {
-    grid-template-columns:
-      minmax(620px, 1fr)
-      minmax(190px, 215px)
-      minmax(195px, 220px);
-    gap: 28px;
-  }
-}
-
-@media (min-width: 1501px) {
-  .page-feed .main-column--feed .content-inner {
-    padding-right: clamp(56px, 4vw, 84px);
-  }
-}
-
-@media (max-width: 1200px) and (min-width: 981px) {
-  .page-feed .main-column--feed .content-inner {
-    padding: 58px 34px 80px 28px;
-  }
-
-  .page-feed .feed-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(195px, 220px);
-    gap: 28px;
-  }
-
-  .page-feed .feed-suggestions {
-    grid-column: 2;
-    grid-row: 1;
-    width: 100%;
-  }
-
-  .page-feed .feed-rail {
-    grid-column: 2;
-    grid-row: 2;
-    width: 100%;
-    padding-top: 8px;
-  }
-}
-
-/* ============================================================
-   FEED TOP BREATHING ROOM — keep all feed columns comfortably
-   below the browser/header edge while preserving responsive fit.
-   ============================================================ */
-@media (min-width: 1201px) {
-  .page-feed .main-column--feed .content-inner {
-    padding-top: clamp(92px, 10vh, 124px);
-  }
-
-  .page-feed .feed-layout {
-    padding-top: 4px;
-  }
-}
-
-@media (max-width: 1200px) and (min-width: 981px) {
-  .page-feed .main-column--feed .content-inner {
-    padding-top: clamp(72px, 8vh, 96px);
-  }
-}
-
-@media (max-width: 980px) and (min-width: 761px) {
-  .page-feed .main-column--feed .content-inner {
-    padding-top: clamp(56px, 7vh, 76px);
-  }
-}
-
-/* ============================================================
-   FEED — FINAL RESPONSIVE BALANCE
-   - Sidebar ngoài cùng chỉ chiếm rail 72px khi thu gọn.
-   - Tạo khoảng thở rõ ràng ở đầu trang.
-   - Feed là vùng co giãn lớn nhất.
-   - Gợi ý + Kết nối giữ chiều rộng gọn và ổn định.
-   - Dùng hết không gian ngang khả dụng, tránh dư khoảng trắng lớn
-     bên phải hoặc ép các cột dính sát nhau.
-   ============================================================ */
-@media (min-width: 1201px) {
-  .page-feed .main-column--feed {
-    padding-left: 72px;
-  }
-
-  .page-feed .main-column--feed .content-inner {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding-top: clamp(104px, 11vh, 138px);
-    padding-right: clamp(20px, 1.8vw, 34px);
-    padding-bottom: 88px;
-    padding-left: clamp(28px, 2vw, 40px);
-  }
-
-  .page-feed .feed-layout {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    display: grid;
-    grid-template-columns: minmax(680px, 1fr) minmax(195px, 220px) minmax(200px, 225px);
-    column-gap: clamp(28px, 2.15vw, 42px);
-    row-gap: 32px;
-    align-items: start;
-    justify-content: stretch;
-  }
-
-  .page-feed .feed-main,
-  .page-feed .feed-panel,
-  .page-feed .feed-suggestions,
-  .page-feed .feed-rail {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .page-feed .feed-suggestions,
-  .page-feed .feed-rail {
-    padding-top: 8px;
-  }
-}
-
-/* Máy trung bình: giữ 2 khu phụ trong cùng một rail bên phải,
-   nhưng không bóp feed quá nhỏ. */
-@media (max-width: 1200px) and (min-width: 981px) {
-  .page-feed .main-column--feed .content-inner {
-    padding: clamp(82px, 9vh, 108px) 28px 80px;
-  }
-
-  .page-feed .feed-layout {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 28px;
-  }
-
-  .page-feed .feed-suggestions {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .page-feed .feed-rail {
-    grid-column: 2;
-    grid-row: 2;
-    padding-top: 2px;
-  }
-}
-
-/* Mobile/tablet hẹp: ưu tiên nội dung feed. */
-@media (max-width: 980px) {
-  .page-feed .main-column--feed .content-inner {
-    padding-top: clamp(64px, 8vh, 88px);
-  }
-}
-
-/* ============================================================
-   FEED V6 — breathing room around the whole desktop composition
-   ============================================================ */
-.page-chat .main-column--feed,
-.main-column--feed {
-  padding-left: 72px;
-  padding-right: clamp(22px, 3.2vw, 56px);
-}
-
-.main-column--feed .content-inner {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding-top: clamp(88px, 11vh, 150px);
-  padding-right: clamp(18px, 2.2vw, 34px);
-  padding-bottom: 88px;
-  padding-left: clamp(22px, 2.8vw, 46px);
-}
-
-.feed-page {
-  width: 100%;
-  min-width: 0;
-}
-
-.feed-layout {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(185px, 0.28fr) minmax(200px, 0.30fr);
-  gap: clamp(28px, 2.6vw, 44px);
-  align-items: start;
-}
-
-.feed-main {
-  min-width: 0;
-  width: 100%;
-  max-width: none;
-}
-
-.feed-page__header {
-  margin: 0 0 18px;
-  padding: 0 2px;
-}
-
-/* Keep the main feed visually dominant without becoming cramped. */
-.feed-panel {
-  width: 100%;
-}
-
-.feed-suggestions,
-.feed-rail {
-  width: 100%;
-  min-width: 0;
-}
-
-@media (min-width: 1600px) {
-  .main-column--feed .content-inner {
-    padding-left: clamp(28px, 3vw, 56px);
-    padding-right: clamp(24px, 2.6vw, 52px);
-  }
-
-  .feed-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(190px, 0.27fr) minmax(210px, 0.29fr);
-    gap: clamp(34px, 2.8vw, 48px);
-  }
-}
-
-@media (max-width: 1420px) {
-  .main-column--feed .content-inner {
-    padding-top: clamp(78px, 10vh, 126px);
-    padding-left: clamp(20px, 2.2vw, 34px);
-    padding-right: clamp(18px, 2vw, 30px);
-  }
-
-  .feed-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.29fr) minmax(190px, 0.31fr);
-    gap: clamp(24px, 2.2vw, 34px);
-  }
-}
-
-@media (max-width: 1180px) {
-  .main-column--feed .content-inner {
-    padding-top: clamp(70px, 9vh, 110px);
-    padding-left: 22px;
-    padding-right: 20px;
-  }
-}
-
-@media (max-width: 820px) {
-  .main-column--feed .content-inner {
-    padding-top: 62px;
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-}
-
-@media (max-width: 640px) {
-  .main-column--feed .content-inner {
-    padding-top: 46px;
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-}
-
-/* ============================================================
-   FEED — FINAL TOP/LEFT SPACING
-   Tạo khoảng thở giữa nội dung feed và mép trên/trái màn hình.
-   Đặt ở cuối file để ghi đè các rule feed trước đó.
-   ============================================================ */
-@media (min-width: 1201px) {
-  body.page-feed .main-column--feed .content-inner {
-    padding-top: 32px;
-    padding-left: 28px;
-  }
-}
-
-@media (max-width: 1200px) and (min-width: 981px) {
-  body.page-feed .main-column--feed .content-inner {
-    padding-top: 28px;
-    padding-left: 24px;
-  }
-}
-
-@media (max-width: 980px) {
-  body.page-feed .main-column--feed .content-inner {
-    padding-top: 24px;
-    padding-left: 18px;
-  }
-}
-
-/* ============================================================
-   FEED UI — FINAL POLISH
-   Mục tiêu: thoáng hơn, cân đối 3 cột, card đẹp hơn và rõ hierarchy.
-   Đặt ở cuối file để override toàn bộ các rule feed cũ.
-   ============================================================ */
-
-@media (min-width: 1201px) {
-  .page-feed .main-column--feed {
-    padding-left: 72px;
-    padding-right: 0;
-    min-width: 0;
-  }
-
-  .page-feed .main-column--feed .content-inner {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 48px 34px 88px;
-  }
-
-  .page-feed .feed-layout {
-    width: min(100%, 1620px);
-    margin: 0 auto;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 220px 250px;
-    column-gap: 34px;
-    row-gap: 28px;
-    align-items: start;
-  }
-
-  .page-feed .feed-main {
-    min-width: 0;
-  }
-
-  .page-feed .feed-page__header {
-    margin: 0 0 18px;
-    padding: 0 4px;
-  }
-
-  .page-feed .feed-page__header h1 {
-    font-size: 24px;
-    font-weight: 750;
-    letter-spacing: -.035em;
-  }
-
-  .page-feed .feed-page__subtitle {
-    margin-top: 6px;
-    font-size: 12px;
-    color: #737373;
-  }
-
-  .page-feed .feed-panel {
-    background:
-      linear-gradient(180deg, rgba(28,28,28,.97), rgba(20,20,20,.97));
-    border: 1px solid #2a2a2a;
-    border-radius: 18px;
-    box-shadow: 0 14px 40px rgba(0,0,0,.18);
-    overflow: hidden;
-  }
-
-  .page-feed .compose {
-    min-height: 70px;
-    padding: 15px 18px;
-    border-bottom: 1px solid #252525;
-    background: rgba(255,255,255,.015);
-  }
-
-  .page-feed .compose__avatar {
-    width: 36px;
-    height: 36px;
-    border: 1px solid #303030;
-  }
-
-  .page-feed .compose__body {
-    min-width: 0;
-    padding: 0 4px;
-  }
-
-  .page-feed .compose__placeholder {
-    min-height: 38px;
-    padding: 8px 12px;
-    border: 1px solid #252525;
-    border-radius: 12px;
-    background: #151515;
-    color: #767676;
-    transition: border-color .15s ease, background .15s ease;
-  }
-
-  .page-feed .compose__placeholder:hover,
-  .page-feed .compose__placeholder:focus {
-    background: #181818;
-    border-color: #383838;
-  }
-
-  .page-feed .btn-post {
-    min-width: 58px;
-    padding: 9px 15px;
-    background: #f0f0f0;
-    color: #111;
-    font-size: 12px;
-    box-shadow: none;
-  }
-
-  .page-feed .post {
-    padding: 18px 18px 20px;
-    gap: 12px;
-    transition: background .15s ease;
-  }
-
-  .page-feed .post + .post {
-    border-top: 1px solid #252525;
-  }
-
-  .page-feed .post:hover {
-    background: rgba(255,255,255,.012);
-  }
-
-  .page-feed .post__avatar {
-    width: 38px;
-    height: 38px;
-    border: 1px solid #303030;
-  }
-
-  .page-feed .post__body {
-    min-width: 0;
-  }
-
-  .page-feed .post__header {
-    min-height: 24px;
-  }
-
-  .page-feed .post__username {
-    font-size: 13.5px;
-    font-weight: 700;
-  }
-
-  .page-feed .post__time {
-    font-size: 11px;
-    color: #676767;
-  }
-
-  .page-feed .post__content {
-    margin: 6px 0 11px;
-    font-size: 14px;
-    line-height: 1.55;
-    color: #e8e8e8;
-  }
-
-  .page-feed .post__image {
-    width: 100%;
-    max-height: 620px;
-    margin-top: 10px;
-    border-radius: 14px;
-    object-fit: cover;
-    border: 1px solid #2c2c2c;
-    background: #0e0e0e;
-  }
-
-  .page-feed .post__actions {
-    gap: 16px;
-    margin-top: 10px;
-  }
-
-  .page-feed .action {
-    color: #727272;
-    transition: color .15s ease, transform .15s ease;
-  }
-
-  .page-feed .action:hover {
-    color: #d6d6d6;
-    transform: translateY(-1px);
-  }
-
-  .page-feed .action--like.is-liked {
-    color: var(--accent-like);
-  }
-
-  .page-feed .feed-suggestions,
-  .page-feed .feed-rail {
-    position: sticky;
-    top: 28px;
-    padding-top: 4px;
-  }
-
-  .page-feed .feed-suggestions__head,
-  .page-feed .feed-rail__header {
-    margin-bottom: 12px;
-  }
-
-  .page-feed .feed-suggestion,
-  .page-feed .feed-group-item,
-  .page-feed .feed-friend-item {
-    padding-top: 9px;
-    padding-bottom: 9px;
-    border-radius: 12px;
-  }
-
-  .page-feed .feed-suggestion:hover,
-  .page-feed .feed-group-item:hover,
-  .page-feed .feed-friend-item:hover {
-    background: #151515;
-  }
-
-  .page-feed .feed-rail__card + .feed-rail__card {
-    margin-top: 18px;
-    padding-top: 18px;
-    border-top-color: #252525;
-  }
-}
-
-@media (max-width: 1200px) and (min-width: 821px) {
-  .page-feed .main-column--feed .content-inner {
-    padding: 38px 26px 80px;
-  }
-
-  .page-feed .feed-layout {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: 26px;
-  }
-
-  .page-feed .feed-suggestions,
-  .page-feed .feed-rail {
-    position: static;
-  }
-
-  .page-feed .feed-panel {
-    border-radius: 16px;
-  }
-}
-
-@media (max-width: 820px) {
-  .page-feed .main-column--feed .content-inner {
-    padding: 28px 16px 76px;
-  }
-
-  .page-feed .feed-layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-  }
-
-  .page-feed .feed-suggestions,
-  .page-feed .feed-rail {
-    position: static;
-  }
-
-  .page-feed .feed-panel {
-    border-radius: 14px;
-  }
-}
-
-@media (max-width: 640px) {
-  .page-feed .main-column--feed .content-inner {
-    padding: 22px 10px 72px;
-  }
-
-  .page-feed .feed-page__header {
-    padding: 0 2px;
-    margin-bottom: 14px;
-  }
-
-  .page-feed .feed-page__header h1 {
-    font-size: 21px;
-  }
-
-  .page-feed .feed-panel {
-    border-radius: 13px;
-  }
-
-  .page-feed .compose {
-    padding: 13px 12px;
-  }
-
-  .page-feed .compose__placeholder {
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-
-  .page-feed .post {
-    padding: 15px 12px 17px;
-  }
-
-  .page-feed .post__image {
-    border-radius: 11px;
-  }
-}
-
-/* ============================================================
-   KHOẢNG THỞ MÉP TRÊN / MÉP TRÁI — áp dụng cho toàn bộ trang
-   Đặt ở cuối file để đảm bảo thắng mọi rule .content-inner phía trên.
-   Không đụng đến .content-inner--chat (trang chat tự quản lý layout
-   full-height riêng, đã có padding đối xứng 18px sẵn).
-   ============================================================ */
 
 /* Các trang thường: hoạt động, tìm kiếm, hồ sơ, soạn bài viết... */
 .content-inner:not(.content-inner--chat) {
@@ -4407,3 +3428,592 @@ section.content-inner--profile,
 @media (max-width: 420px) {
   .profile-view span { font-size: 11px; }
 }
+
+/* ============================================================
+   ALOUTE COMMUNITY — search + compact list UI
+   ============================================================ */
+.community-page--list {
+  max-width: 980px;
+  padding-bottom: 110px;
+}
+
+.community-page--list .page-header { margin-bottom: 20px; }
+.community-page--list .page-header__sub { margin: 5px 0 0; color: var(--text-secondary); font-size: 14px; }
+
+.community-explorer {
+  background: #161616;
+  border: 1px solid #292929;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.community-explorer__search-wrap {
+  padding: 16px;
+  border-bottom: 1px solid #252525;
+  background: #141414;
+}
+.community-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #2d2d2d;
+  border-radius: 12px;
+  background: #1d1d1d;
+}
+.community-search:focus-within {
+  border-color: #444;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.035);
+}
+.community-search svg { width: 18px; height: 18px; color: #777; flex: 0 0 auto; }
+.community-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+}
+.community-search input::placeholder { color: #707070; }
+.community-search__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: #303030;
+  color: #ddd;
+  flex: 0 0 auto;
+}
+.community-search__clear[hidden] { display: none; }
+.community-search__clear svg { width: 14px; height: 14px; color: currentColor; }
+
+.community-list-section { padding: 10px 12px 14px; }
+.community-list-section + .community-list-section { border-top: 1px solid #252525; }
+.community-list-section__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 10px;
+}
+.community-list-section__header h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -.01em;
+}
+.community-list-section__header p { margin: 0; color: #707070; font-size: 12px; }
+.community-list-section__header[hidden] { display: none; }
+
+.community-list {
+  display: flex;
+  flex-direction: column;
+}
+.community-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 10px;
+  border-radius: 13px;
+  background: transparent;
+  text-decoration: none;
+  transition: background .14s ease;
+}
+.community-card + .community-card { border-top: 1px solid rgba(255,255,255,.045); }
+.community-card:hover { background: #1e1e1e; }
+.community-card__avatar {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 64px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #252525;
+  color: #ddd;
+  font-size: 22px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.community-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.community-card__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-decoration: none;
+}
+.community-card__body strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15.5px;
+  line-height: 1.3;
+}
+.community-card__meta {
+  color: #a1a1a1;
+  font-size: 13px;
+}
+.community-card__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: #747474;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.community-card__action {
+  width: auto;
+  min-width: 92px;
+  padding: 9px 14px;
+  margin: 0;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.community-card__badge {
+  justify-self: end;
+  padding: 5px 9px;
+  border: 1px solid #3c3c3c;
+  border-radius: 999px;
+  color: #bdbdbd;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.community-card__join.is-joined { color: #e2e2e2; }
+.community-card__join.is-joined:hover { background: #2a2a2a; }
+
+.community-search-results[hidden],
+.community-empty[hidden] { display: none; }
+.community-search-results { padding: 10px 12px 14px; }
+.community-search-results__state {
+  padding: 32px 12px;
+  color: #777;
+  text-align: center;
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .community-page--list { padding-left: 12px; padding-right: 12px; }
+  .community-card { grid-template-columns: 52px minmax(0,1fr); gap: 12px; }
+  .community-card__avatar { width: 52px; height: 52px; flex-basis: 52px; border-radius: 12px; }
+  .community-card__action,
+  .community-card__badge { grid-column: 2; justify-self: start; margin-top: 4px; }
+}
+
+/* ============================================================
+   ALOUTE CHAT — scroll hardening
+   Grid/flex children default to min-height:auto, which can make the
+   scroll container grow instead of scrolling. Explicit min-height:0
+   keeps both the conversation list and message pane inside the viewport.
+   ============================================================ */
+.page-chat { overflow: hidden; }
+.page-chat .main-column { min-width: 0; min-height: 100vh; overflow: hidden; }
+.content-inner--chat { min-height: 0; overflow: hidden; }
+.chat-shell { min-height: 0; }
+.chat-list { min-height: 0; height: 100%; overflow: hidden; }
+.chat-list__scroll {
+  min-height: 0;
+  height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+.chat-thread { min-height: 0; height: 100%; overflow: hidden; }
+.chat-thread__messages {
+  min-height: 0;
+  height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+.chat-details { min-height: 0; }
+
+
+
+
+/* ============================================================
+   Desktop rail + feed layout
+   This is the single implementation for collapsed Feed/Chat navigation.
+   ============================================================ */
+
+/* ---------- Sidebar: fixed 72px rail, panel-only expansion ---------- */
+@media (min-width: 761px) {
+  body.page-feed .sidebar.sidebar--feed-collapsed,
+  body.page-chat .sidebar.sidebar--chat-collapsed {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    transition: none !important;
+    z-index: 5000 !important;
+    isolation: isolate !important;
+  }
+
+  /* Host/rail NEVER grows on hover. */
+  body.page-feed .sidebar.sidebar--feed-collapsed:hover,
+  body.page-feed .sidebar.sidebar--feed-collapsed:focus-within,
+  body.page-chat .sidebar.sidebar--chat-collapsed:hover,
+  body.page-chat .sidebar.sidebar--chat-collapsed:focus-within {
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed::before,
+  body.page-feed .sidebar.sidebar--feed-collapsed::after,
+  body.page-chat .sidebar.sidebar--chat-collapsed::before,
+  body.page-chat .sidebar.sidebar--chat-collapsed::after {
+    content: none !important;
+    display: none !important;
+    pointer-events: none !important;
+  }
+
+  /* Only this panel is allowed to expand. JS toggles .is-expanded. */
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__panel,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__panel {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 16px 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #000 !important;
+    border-right: 1px solid #171717 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transition: width .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s ease !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__panel,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__panel {
+    width: 272px !important;
+    min-width: 272px !important;
+    max-width: 272px !important;
+    box-shadow: 18px 0 48px rgba(0,0,0,.34) !important;
+  }
+
+  /* Fixed icon anchor: x=24px in both states. */
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__logo,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__logo {
+    position: relative !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    flex: 0 0 48px !important;
+    margin: 0 0 24px !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: hidden !important;
+    border-radius: 12px !important;
+    white-space: nowrap !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__logo,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__logo {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__logo > svg,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__logo > svg {
+    position: absolute !important;
+    left: 12px !important;
+    top: 50% !important;
+    width: 24px !important;
+    height: 24px !important;
+    margin: 0 !important;
+    transform: translateY(-50%) !important;
+  }
+
+  /* Nav rows remain 48px-wide while collapsed. */
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__nav,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__nav {
+    position: relative !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    flex: 0 0 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 7px !important;
+    overflow: hidden !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__nav,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__nav {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row {
+    position: relative !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    flex: 0 0 48px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    display: block !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__row,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__row {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+  }
+
+  /* Hover cannot alter row geometry; only active/hover background is allowed. */
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row:hover,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row:hover { 
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__row:hover,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__row:hover {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > svg,
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > img,
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > .sidebar__icon-wrap,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > svg,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > img,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > .sidebar__icon-wrap {
+    position: absolute !important;
+    left: 12px !important;
+    top: 50% !important;
+    width: 24px !important;
+    height: 24px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: translateY(-50%) !important;
+    flex: none !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > img,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > img {
+    border-radius: 50% !important;
+    object-fit: cover !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > .sidebar__icon-wrap,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > .sidebar__icon-wrap {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__logo > span,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__logo > span,
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > span:not(.sidebar__icon-wrap),
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > span:not(.sidebar__icon-wrap) {
+    position: absolute !important;
+    left: 56px !important;
+    top: 50% !important;
+    width: auto !important;
+    max-width: 180px !important;
+    margin: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(-50%) !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__logo > span,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__logo > span,
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__row > span:not(.sidebar__icon-wrap),
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__row > span:not(.sidebar__icon-wrap) {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__section,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__section {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-height: 120px !important;
+    margin-top: 22px !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__section,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__section {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  /* Following has no icon, so align its text with the labels of icon rows. */
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__section-head,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__section-head {
+    padding-left: 56px !important;
+    padding-right: 0 !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row--sub,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row--sub {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 0 12px 0 56px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__more,
+  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__more {
+    position: relative !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    flex: 0 0 48px !important;
+    margin-top: auto !important;
+  }
+  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__more,
+  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__more {
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+  }
+
+  body.page-feed .main-column--feed,
+  body.page-chat .main-column {
+    padding-left: 72px !important;
+    min-width: 0 !important;
+  }
+}
+
+/* ---------- Feed: one desktop grid; responsive fallbacks below ---------- */
+@media (min-width: 1400px) {
+  body.page-feed .main-column--feed .content-inner {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: clamp(58px, 7vh, 92px) 20px 88px 30px !important;
+    min-width: 0 !important;
+  }
+  body.page-feed .feed-layout {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(760px, 1fr) 220px 250px !important;
+    column-gap: 24px !important;
+    row-gap: 28px !important;
+    align-items: start !important;
+    justify-content: start !important;
+  }
+  body.page-feed .feed-main,
+  body.page-feed .feed-suggestions,
+  body.page-feed .feed-rail {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  body.page-feed .feed-suggestions,
+  body.page-feed .feed-rail { padding-top: 6px !important; }
+  body.page-feed .feed-panel { width: 100% !important; }
+}
+
+@media (min-width: 981px) and (max-width: 1399px) {
+  body.page-feed .main-column--feed .content-inner {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 42px 24px 80px 28px !important;
+  }
+  body.page-feed .feed-layout {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 290px !important;
+    gap: 26px !important;
+  }
+  body.page-feed .feed-suggestions { grid-column: 2 !important; grid-row: 1 !important; }
+  body.page-feed .feed-rail { grid-column: 2 !important; grid-row: 2 !important; }
+}
+
+@media (max-width: 980px) {
+  body.page-feed .main-column--feed .content-inner { padding: 30px 16px 72px !important; }
+  body.page-feed .feed-layout { grid-template-columns: minmax(0, 1fr) !important; gap: 22px !important; }
+  body.page-feed .feed-suggestions,
+  body.page-feed .feed-rail { grid-column: auto !important; grid-row: auto !important; }
+}
+
+@media (max-width: 760px) {
+  body.page-feed .main-column--feed,
+  body.page-chat .main-column { padding-left: 0 !important; }
+}
+
+/* Navigation progress bar. */
+.page-nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  z-index: 99999;
+  background: #fff;
+  opacity: 0;
+  transition: width .28s ease, opacity .18s ease;
+  pointer-events: none;
+}
+.page-nav-progress.is-active { width: 72%; opacity: .92; }

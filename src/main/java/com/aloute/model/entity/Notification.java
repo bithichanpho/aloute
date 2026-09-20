@@ -21,6 +21,14 @@ public class Notification {
     @Column(name = "sender_id")
     private Long senderId; // nullable — null nếu là thông báo hệ thống
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "receiver_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User receiver;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User sender;
+
     @Column(nullable = false, length = 30)
     private String type; // LIKE, COMMENT, FOLLOW, MESSAGE, MODERATION
 
@@ -55,6 +63,10 @@ public class Notification {
     public void setReceiverId(Long receiverId) {
         this.receiverId = receiverId;
     }
+
+    public User getReceiver() { return receiver; }
+
+    public User getSender() { return sender; }
 
     public Long getSenderId() {
         return senderId;

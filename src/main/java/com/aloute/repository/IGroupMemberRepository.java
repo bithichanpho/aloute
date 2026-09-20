@@ -12,6 +12,12 @@ public interface IGroupMemberRepository extends JpaRepository<GroupMember, Long>
 
     List<GroupMember> findByUserId(Long userId);
 
+    /** Batch lookup: ứng viên nào thuộc các nhóm được truyền vào. */
+    List<GroupMember> findByUserIdAndGroupIdIn(Long userId, java.util.Collection<Long> groupIds);
+
+    /** Batch lookup for a small set of candidate users across the current user's groups. */
+    List<GroupMember> findByUserIdInAndGroupIdIn(java.util.Collection<Long> userIds, java.util.Collection<Long> groupIds);
+
     Optional<GroupMember> findByGroupIdAndUserId(Long groupId, Long userId);
 
     boolean existsByGroupIdAndUserId(Long groupId, Long userId);

@@ -7,7 +7,7 @@ import jakarta.persistence.*;
 @Entity
 @Table(name = "friends",
         uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"follower_id", "followed_id"})
+                @UniqueConstraint(name = "uk_friends_follower_followed", columnNames = {"follower_id", "followed_id"})
         },
         // Hai chiều tra cứu nóng nhất: "tôi đang follow ai" và "ai đang follow tôi".
         // Thiếu index, mỗi lần dựng feed/gợi ý là một lần quét toàn bảng.
@@ -26,6 +26,14 @@ public class Friend {
 
     @Column(name = "followed_id", nullable = false)
     private Long followedId;   // người được follow
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "follower_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User follower;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "followed_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User followed;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -63,6 +71,10 @@ public class Friend {
     public void setFollowedId(Long followedId) {
         this.followedId = followedId;
     }
+
+    public User getFollower() { return follower; }
+
+    public User getFollowed() { return followed; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

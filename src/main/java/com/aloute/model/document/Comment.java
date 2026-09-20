@@ -8,7 +8,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @Document(collection = "comments")
 @org.springframework.data.mongodb.core.index.CompoundIndexes({
     @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_post_created", def = "{'postId': 1, 'createdAt': 1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_parent_created", def = "{'parentCommentId': 1, 'createdAt': 1}")
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_parent_created", def = "{'parentCommentId': 1, 'createdAt': 1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_user_created", def = "{'userId': 1, 'createdAt': -1}")
 })
 public class Comment {
 

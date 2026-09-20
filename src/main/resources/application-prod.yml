@@ -1,15 +1,26 @@
 # Production profile for a persistent Windows/Docker deployment using Supabase Postgres.
 spring:
+  thymeleaf:
+    cache: ${THYMELEAF_CACHE:true}
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${DB_POOL_MAX_SIZE:3}
-      minimum-idle: ${DB_POOL_MIN_IDLE:0}
-      connection-timeout: ${DB_CONNECTION_TIMEOUT:30000}
-      idle-timeout: ${DB_IDLE_TIMEOUT:30000}
+      # maximum-pool-size: chỉnh theo giới hạn connection của gói Supabase đang dùng
+      # (free tier thường giới hạn khá thấp) — đừng đặt cao hơn giới hạn đó.
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      # minimum-idle > 0: LUÔN giữ sẵn ít nhất 1 kết nối "ấm" thay vì để pool rỗng khi
+      # không có request nào. Với minimum-idle=0 (giá trị cũ), request đầu tiên sau một
+      # lúc idle phải bắt tay TCP + SSL handshake tới Supabase TỪ ĐẦU trước khi chạy được
+      # câu query đầu tiên — đây là nguyên nhân chính gây cảm giác "load chậm giật cục"
+      # ở request đầu tiên sau mỗi lần rảnh.
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      # Giảm từ 30s xuống 10s: pool chỉ có vài connection, nếu bị chiếm hết thì nên báo lỗi
+      # nhanh và rõ ràng thay vì bắt người dùng chờ tới 30 giây trong im lặng.
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:10000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:300000}
   jpa:
     hibernate:
       ddl-auto: ${DB_DDL_AUTO:update}
@@ -50,10 +61,14 @@ cloudinary:
   api-secret: ${CLOUDINARY_API_SECRET}
 
 app:
+  seed:
+    demo-data: ${ALOUTE_SEED_DEMO_DATA:false}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:8080}
   security:
-    cookie-secure: ${APP_COOKIE_SECURE:false}
+    # Mặc định true ở profile prod: cookie ALOUTE_TOKEN chỉ được trình duyệt gửi qua HTTPS.
+    # Chỉ đặt APP_COOKIE_SECURE=false nếu chắc chắn server prod đang chạy HTTP thuần (không khuyến khích).
+    cookie-secure: ${APP_COOKIE_SECURE:true}
   mail:
     from: ${MAIL_FROM:ALOUTE <no-reply@example.com>}
     frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:8080}

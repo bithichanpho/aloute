@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "group_members", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"group_id", "user_id"})
+        @UniqueConstraint(name = "uk_group_members_group_user", columnNames = {"group_id", "user_id"})
 })
 public class GroupMember {
 
@@ -19,6 +19,14 @@ public class GroupMember {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "group_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private ChatGroup group;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User user;
 
     @Column(nullable = false, length = 20)
     private String role = "MEMBER"; // ADMIN | MEMBER
@@ -60,6 +68,10 @@ public class GroupMember {
     public void setUserId(Long userId) {
         this.userId = userId;
     }
+
+    public ChatGroup getGroup() { return group; }
+
+    public User getUser() { return user; }
 
     public String getRole() {
         return role;

@@ -41,6 +41,21 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .headers(headers -> headers
+                // Không cho trang bị nhúng trong <iframe> của site KHÁC -> chặn clickjacking.
+                // Dùng sameOrigin (không phải deny) để không ảnh hưởng SockJS iframe fallback
+                // (chỉ kích hoạt trên trình duyệt rất cũ không hỗ trợ WebSocket/XHR streaming).
+                .frameOptions(frame -> frame.sameOrigin())
+                // Không để trình duyệt tự "đoán" content-type khác với header Content-Type thật sự.
+                .contentTypeOptions(contentType -> {})
+                // Không gửi kèm URL đầy đủ của trang hiện tại khi bấm link sang site khác.
+                .referrerPolicy(referrer -> referrer
+                        .policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                // HSTS: sau lần truy cập HTTPS đầu tiên, trình duyệt tự động chuyển các lần
+                // sau sang HTTPS luôn, kể cả khi người dùng gõ http:// hoặc bấm link http.
+                .httpStrictTransportSecurity(hsts -> hsts
+                        .includeSubDomains(true)
+                        .maxAgeInSeconds(31536000)))
             .authorizeHttpRequests(auth -> auth
                 // Trang giao diện (HTML) + tài nguyên tĩnh: luôn công khai.
                 // ViewController tự kiểm tra đăng nhập và redirect về /login nếu cần

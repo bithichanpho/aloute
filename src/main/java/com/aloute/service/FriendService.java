@@ -61,11 +61,8 @@ public class FriendService {
                 && friendRepository.existsByFollowerIdAndFollowedId(userIdB, userIdA);
     }
 
-    /** Danh sách userId đang follow lẫn nhau với userId — dùng để hiện "Bạn bè" trong phần tin nhắn. */
+    /** Danh sách userId đang follow lẫn nhau với userId — 1 query DB. */
     public List<Long> getMutualFriendIds(Long userId) {
-        Set<Long> followerSet = new HashSet<>(getFollowerIds(userId));
-        return getFollowingIds(userId).stream()
-                .filter(followerSet::contains)
-                .collect(Collectors.toList());
+        return friendRepository.findMutualFollowedIds(userId);
     }
 }

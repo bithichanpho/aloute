@@ -85,6 +85,18 @@ public class DiscoveryService {
      * Trước đây phần này tốn ~9 query × (số user trong DB).
      */
     public List<UserProfileDto> getSuggestedUsers(Long currentUserId, int limit) {
+        // Không có sẵn danh sách nhóm (vd: gọi từ SearchController) -> tự query.
+        // Nơi nào ĐÃ có sẵn (vd: ViewController.feed() đã load feedGroups) nên gọi
+        // overload bên dưới để khỏi tốn thêm 1 query trùng lặp.
+        return getSuggestedUsers(currentUserId, limit, null);
+    }
+
+    /**
+     * @param myGroups Danh sách nhóm hiện tại của user, nếu trang gọi đã tải sẵn (vd trang /feed
+     *                 đã cần feedGroups cho rail bên phải). Truyền null nếu chưa có, hàm sẽ tự query.
+     *                 Tránh được việc gọi groupService.getMyGroups() 2 lần trong cùng 1 request.
+     */
+    public List<UserProfileDto> getSuggestedUsers(Long currentUserId, int limit, List<ChatGroup> myGroups) {
         if (currentUserId == null) {
             return Collections.emptyList();
         }
@@ -140,21 +152,30 @@ public class DiscoveryService {
         // ~5 query: dựng hồ sơ cho đúng `size` người
         List<UserProfileDto> suggestions = userService.getProfiles(ranked, currentUserId);
 
-        // 1 query: các nhóm mình đang tham gia (để giải thích "Chung nhóm với bạn")
-        Set<Long> myGroupIds = groupService.getMyGroups(currentUserId).stream()
+        // Các nhóm mình đang tham gia (để giải thích "Chung nhóm với bạn").
+        // Chỉ query nếu chưa được truyền sẵn từ nơi gọi (xem javadoc tham số myGroups).
+        List<ChatGroup> groups = myGroups != null ? myGroups : groupService.getMyGroups(currentUserId);
+        Set<Long> myGroupIds = groups.stream()
                 .map(ChatGroup::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
+        Set<Long> candidatesInMyGroups = Collections.emptySet();
+        if (!myGroupIds.isEmpty() && !suggestions.isEmpty()) {
+            candidatesInMyGroups = groupMemberRepository.findByUserIdInAndGroupIdIn(
+                    suggestions.stream().map(UserProfileDto::getId).collect(Collectors.toList()), myGroupIds)
+                    .stream().map(gm -> gm.getUserId()).collect(Collectors.toSet());
+        }
+
         for (UserProfileDto suggestion : suggestions) {
             suggestion.setSuggestionReason(
-                    buildReason(suggestion.getId(), commonFriendCount, followerSet, myGroupIds));
+                    buildReason(suggestion.getId(), commonFriendCount, followerSet, myGroupIds, candidatesInMyGroups));
         }
         return suggestions;
     }
 
     private String buildReason(Long userId, Map<Long, Integer> commonFriendCount,
-            Set<Long> followerSet, Set<Long> myGroupIds) {
+            Set<Long> followerSet, Set<Long> myGroupIds, Set<Long> candidatesInMyGroups) {
 
         int common = commonFriendCount.getOrDefault(userId, 0);
         if (common > 0) {
@@ -163,8 +184,7 @@ public class DiscoveryService {
         if (followerSet.contains(userId)) {
             return "Đang theo dõi bạn";
         }
-        boolean sameGroup = !myGroupIds.isEmpty() && myGroupIds.stream()
-                .anyMatch(groupId -> groupMemberRepository.existsByGroupIdAndUserId(groupId, userId));
+        boolean sameGroup = candidatesInMyGroups.contains(userId);
         if (sameGroup) {
             return "Chung nhóm với bạn";
         }
@@ -190,7 +210,7 @@ public class DiscoveryService {
 
     private List<TrendingTopicDto> computeTrendingTopics(int size) {
         List<Post> posts = postRepository
-                .findAllByOrderByCreatedAtDesc(PageRequest.of(0, TRENDING_SCAN_SIZE))
+                .findAllOriginalsByOrderByCreatedAtDesc(PageRequest.of(0, TRENDING_SCAN_SIZE))
                 .stream()
                 .filter(p -> p.getModerationStatus() != ModerationStatus.HIDDEN)
                 .filter(p -> p.getContent() != null && !p.getContent().isBlank())

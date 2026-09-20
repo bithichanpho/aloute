@@ -15,8 +15,16 @@ public final class AvatarUtil {
     private AvatarUtil() {
     }
 
-    /** Trả về avatar của người dùng, hoặc ảnh mặc định nếu chưa có / rỗng. */
+    /**
+     * Trả về avatar của người dùng, hoặc ảnh mặc định nếu chưa có / rỗng.
+     * Ảnh Cloudinary được resize + nén nhẹ (150x150, tự chọn định dạng theo trình duyệt)
+     * ngay tại đây — vì đây là nơi DUY NHẤT mọi DTO đi qua để lấy avatar, sửa 1 chỗ
+     * là toàn bộ trang (feed, profile, chat, gợi ý kết bạn...) đều nhẹ hơn.
+     */
     public static String resolve(String avatarUrl) {
-        return (avatarUrl == null || avatarUrl.isBlank()) ? DEFAULT_AVATAR : avatarUrl;
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            return DEFAULT_AVATAR;
+        }
+        return CloudinaryUrlUtil.avatar(avatarUrl);
     }
 }

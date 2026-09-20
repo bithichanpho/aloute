@@ -8,6 +8,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document(collection = "likes")
 @CompoundIndex(name = "post_user_unique", def = "{'postId': 1, 'userId': 1}", unique = true)
+@CompoundIndex(name = "like_user_created", def = "{'userId': 1, 'createdAt': -1}")
 public class Like {
 
     @Id
@@ -17,6 +18,14 @@ public class Like {
     private String userId;
     private LocalDateTime createdAt;
 
+    /**
+     * Loại reaction: LIKE, LOVE, HAHA, WOW, SAD, ANGRY (kiểu Facebook).
+     * Các bản ghi TẠO TRƯỚC khi có tính năng này sẽ có giá trị null trong DB —
+     * {@link #getReactionType()} tự trả về "LIKE" cho trường hợp đó để tương thích ngược,
+     * không cần chạy migration dữ liệu cũ.
+     */
+    private String reactionType;
+
     public Like() {
         this.createdAt = LocalDateTime.now();
     }
@@ -24,6 +33,14 @@ public class Like {
     public Like(String postId, String userId) {
         this.postId = postId;
         this.userId = userId;
+        this.reactionType = "LIKE";
+        this.createdAt = LocalDateTime.now();
+    }
+
+    public Like(String postId, String userId, String reactionType) {
+        this.postId = postId;
+        this.userId = userId;
+        this.reactionType = reactionType == null ? "LIKE" : reactionType;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -57,5 +74,13 @@ public class Like {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getReactionType() {
+        return reactionType == null ? "LIKE" : reactionType;
+    }
+
+    public void setReactionType(String reactionType) {
+        this.reactionType = reactionType;
     }
 }
