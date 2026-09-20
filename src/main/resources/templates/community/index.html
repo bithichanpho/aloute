@@ -99,23 +99,46 @@
 
   <!-- Modal: Tạo hội nhóm mới -->
   <div class="modal-overlay" id="createCommunityModal" hidden>
-    <div class="modal-card">
+    <div class="modal-card modal-card--wide">
       <div class="modal-card__header">
         <h2>Tạo hội nhóm mới</h2>
         <button type="button" class="modal-card__close" id="closeCreateCommunityBtn" aria-label="Đóng">&times;</button>
       </div>
       <div id="createCommunityError" class="form-error" style="display:none;"></div>
       <form id="createCommunityForm">
+        <div class="community-create__media">
+          <div class="community-create__cover" id="newCommunityCoverPreview">
+            <label class="community-create__cover-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10.5"/><path d="m4 16 4.5-4.5a2 2 0 0 1 2.8 0L15 15l1.7-1.7a2 2 0 0 1 2.8 0L21 15"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
+              <span>Thêm ảnh bìa</span>
+              <input type="file" id="newCommunityCoverInput" accept="image/*" hidden>
+            </label>
+          </div>
+          <label class="community-create__avatar-btn" id="newCommunityAvatarPreview">
+            <img id="newCommunityAvatarImg" hidden alt="">
+            <svg id="newCommunityAvatarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10.5"/><path d="m4 16 4.5-4.5a2 2 0 0 1 2.8 0L15 15l1.7-1.7a2 2 0 0 1 2.8 0L21 15"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
+            <input type="file" id="newCommunityAvatarInput" accept="image/*" hidden>
+          </label>
+        </div>
+        <p class="field-hint community-create__media-hint">Ảnh đại diện và ảnh bìa không bắt buộc, có thể đổi lại sau.</p>
+
         <div class="field">
           <input type="text" id="newCommunityName" placeholder="Tên hội nhóm" maxlength="100" required>
         </div>
         <div class="field">
           <textarea id="newCommunityDescription" placeholder="Mô tả ngắn về hội nhóm (không bắt buộc)" maxlength="500" rows="3"></textarea>
         </div>
-        <div class="field field--inline">
-          <label><input type="radio" name="newCommunityPrivacy" value="PUBLIC" checked><span>Công khai — ai cũng thấy và xem được bài viết</span></label>
-          <label><input type="radio" name="newCommunityPrivacy" value="PRIVATE"><span>Riêng tư — chỉ thành viên xem được bài viết</span></label>
-        </div>
+        <div class="field field--inline community-privacy-options">
+		    <label>
+		        <span>Công khai — ai cũng thấy và xem được bài viết</span>
+		        <input type="radio" name="newCommunityPrivacy" value="PUBLIC" checked>
+		    </label>
+		
+		    <label>
+		        <span>Riêng tư — chỉ thành viên xem được bài viết</span>
+		        <input type="radio" name="newCommunityPrivacy" value="PRIVATE">
+		    </label>
+		</div>
         <button type="submit" class="btn-primary" id="createCommunitySubmitBtn">Tạo hội nhóm</button>
       </form>
     </div>

@@ -261,15 +261,15 @@ img { max-width: 100%; display: block; }
   margin-bottom: 8px; max-height: 420px; object-fit: cover;
 }
 
-.post__actions { display: flex; align-items: center; gap: 22px; }
+.post__actions { display: flex; align-items: center; gap: 30px; }
 
 .action {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 8px;
   background: none; border: none; color: var(--text-secondary);
   padding: 4px 0;
 }
-.action svg { width: 25px; height: 25px; stroke-width: 1.8; }
-.action span { font-size: 14.5px; }
+.action svg { width: 34px; height: 34px; stroke-width: 1.6; }
+.action span { font-size: 16px; }
 
 .action--like.is-liked { color: var(--accent-like); }
 .action--like.is-liked svg { fill: var(--accent-like); stroke: var(--accent-like); }
@@ -279,7 +279,7 @@ img { max-width: 100%; display: block; }
 .reaction { position: relative; display: inline-flex; }
 
 /* Khi đã chọn 1 emoji cụ thể, ẩn icon trái tim mặc định và hiện emoji tương ứng */
-.action--like__emoji { display: none; font-size: 17px; line-height: 1; }
+.action--like__emoji { display: none; font-size: 23px; line-height: 1; }
 .action--like.is-reacted svg { display: none; }
 .action--like.is-reacted .action--like__emoji { display: inline-block; }
 .action--like.is-reacted span:not(.action--like__emoji) { color: var(--text-primary); }
@@ -290,28 +290,30 @@ img { max-width: 100%; display: block; }
 .reacted--SAD { color: #f7b928; }
 .reacted--ANGRY { color: #e0552b; }
 
-/* Bảng chọn emoji — ẩn mặc định, hiện khi hover/focus vào wrapper .reaction (desktop)
-   hoặc khi JS thêm class .reaction-picker--open (long-press trên mobile) */
+/* Bảng chọn emoji — ẩn mặc định. Việc mở/đóng do JS điều khiển hoàn toàn qua class
+   .reaction-picker--open (hover có delay + auto-đóng ngay sau khi chọn 1 emoji, xem app.js);
+   KHÔNG dùng ":hover" thuần CSS ở đây nữa vì con trỏ vẫn còn nằm trong .reaction ngay sau khi
+   bấm chọn emoji, khiến bảng bị giữ hiện dù JS đã yêu cầu đóng. :focus-within vẫn giữ lại để
+   bàn phím (Tab) mở được bảng cho a11y. */
 .reaction-picker {
-  position: absolute; bottom: calc(100% + 6px); left: -8px;
-  display: flex; gap: 2px;
+  position: absolute; bottom: calc(100% + 8px); left: -8px;
+  display: flex; gap: 3px;
   background: var(--bg-panel); border: 1px solid var(--border-strong);
-  border-radius: 999px; padding: 6px 8px;
+  border-radius: 999px; padding: 9px 11px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.45);
   opacity: 0; visibility: hidden; transform: translateY(6px) scale(0.94);
   transition: opacity 0.12s ease, transform 0.12s ease;
   z-index: 30;
 }
-.reaction:hover .reaction-picker,
 .reaction:focus-within .reaction-picker,
 .reaction-picker--open {
   opacity: 1; visibility: visible; transform: translateY(0) scale(1);
 }
 .reaction-picker__emoji {
-  background: none; border: none; font-size: 21px; line-height: 1;
-  padding: 5px 6px; border-radius: 50%; transition: transform 0.1s ease;
+  background: none; border: none; font-size: 30px; line-height: 1;
+  padding: 6px 8px; border-radius: 50%; transition: transform 0.1s ease;
 }
-.reaction-picker__emoji:hover { transform: scale(1.35); background: var(--bg-hover); }
+.reaction-picker__emoji:hover { transform: scale(1.28); background: var(--bg-hover); }
 
 /* ============ Repost (đăng lại) ============ */
 
@@ -332,12 +334,34 @@ img { max-width: 100%; display: block; }
 .post__repost-banner a { font-weight: 600; color: var(--text-secondary); }
 .post__repost-banner a:hover { color: var(--text-primary); text-decoration: underline; }
 .post__repost-icon { display:inline-flex; width:14px; height:14px; align-items:center; justify-content:center; font-size:15px; }
-.post__repost-others { position: relative; }
-.post__repost-others summary { cursor:pointer; color: var(--text-secondary); font-weight:600; list-style:none; }
-.post__repost-others summary::-webkit-details-marker { display:none; }
-.post__repost-others-list { position:absolute; left:0; top:calc(100% + 7px); z-index:30; min-width:180px; max-width:260px; max-height:220px; overflow:auto; padding:8px; border:1px solid var(--border-strong); border-radius:10px; background:#151515; box-shadow:0 10px 30px rgba(0,0,0,.35); }
-.post__repost-others-list a { display:block; padding:6px 8px; border-radius:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.post__repost-others-list a:hover { background:var(--bg-hover); }
+
+/* "cùng N người khác" — hiện danh sách tên+avatar ngay khi rê chuột vào, không cần bấm.
+   Dùng span (không phải <details>) vì <details> chỉ mở được bằng click. */
+.post__repost-others { position: relative; display: inline-block; }
+.post__repost-others__trigger { cursor: pointer; color: var(--text-secondary); font-weight: 600; }
+.post__repost-others__trigger:hover { color: var(--text-primary); text-decoration: underline; }
+.post__repost-others-list {
+  position: absolute; left: 0; top: calc(100% + 7px); z-index: 30;
+  min-width: 200px; max-width: 260px; max-height: 240px; overflow: auto;
+  padding: 6px; border: 1px solid var(--border-strong); border-radius: 10px;
+  background: #151515; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  opacity: 0; visibility: hidden; transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+}
+.post__repost-others:hover .post__repost-others-list,
+.post__repost-others:focus-within .post__repost-others-list {
+  opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto;
+}
+.post__repost-others-list__item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 8px; border-radius: 7px; white-space: nowrap; overflow: hidden;
+}
+.post__repost-others-list__item img {
+  width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
+}
+.post__repost-others-list__item span { overflow: hidden; text-overflow: ellipsis; }
+.post__repost-others-list__item:hover { background: var(--bg-hover); }
 
 .post__content--quote { margin-bottom: 10px; }
 
@@ -396,14 +420,32 @@ img { max-width: 100%; display: block; }
 .auth-card__title { font-size: 20px; font-weight: 700; text-align: center; margin: 0 0 24px; }
 
 .field { margin-bottom: 12px; }
-.field input {
+.field input:not([type="radio"]):not([type="checkbox"]), .field textarea {
   width: 100%; padding: 13px 14px;
   border: 1px solid var(--border-strong); border-radius: 10px;
   font-family: var(--font); font-size: 14.5px; outline: none;
   background: var(--bg-panel); color: var(--text-primary);
 }
-.field input::placeholder { color: var(--text-tertiary); }
-.field input:focus { border-color: var(--text-primary); }
+.field textarea { resize: vertical; line-height: 1.45; }
+.field input::placeholder, .field textarea::placeholder { color: var(--text-tertiary); }
+.field input:focus, .field textarea:focus { border-color: var(--text-primary); }
+
+/* Mỗi lựa chọn là 1 hàng thẻ bo góc: chữ bên trái, radio ở cuối dòng bên phải
+   (trước đó không có CSS riêng nên rơi vào rule "width:100%" của input ở trên,
+   khiến nút radio bị kéo to và rớt xuống dòng dưới). */
+.field--inline { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.field--inline label {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%; cursor: pointer; font-size: 14.5px; color: var(--text-primary);
+  padding: 13px 14px; border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--bg-panel);
+}
+.field--inline label:hover { background: var(--bg-hover); }
+.field--inline label span { order: 1; }
+.field--inline input[type="radio"] {
+  order: 2; flex: 0 0 auto; width: 18px; height: 18px; margin: 0;
+  accent-color: var(--text-primary);
+}
 
 .btn-primary {
   width: 100%; padding: 13px;
@@ -571,6 +613,48 @@ img { max-width: 100%; display: block; }
 .chat-thread__menu-btn svg { width: 18px; height: 18px; }
 .chat-thread__menu-btn:hover { background: var(--bg-hover); }
 
+/* ============ Tạo hội nhóm — chọn ảnh bìa + ảnh đại diện ============ */
+
+.community-create__media {
+  position: relative; margin: 0 0 46px;
+}
+.community-create__cover {
+  width: 100%; height: 130px; border-radius: 12px;
+  background: var(--bg-hover) center/cover no-repeat;
+  border: 1px dashed var(--border-strong);
+  overflow: hidden;
+}
+.community-create__cover-btn {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  color: var(--text-secondary); font-size: 13px; border-radius: 12px;
+}
+.community-create__cover-btn:hover { background: rgba(255,255,255,0.04); }
+.community-create__cover-btn svg { width: 24px; height: 24px; stroke-width: 1.6; }
+.community-create__cover.has-image .community-create__cover-btn {
+  opacity: 0; transition: opacity 0.15s ease; background: rgba(0,0,0,0.45);
+}
+.community-create__cover.has-image .community-create__cover-btn:hover { opacity: 1; }
+
+/* Avatar đè lên góc dưới-trái ảnh bìa (kiểu Facebook) thay vì nằm rời một hàng riêng
+   bên dưới — trước đó .community-create__avatar-row nằm ngoài dòng chảy của cover nên
+   nhìn bị "lệch"/trôi nổi. Giờ đặt absolute ngay trong .community-create__media. */
+.community-create__avatar-btn {
+  position: absolute; left: 18px; bottom: -30px; z-index: 2;
+  width: 76px; height: 76px; border-radius: 50%;
+  background: var(--bg-panel); border: 4px solid var(--bg-panel);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-secondary);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+.community-create__avatar-btn:hover { color: var(--text-primary); }
+.community-create__avatar-btn img {
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+}
+.community-create__avatar-btn svg { width: 26px; height: 26px; stroke-width: 1.6; }
+
+.community-create__media-hint { margin: 0 0 16px; text-align: right; }
+
 /* ============ Modal chung (tạo nhóm / thông tin nhóm) ============ */
 
 .modal-overlay {
@@ -589,6 +673,9 @@ img { max-width: 100%; display: block; }
   border-radius: 16px;
   padding: 20px;
 }
+/* Popup riêng cần nhiều chỗ hơn (ảnh bìa + ảnh đại diện + mô tả) — chỉ áp dụng cho
+   modal này qua class riêng, không đổi kích thước các modal-card khác (tạo nhóm chat...). */
+.modal-card--wide { max-width: 480px; }
 
 .modal-card__header {
   display: flex; align-items: center; justify-content: space-between;

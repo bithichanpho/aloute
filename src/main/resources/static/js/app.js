@@ -520,21 +520,33 @@ window.Aloute = (function () {
           banner.appendChild(names);
           if (actors.length > 3) {
             banner.appendChild(document.createTextNode(' cùng '));
-            const details = document.createElement('details');
-            details.className = 'post__repost-others';
-            const summary = document.createElement('summary');
-            summary.textContent = (actors.length - 3) + ' người khác';
-            details.appendChild(summary);
+            // Popover hover (không phải <details>, vì <details> chỉ mở được bằng click) —
+            // hiện avatar + tên ngay khi rê chuột vào, đồng bộ với markup trong feed/index.html.
+            const wrap = document.createElement('span');
+            wrap.className = 'post__repost-others';
+            wrap.tabIndex = 0;
+            const trigger = document.createElement('span');
+            trigger.className = 'post__repost-others__trigger';
+            trigger.textContent = (actors.length - 3) + ' người khác';
+            wrap.appendChild(trigger);
             const list = document.createElement('div');
             list.className = 'post__repost-others-list';
             actors.slice(3).forEach(function(actor) {
               const link = document.createElement('a');
+              link.className = 'post__repost-others-list__item';
               link.href = '/profile/' + encodeURIComponent(actor.userId);
-              link.textContent = actor.username || 'người dùng';
+              const img = document.createElement('img');
+              img.src = actor.userAvatarUrl || '/images/avatar_default.png';
+              img.alt = '';
+              img.loading = 'lazy';
+              const name = document.createElement('span');
+              name.textContent = actor.username || 'người dùng';
+              link.appendChild(img);
+              link.appendChild(name);
               list.appendChild(link);
             });
-            details.appendChild(list);
-            banner.appendChild(details);
+            wrap.appendChild(list);
+            banner.appendChild(wrap);
           }
           const label = document.createElement('span');
           label.className = 'post__repost-label';
@@ -1781,6 +1793,42 @@ window.Aloute = (function () {
       const nameInput = document.getElementById('newCommunityName');
       const descInput = document.getElementById('newCommunityDescription');
 
+      // ----- Chọn + xem trước ảnh bìa / ảnh đại diện (upload thật sự diễn ra lúc submit) -----
+      const coverInput = document.getElementById('newCommunityCoverInput');
+      const coverPreview = document.getElementById('newCommunityCoverPreview');
+      const avatarInput = document.getElementById('newCommunityAvatarInput');
+      const avatarImg = document.getElementById('newCommunityAvatarImg');
+      const avatarIcon = document.getElementById('newCommunityAvatarIcon');
+
+      function previewFile(file, onLoad) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => onLoad(reader.result);
+        reader.readAsDataURL(file);
+      }
+
+      if (coverInput && coverPreview) {
+        coverInput.addEventListener('change', () => {
+          const file = coverInput.files[0];
+          if (!file) return;
+          previewFile(file, (dataUrl) => {
+            coverPreview.style.backgroundImage = 'url(' + dataUrl + ')';
+            coverPreview.classList.add('has-image');
+          });
+        });
+      }
+      if (avatarInput && avatarImg) {
+        avatarInput.addEventListener('change', () => {
+          const file = avatarInput.files[0];
+          if (!file) return;
+          previewFile(file, (dataUrl) => {
+            avatarImg.src = dataUrl;
+            avatarImg.hidden = false;
+            if (avatarIcon) avatarIcon.hidden = true;
+          });
+        });
+      }
+
       const openModal = () => { modal.hidden = false; if (nameInput) nameInput.focus(); };
       const closeModal = () => { modal.hidden = true; if (errorEl) errorEl.style.display = 'none'; };
 
@@ -1792,20 +1840,37 @@ window.Aloute = (function () {
         page.dataset.communityEscapeBound = '1';
       }
 
+      async function uploadIfSelected(input) {
+        const file = input && input.files[0];
+        if (!file) return null;
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await api('/api/upload/image', { method: 'POST', body: fd });
+        return res.url;
+      }
+
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = nameInput.value.trim();
         if (!name) return;
         const checked = form.querySelector('input[name="newCommunityPrivacy"]:checked');
         submitBtn.disabled = true;
+        const originalLabel = submitBtn.textContent;
         if (errorEl) errorEl.style.display = 'none';
         try {
+          submitBtn.textContent = 'Đang tạo...';
+          const [avatarUrl, coverUrl] = await Promise.all([
+            uploadIfSelected(avatarInput),
+            uploadIfSelected(coverInput)
+          ]);
           const created = await api('/api/communities', {
             method: 'POST',
             body: {
               name: name,
               description: descInput.value.trim(),
-              privacy: checked ? checked.value : 'PUBLIC'
+              privacy: checked ? checked.value : 'PUBLIC',
+              avatarUrl: avatarUrl,
+              coverUrl: coverUrl
             }
           });
           location.href = '/communities/' + created.id;
@@ -1815,6 +1880,7 @@ window.Aloute = (function () {
             errorEl.style.display = 'block';
           }
           submitBtn.disabled = false;
+          submitBtn.textContent = originalLabel;
         }
       });
     }

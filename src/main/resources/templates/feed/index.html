@@ -52,14 +52,16 @@
             </span>
             <th:block th:if="${post.otherReposters != null and !#lists.isEmpty(post.otherReposters)}">
               <span class="post__repost-other-prefix">cùng</span>
-              <details class="post__repost-others">
-                <summary th:text="${post.otherReposters.size() + ' người khác'}">2 người khác</summary>
+              <span class="post__repost-others" tabindex="0">
+                <span class="post__repost-others__trigger" th:text="${post.otherReposters.size() + ' người khác'}">2 người khác</span>
                 <div class="post__repost-others-list">
-                  <a th:each="actor : ${post.otherReposters}"
-                     th:href="@{'/profile/' + ${actor.userId}}"
-                     th:text="${actor.username}">username</a>
+                  <a class="post__repost-others-list__item" th:each="actor : ${post.otherReposters}"
+                     th:href="@{'/profile/' + ${actor.userId}}">
+                    <img th:src="${actor.userAvatarUrl != null ? actor.userAvatarUrl : '/images/avatar_default.png'}" alt="" loading="lazy">
+                    <span th:text="${actor.username}">username</span>
+                  </a>
                 </div>
-              </details>
+              </span>
             </th:block>
             <span class="post__repost-label">đã đăng lại</span>
           </div>
