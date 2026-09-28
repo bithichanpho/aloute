@@ -1,6 +1,11 @@
 package com.aloute.config;
 
-import java.util.List;
+import com.aloute.model.document.Post;
+import com.aloute.model.document.Repost;
+import com.aloute.repository.ICommentRepository;
+import com.aloute.repository.ILikeRepository;
+import com.aloute.repository.IPostRepository;
+import com.aloute.repository.IRepostRepository;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
@@ -9,14 +14,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
-import com.aloute.model.document.Post;
-import com.aloute.model.document.Repost;
-import com.aloute.repository.ICommentRepository;
-import com.aloute.repository.ILikeRepository;
-import com.aloute.repository.IPostRepository;
-import com.aloute.repository.IRepostRepository;
+import java.util.List;
 
-/** Chuyen repost thuần cua schema cu (Post.repostOfId + content rong) sang collection reposts. */
 @Component
 @Order(3)
 public class LegacyRepostMigration implements CommandLineRunner {
@@ -26,24 +25,52 @@ public class LegacyRepostMigration implements CommandLineRunner {
     private final ICommentRepository commentRepository;
     private final ILikeRepository likeRepository;
 
-    public LegacyRepostMigration(MongoTemplate mongoTemplate, IPostRepository postRepository, IRepostRepository repostRepository,
-            ICommentRepository commentRepository, ILikeRepository likeRepository) {
-        this.mongoTemplate = mongoTemplate; this.postRepository = postRepository; this.repostRepository = repostRepository;
-        this.commentRepository = commentRepository; this.likeRepository = likeRepository;
+    public LegacyRepostMigration(
+            MongoTemplate mongoTemplate,
+            IPostRepository postRepository,
+            IRepostRepository repostRepository,
+            ICommentRepository commentRepository,
+            ILikeRepository likeRepository) {
+        this.mongoTemplate = mongoTemplate;
+        this.postRepository = postRepository;
+        this.repostRepository = repostRepository;
+        this.commentRepository = commentRepository;
+        this.likeRepository = likeRepository;
     }
 
-    @Override public void run(String... args) {
-        Query q = Query.query(new Criteria().andOperator(
-                Criteria.where("repostOfId").ne(null),
-                new Criteria().orOperator(Criteria.where("content").is(null), Criteria.where("content").is(""))));
+    @Override
+    public void run(String... args) {
+        Query q =
+                Query.query(
+                        new Criteria()
+                                .andOperator(
+                                        Criteria.where("repostOfId").ne(null),
+                                        new Criteria()
+                                                .orOperator(
+                                                        Criteria.where("content").is(null),
+                                                        Criteria.where("content").is(""))));
         List<Post> legacy = mongoTemplate.find(q, Post.class);
         for (Post post : legacy) {
-            if (post.getUserId() == null || post.getRepostOfId() == null || !postRepository.existsById(post.getRepostOfId())) continue;
-            if (repostRepository.findByUserIdAndPostId(post.getUserId(), post.getRepostOfId()).isEmpty()) {
-                Repost r = new Repost(); r.setUserId(post.getUserId()); r.setPostId(post.getRepostOfId()); r.setCreatedAt(post.getCreatedAt()); repostRepository.save(r);
+            if (post.getUserId() == null
+                    || post.getRepostOfId() == null
+                    || !postRepository.existsById(post.getRepostOfId())) continue;
+            if (repostRepository
+                    .findByUserIdAndPostId(post.getUserId(), post.getRepostOfId())
+                    .isEmpty()) {
+                Repost r = new Repost();
+                r.setUserId(post.getUserId());
+                r.setPostId(post.getRepostOfId());
+                r.setCreatedAt(post.getCreatedAt());
+                repostRepository.save(r);
             }
-            commentRepository.deleteByPostId(post.getId()); likeRepository.deleteByPostId(post.getId()); postRepository.delete(post);
+            commentRepository.deleteByPostId(post.getId());
+            likeRepository.deleteByPostId(post.getId());
+            postRepository.delete(post);
         }
-        if (!legacy.isEmpty()) System.out.println("[ALOUTE] Migrated " + legacy.size() + " legacy plain repost post(s) to reposts.");
+        if (!legacy.isEmpty())
+            System.out.println(
+                    "[ALOUTE] Migrated "
+                            + legacy.size()
+                            + " legacy plain repost post(s) to reposts.");
     }
 }

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Tin nhắn — ALOUTE</title></head>
 <body>
@@ -6,7 +6,6 @@
 
   <div class="chat-shell" id="chatShell" th:attr="data-open-user-id=${openUserId != null ? openUserId : ''}">
 
-    <!-- Cột trái: tìm kiếm + danh sách hội thoại / bạn bè -->
     <aside class="chat-list" id="chatList">
       <div class="chat-list__header">
         <span>Tin nhắn</span>
@@ -36,7 +35,6 @@
           <span>Vào trang cá nhân của ai đó và bấm &quot;Nhắn tin&quot; để bắt đầu trò chuyện. Ghé qua trang <a th:href="@{/search}">Tìm kiếm</a> nhé!</span>
         </div>
 
-        <!-- Hội thoại nhóm -->
         <div class="chat-item"
              th:each="conv : ${conversations}"
              th:if="${conv.group}"
@@ -62,7 +60,6 @@
           </div>
         </div>
 
-        <!-- Hội thoại 1-1 -->
         <div class="chat-item"
              th:each="conv : ${conversations}"
              th:if="${!conv.group}"
@@ -96,7 +93,6 @@
       </div>
     </aside>
 
-    <!-- Cột phải: khung tin nhắn của hội thoại đang chọn -->
     <div class="chat-thread" id="chatThread">
       <div class="empty-state empty-state--thread" id="chatEmptyState">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
@@ -124,7 +120,7 @@
             <button class="chat-thread__icon-btn" id="videoCallBtn" aria-label="Gọi video" title="Gọi video">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="5" width="14" height="14" rx="2"/></svg>
             </button>
-            <button class="chat-thread__menu-btn" id="groupMenuBtn" aria-label="Tùy chọn nhóm" hidden>
+            <button type="button" class="chat-thread__menu-btn" id="groupMenuBtn" aria-label="Thông tin cuộc trò chuyện" title="Thông tin cuộc trò chuyện">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
             </button>
           </div>
@@ -164,7 +160,6 @@
       </template>
     </div>
 
-    <!-- Cột phải: thông tin người đang trò chuyện -->
     <aside class="chat-details" id="chatDetails" hidden>
       <div class="chat-details__profile">
         <div class="chat-details__avatar-wrap">
@@ -191,18 +186,34 @@
           <span>Ảnh &amp; video đã gửi</span>
         </button>
 
-        <button type="button" class="chat-details__menu-item" id="chatDetailsMoreBtn">
-          <span class="chat-details__menu-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
-          </span>
-          <span>Tùy chọn khác</span>
-        </button>
+        <details class="chat-details__more" id="chatDetailsMore">
+          <summary class="chat-details__menu-item" id="chatDetailsMoreBtn">
+            <span class="chat-details__menu-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+            </span>
+            <span>Tùy chọn khác</span>
+          </summary>
+          <div class="chat-details__more-menu">
+            <button type="button" id="chatMarkReadBtn">Đánh dấu đã đọc</button>
+            <button type="button" id="chatReportUserBtn">Báo cáo tài khoản</button>
+            <button type="button" class="is-danger" id="chatBlockUserBtn">Chặn người dùng</button>
+          </div>
+        </details>
       </nav>
     </aside>
 
   </div>
 
-  <!-- Modal: chụp ảnh / quay video -->
+  <dialog class="chat-utility-dialog" id="chatUtilityModal">
+    <div class="modal-card chat-utility-card">
+      <div class="modal-card__header">
+        <h2 id="chatUtilityTitle">Tùy chọn cuộc trò chuyện</h2>
+        <button type="button" class="modal-card__close" id="closeChatUtilityBtn" aria-label="Đóng">&times;</button>
+      </div>
+      <div id="chatUtilityContent"></div>
+    </div>
+  </dialog>
+
   <div class="modal-overlay" id="mediaCaptureModal" hidden>
     <div class="modal-card media-capture-card">
       <div class="modal-card__header">
@@ -220,7 +231,6 @@
     </div>
   </div>
 
-  <!-- Modal: video call 1-1 -->
   <div class="modal-overlay" id="videoCallModal" hidden>
     <div class="modal-card video-call-card">
       <div class="incoming-call-profile" id="incomingCallProfile" hidden>
@@ -250,7 +260,6 @@
     </div>
   </div>
 
-  <!-- Modal: Tạo nhóm mới -->
   <div class="modal-overlay" id="createGroupModal" hidden>
     <div class="modal-card">
       <div class="modal-card__header">
@@ -271,7 +280,6 @@
     </div>
   </div>
 
-  <!-- Modal: Thông tin & thành viên nhóm -->
   <div class="modal-overlay" id="groupInfoModal" hidden>
     <div class="modal-card">
       <div class="modal-card__header">
@@ -290,7 +298,7 @@
     </div>
   </div>
 
-  <script th:src="@{/js/chat.js}" defer></script>
+  <script th:src="@{/js/chat.js?v=20260928-chat-v8}" defer></script>
 
 </section>
 

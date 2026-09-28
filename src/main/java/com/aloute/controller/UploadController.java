@@ -1,42 +1,40 @@
 package com.aloute.controller;
 
-import java.io.IOException;
-import java.util.Map;
+import com.aloute.common.exception.BadRequestException;
+import com.aloute.common.exception.UnauthorizedException;
+import com.aloute.common.response.ApiResponse;
+import com.aloute.security.SecurityUtils;
+import com.aloute.service.ImageStorageService;
+import com.aloute.service.ModerationService;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.util.unit.DataSize;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.aloute.common.exception.BadRequestException;
-import com.aloute.common.exception.UnauthorizedException;
-import com.aloute.common.response.ApiResponse;
-import com.aloute.security.SecurityUtils;
-import com.aloute.service.ImageStorageService;
+import java.io.IOException;
+import java.util.Map;
 
-/**
- * Upload ảnh dùng chung (ảnh đính kèm bài viết). Trả về URL Cloudinary để
- * frontend gắn vào CreatePostRequest.imageUrl trước khi gọi POST /api/posts.
- * Tách riêng khỏi PostController vì upload ảnh xong người dùng có thể vẫn
- * đang gõ nội dung — không muốn ép phải gửi cả 2 việc trong 1 request.
- */
 @RestController
 @RequestMapping("/api/upload")
 public class UploadController {
 
-    private static final long MAX_IMAGE_SIZE_BYTES = 100L * 1024 * 1024; // 100MB
+    private static final long MAX_IMAGE_SIZE_BYTES = 100L * 1024 * 1024;
 
     @Value("${app.upload.max-file-size:2GB}")
     private DataSize maxUploadSize;
 
     private final ImageStorageService imageStorageService;
+    private final ModerationService moderationService;
 
-    public UploadController(ImageStorageService imageStorageService) {
+    public UploadController(
+            ImageStorageService imageStorageService, ModerationService moderationService) {
         this.imageStorageService = imageStorageService;
+        this.moderationService = moderationService;
     }
 
     @PostMapping("/media")
@@ -50,7 +48,8 @@ public class UploadController {
             throw new BadRequestException("Vui lòng chọn tệp");
         }
         if (file.getSize() > maxUploadSize.toBytes()) {
-            throw new BadRequestException("Tệp vượt quá dung lượng cho phép (" + maxUploadSize + ")");
+            throw new BadRequestException(
+                    "Tệp vượt quá dung lượng cho phép (" + maxUploadSize + ")");
         }
 
         String contentType = file.getContentType();
@@ -59,7 +58,9 @@ public class UploadController {
         }
 
         try {
-            return ApiResponse.success("Tải tệp thành công", imageStorageService.uploadMedia(file));
+            Map<String, String> uploaded = imageStorageService.uploadMedia(file);
+            moderate(uploaded);
+            return ApiResponse.success("Tải tệp thành công", uploaded);
         } catch (IOException e) {
             throw new BadRequestException("Tải tệp thất bại: " + e.getMessage());
         }
@@ -84,10 +85,19 @@ public class UploadController {
         }
 
         try {
-            String url = imageStorageService.uploadImage(file);
-            return ApiResponse.success("Tải ảnh lên thành công", Map.of("url", url));
+            Map<String, String> uploaded = imageStorageService.uploadImageDetails(file);
+            moderate(uploaded);
+            return ApiResponse.success("Tải ảnh lên thành công", uploaded);
         } catch (IOException e) {
             throw new BadRequestException("Tải ảnh lên thất bại: " + e.getMessage());
         }
+    }
+
+    private void moderate(Map<String, String> uploaded) throws IOException {
+        String type = uploaded.getOrDefault("type", "file");
+        if (!"image".equals(type) && !"video".equals(type)) return;
+        if (moderationService.isMediaApproved(uploaded.get("url"), type)) return;
+        imageStorageService.deleteMedia(uploaded.get("publicId"), uploaded.get("resourceType"));
+        throw new BadRequestException("Ảnh hoặc video không vượt qua kiểm duyệt an toàn");
     }
 }

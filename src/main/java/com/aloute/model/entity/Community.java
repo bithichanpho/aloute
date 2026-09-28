@@ -4,12 +4,13 @@ import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 
-/**
- * Hội nhóm (Community) kiểu Facebook Group: 1 không gian có tên/mô tả riêng, thành viên
- * có thể đăng bài trong đó, khác với {@link ChatGroup} vốn chỉ dùng để nhắn tin nhóm.
- */
 @Entity
-@Table(name = "communities", indexes = { @Index(name = "idx_communities_created_by", columnList = "created_by"), @Index(name = "idx_communities_privacy_members", columnList = "privacy, member_count") })
+@Table(
+        name = "communities",
+        indexes = {
+            @Index(name = "idx_communities_created_by", columnList = "created_by"),
+            @Index(name = "idx_communities_privacy_members", columnList = "privacy, member_count")
+        })
 public class Community {
 
     @Id
@@ -28,7 +29,6 @@ public class Community {
     @Column(name = "cover_url", length = 500)
     private String coverUrl;
 
-    /** PUBLIC: ai cũng thấy trong danh sách khám phá và xem được bài viết. PRIVATE: chỉ thành viên xem được bài viết. */
     @Column(nullable = false, length = 20)
     private String privacy = "PUBLIC";
 
@@ -36,10 +36,13 @@ public class Community {
     private Long createdBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "created_by",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User creator;
 
-    /** Đếm số thành viên — cập nhật khi join/leave, tránh phải COUNT(*) mỗi lần hiển thị danh sách. */
     @Column(name = "member_count", nullable = false)
     private int memberCount = 0;
 
@@ -98,7 +101,9 @@ public class Community {
         this.privacy = privacy;
     }
 
-    public User getCreator() { return creator; }
+    public User getCreator() {
+        return creator;
+    }
 
     public Long getCreatedBy() {
         return createdBy;

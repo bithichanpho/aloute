@@ -1,5 +1,7 @@
 package com.aloute.dto.request;
 
+import com.aloute.validation.HttpUrl;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -13,7 +15,12 @@ public class CreateCommunityRequest {
     @Size(max = 500, message = "Mô tả tối đa 500 ký tự")
     private String description;
 
+    @Size(max = 2048, message = "URL ảnh đại diện tối đa 2048 ký tự")
+    @HttpUrl
     private String avatarUrl;
+
+    @Size(max = 2048, message = "URL ảnh bìa tối đa 2048 ký tự")
+    @HttpUrl
     private String coverUrl;
 
     @Pattern(regexp = "PUBLIC|PRIVATE", message = "Chế độ hiển thị phải là PUBLIC hoặc PRIVATE")

@@ -5,9 +5,13 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "group_members", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_group_members_group_user", columnNames = {"group_id", "user_id"})
-})
+@Table(
+        name = "group_members",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_group_members_group_user",
+                    columnNames = {"group_id", "user_id"})
+        })
 public class GroupMember {
 
     @Id
@@ -21,15 +25,23 @@ public class GroupMember {
     private Long userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "group_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "group_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private ChatGroup group;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "user_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User user;
 
     @Column(nullable = false, length = 20)
-    private String role = "MEMBER"; // ADMIN | MEMBER
+    private String role = "MEMBER";
 
     @Column(name = "joined_at", nullable = false, updatable = false)
     private LocalDateTime joinedAt;
@@ -69,9 +81,13 @@ public class GroupMember {
         this.userId = userId;
     }
 
-    public ChatGroup getGroup() { return group; }
+    public ChatGroup getGroup() {
+        return group;
+    }
 
-    public User getUser() { return user; }
+    public User getUser() {
+        return user;
+    }
 
     public String getRole() {
         return role;

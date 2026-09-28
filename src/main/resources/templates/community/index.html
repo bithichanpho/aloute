@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Hội nhóm - ALOUTE</title></head>
 <body>
@@ -97,7 +97,6 @@
     </div>
   </div>
 
-  <!-- Modal: Tạo hội nhóm mới -->
   <div class="modal-overlay" id="createCommunityModal" hidden>
     <div class="modal-card modal-card--wide">
       <div class="modal-card__header">
@@ -133,7 +132,7 @@
 		        <span>Công khai — ai cũng thấy và xem được bài viết</span>
 		        <input type="radio" name="newCommunityPrivacy" value="PUBLIC" checked>
 		    </label>
-		
+
 		    <label>
 		        <span>Riêng tư — chỉ thành viên xem được bài viết</span>
 		        <input type="radio" name="newCommunityPrivacy" value="PRIVATE">

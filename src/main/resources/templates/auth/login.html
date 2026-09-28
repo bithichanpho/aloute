@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Đăng nhập / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20260928-ui-v21}">
 </head>
 <body class="auth-body">
 
@@ -20,6 +20,7 @@
       <div id="formError" class="form-error" style="display:none;"></div>
 
       <form id="loginForm" novalidate>
+        <div id="credentialsStep">
         <div class="field">
           <input type="text" id="username" name="username" placeholder="Tên đăng nhập hoặc email" autocomplete="username" required>
         </div>
@@ -29,7 +30,17 @@
         <p style="text-align:right;margin:-6px 0 14px;">
           <a th:href="@{/forgot-password}" style="font-size:13.5px;">Quên mật khẩu?</a>
         </p>
+        </div>
+        <div id="twoFactorStep" style="display:none;">
+          <p style="color:var(--text-secondary);font-size:14px;margin:0 0 14px;">
+            Tài khoản của bạn đã bật xác thực hai lớp. Nhập mã từ ứng dụng Authenticator hoặc một mã khôi phục.
+          </p>
+          <div class="field">
+            <input id="twoFactorCode" name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="64" placeholder="Mã xác thực hoặc mã khôi phục">
+          </div>
+        </div>
         <button type="submit" class="btn-primary" id="submitBtn">Đăng nhập</button>
+        <button type="button" class="btn-outline" id="backToLoginBtn" style="display:none;margin-top:10px;">Quay lại</button>
       </form>
 
       <div id="resendVerificationBox" style="display:none;margin-top:14px;">
@@ -45,9 +56,34 @@
     </div>
   </div>
 
-  <script th:src="@{/js/app.js}"></script>
+  <script th:src="@{/js/app.js?v=20260928-ui-v21}"></script>
   <script th:inline="javascript">
     const loginForm = document.getElementById('loginForm');
+    const credentialsStep = document.getElementById('credentialsStep');
+    const twoFactorStep = document.getElementById('twoFactorStep');
+    const twoFactorCode = document.getElementById('twoFactorCode');
+    const backToLoginBtn = document.getElementById('backToLoginBtn');
+    let awaitingTwoFactor = false;
+
+    function showTwoFactorStep() {
+      awaitingTwoFactor = true;
+      credentialsStep.style.display = 'none';
+      twoFactorStep.style.display = 'block';
+      backToLoginBtn.style.display = 'block';
+      document.getElementById('submitBtn').textContent = 'Xác nhận và đăng nhập';
+      twoFactorCode.focus();
+    }
+
+    backToLoginBtn.addEventListener('click', function () {
+      awaitingTwoFactor = false;
+      twoFactorCode.value = '';
+      twoFactorStep.style.display = 'none';
+      credentialsStep.style.display = 'block';
+      backToLoginBtn.style.display = 'none';
+      document.getElementById('formError').style.display = 'none';
+      document.getElementById('submitBtn').textContent = 'Đăng nhập';
+      document.getElementById('username').focus();
+    });
     if (new URLSearchParams(window.location.search).get('registered')) {
       const notice = document.createElement('div');
       notice.className = 'form-success';
@@ -91,24 +127,35 @@
         errorBox.style.display = 'block';
         return;
       }
+      if (awaitingTwoFactor && !twoFactorCode.value.trim()) {
+        errorBox.textContent = 'Vui lòng nhập mã xác thực hoặc mã khôi phục.';
+        errorBox.style.display = 'block';
+        return;
+      }
 
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Đang đăng nhập...';
+      submitBtn.textContent = awaitingTwoFactor ? 'Đang xác nhận...' : 'Đang đăng nhập...';
 
       try {
         await Aloute.api('/api/auth/login', {
           method: 'POST',
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password, code: twoFactorCode.value.trim() })
         });
         window.location.href = '/feed';
       } catch (err) {
+        if ((err.message || '').includes('xác thực hai lớp')) {
+          showTwoFactorStep();
+          errorBox.style.display = 'none';
+          submitBtn.disabled = false;
+          return;
+        }
         errorBox.textContent = err.message || 'Đăng nhập thất bại, vui lòng thử lại.';
         errorBox.style.display = 'block';
         if ((err.message || '').toLowerCase().includes('xác thực email')) {
           document.getElementById('resendVerificationBox').style.display = 'block';
         }
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Đăng nhập';
+        submitBtn.textContent = awaitingTwoFactor ? 'Xác nhận và đăng nhập' : 'Đăng nhập';
       }
     });
   </script>

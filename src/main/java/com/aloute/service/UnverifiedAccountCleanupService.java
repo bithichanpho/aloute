@@ -1,6 +1,6 @@
 package com.aloute.service;
 
-import java.time.LocalDateTime;
+import com.aloute.repository.IPendingUserRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,12 +8,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.aloute.repository.IPendingUserRepository;
+import java.time.LocalDateTime;
 
 @Service
 public class UnverifiedAccountCleanupService {
 
-    private static final Logger log = LoggerFactory.getLogger(UnverifiedAccountCleanupService.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(UnverifiedAccountCleanupService.class);
 
     private final IPendingUserRepository pendingUserRepository;
 
@@ -21,7 +22,6 @@ public class UnverifiedAccountCleanupService {
         this.pendingUserRepository = pendingUserRepository;
     }
 
-    /** Chỉ dọn bảng pending; tuyệt đối không xóa trực tiếp bảng users. */
     @Scheduled(
             initialDelayString = "${app.verification-cleanup.initial-delay-ms:600000}",
             fixedDelayString = "${app.verification-cleanup.fixed-delay-ms:3600000}")

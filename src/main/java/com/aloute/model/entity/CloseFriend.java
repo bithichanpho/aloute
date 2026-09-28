@@ -1,29 +1,20 @@
 package com.aloute.model.entity;
 
-import java.time.LocalDateTime;
-
 import jakarta.persistence.*;
 
-/**
- * "Bạn thân" (Close friend) — khác với {@link Friend} (follow một chiều, bấm là có ngay
- * kiểu Instagram/Threads), quan hệ bạn thân đi theo mô hình gửi lời mời rồi phải được
- * chấp nhận (kiểu Facebook "Add friend"). Chỉ áp dụng được giữa 2 người ĐÃ là bạn bè
- * (follow lẫn nhau) — xem {@link com.aloute.service.CloseFriendService}.
- *
- * 1 hàng = 1 lời mời, đi theo 1 chiều requester -> receiver:
- *  - status = PENDING  : đang chờ receiver phản hồi
- *  - status = ACCEPTED : đã trở thành bạn thân (hàng này chính là "bằng chứng" quan hệ,
- *    không cần thêm bảng phụ — quan hệ vốn đối xứng nên khi kiểm tra phải xét cả 2 chiều)
- * Từ chối lời mời / hủy lời mời đã gửi / xóa khỏi bạn thân đều đơn giản là xóa hàng này đi.
- */
+import java.time.LocalDateTime;
+
 @Entity
-@Table(name = "close_friends",
+@Table(
+        name = "close_friends",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_close_friends_requester_receiver", columnNames = {"requester_id", "receiver_id"})
+            @UniqueConstraint(
+                    name = "uk_close_friends_requester_receiver",
+                    columnNames = {"requester_id", "receiver_id"})
         },
         indexes = {
-                @Index(name = "idx_close_friends_requester", columnList = "requester_id, status"),
-                @Index(name = "idx_close_friends_receiver", columnList = "receiver_id, status")
+            @Index(name = "idx_close_friends_requester", columnList = "requester_id, status"),
+            @Index(name = "idx_close_friends_receiver", columnList = "receiver_id, status")
         })
 public class CloseFriend {
 
@@ -35,17 +26,25 @@ public class CloseFriend {
     private Long id;
 
     @Column(name = "requester_id", nullable = false)
-    private Long requesterId; // người gửi lời mời kết bạn thân
+    private Long requesterId;
 
     @Column(name = "receiver_id", nullable = false)
-    private Long receiverId;  // người nhận lời mời
+    private Long receiverId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "requester_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "requester_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User requester;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "receiver_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "receiver_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User receiver;
 
     @Column(nullable = false, length = 20)
@@ -55,7 +54,7 @@ public class CloseFriend {
     private LocalDateTime createdAt;
 
     @Column(name = "responded_at")
-    private LocalDateTime respondedAt; // null cho đến khi được chấp nhận
+    private LocalDateTime respondedAt;
 
     public CloseFriend() {
         this.createdAt = LocalDateTime.now();
@@ -84,9 +83,13 @@ public class CloseFriend {
         this.requesterId = requesterId;
     }
 
-    public User getRequester() { return requester; }
+    public User getRequester() {
+        return requester;
+    }
 
-    public User getReceiver() { return receiver; }
+    public User getReceiver() {
+        return receiver;
+    }
 
     public Long getReceiverId() {
         return receiverId;

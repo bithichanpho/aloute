@@ -1,18 +1,5 @@
 package com.aloute.controller;
 
-import java.io.IOException;
-
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
-
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
@@ -25,16 +12,35 @@ import com.aloute.service.ImageStorageService;
 import com.aloute.service.UserService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 @RestController
 @RequestMapping("/api/users")
+@Validated
 public class UserController {
 
     private final UserService userService;
     private final ImageStorageService imageStorageService;
     private final AuthService authService;
 
-    public UserController(UserService userService, ImageStorageService imageStorageService, AuthService authService) {
+    public UserController(
+            UserService userService,
+            ImageStorageService imageStorageService,
+            AuthService authService) {
         this.userService = userService;
         this.imageStorageService = imageStorageService;
         this.authService = authService;
@@ -47,7 +53,8 @@ public class UserController {
     }
 
     @GetMapping("/{userId}")
-    public ApiResponse<UserProfileDto> getProfile(Authentication authentication, @PathVariable Long userId) {
+    public ApiResponse<UserProfileDto> getProfile(
+            Authentication authentication, @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
         return ApiResponse.success(userService.getProfile(userId, currentUserId));
     }
@@ -56,10 +63,10 @@ public class UserController {
     public ApiResponse<UserProfileDto> updateProfile(
             Authentication authentication, @Valid @RequestBody UpdateProfileRequest request) {
         Long userId = requireUserId(authentication);
-        return ApiResponse.success("Đã cập nhật trang cá nhân", userService.updateProfile(userId, request));
+        return ApiResponse.success(
+                "Đã cập nhật trang cá nhân", userService.updateProfile(userId, request));
     }
 
-    /** Upload avatar mới lên Cloudinary rồi lưu URL vào profile. */
     @PostMapping("/me/avatar")
     public ApiResponse<UserProfileDto> updateAvatar(
             Authentication authentication, @RequestParam("avatar") MultipartFile avatar) {
@@ -71,13 +78,13 @@ public class UserController {
         try {
             String url = imageStorageService.uploadImage(avatar);
             userService.updateAvatar(userId, url);
-            return ApiResponse.success("Đã cập nhật ảnh đại diện", userService.getProfile(userId, userId));
+            return ApiResponse.success(
+                    "Đã cập nhật ảnh đại diện", userService.getProfile(userId, userId));
         } catch (IOException e) {
             throw new BadRequestException("Tải ảnh lên thất bại: " + e.getMessage());
         }
     }
 
-    /** Đổi mật khẩu khi đã đăng nhập — bắt buộc nhập đúng mật khẩu hiện tại. */
     @PostMapping("/me/change-password")
     public ApiResponse<Void> changePassword(
             Authentication authentication, @Valid @RequestBody ChangePasswordRequest request) {

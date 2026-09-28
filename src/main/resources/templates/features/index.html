@@ -1,0 +1,86 @@
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title th:text="${pageTitle + ' — ALOUTE'}">ALOUTE</title></head>
+<body><section class="content-inner feature-page" th:classappend="${pageKind == 'settings'} ? ' settings-page'" th:attr="data-feature-page=${pageKind}">
+  <header class="feature-hero" th:unless="${pageKind == 'settings'}"><div><span class="feature-eyebrow">Không gian của bạn</span><h1 th:text="${pageTitle}">Tiện ích</h1></div></header>
+  <main id="featureContent" class="feature-content" data-loaded="true" aria-live="polite">
+    <div class="feature-stack" th:if="${pageKind == 'saved'}">
+      <div class="feature-empty" th:if="${#lists.isEmpty(savedPosts)}"><strong>Chưa có bài viết đã lưu</strong><span>Những bài bạn lưu sẽ xuất hiện tại đây.</span></div>
+      <article class="feature-card feature-saved" th:each="post : ${savedPosts}" th:attr="data-saved-post=${post.id}">
+        <div class="feature-card__head"><div><strong th:text="${post.username}">Tác giả</strong><span th:text="${post.timeAgo}">Vừa xong</span></div><button type="button" data-action="unsave" th:attr="data-post-id=${post.id}">Bỏ lưu</button></div>
+        <p class="post__content" th:text="${post.content}">Nội dung</p><img th:if="${post.imageUrl != null and !post.imageUrl.isBlank()}" th:src="${post.imageUrl}" alt="Ảnh bài viết" loading="lazy"><video class="post__video" th:if="${post.videoUrl != null and !post.videoUrl.isBlank()}" th:src="${post.videoUrl}" controls preload="metadata"></video>
+      </article>
+    </div>
+    <div class="feature-story-layout" th:if="${pageKind == 'stories'}">
+      <form id="storyComposer" class="feature-card feature-story-composer">
+        <div class="feature-card__title"><span class="feature-icon">＋</span><div><h2>Tạo tin mới</h2><p>Tin tự biến mất sau 24 giờ.</p></div></div>
+        <label>Nội dung<textarea id="storyContent" maxlength="2000" placeholder="Chia sẻ khoảnh khắc của bạn…"></textarea></label>
+        <label class="feature-file">Ảnh hoặc video<input id="storyMedia" type="file" accept="image/*,video/*"></label><div id="storyPreview" class="feature-story-preview"></div>
+        <button class="feature-primary" type="submit">Đăng tin</button>
+      </form>
+      <div class="feature-story-grid"><div class="feature-empty" th:if="${#lists.isEmpty(stories)}"><strong>Chưa có tin mới</strong><span>Hãy là người đầu tiên chia sẻ hôm nay.</span></div>
+        <article class="feature-card feature-story" th:each="story : ${stories}" data-story-open th:attr="data-story-id=${story.id},data-story-user-id=${story.userId},data-story-username=${story.username},data-story-name=${story.fullName},data-story-avatar=${story.avatarUrl},data-story-content=${story.content},data-story-image=${story.imageUrl},data-story-video=${story.videoUrl},data-story-liked=${story.liked},data-story-owned=${story.owned},data-story-views=${story.viewCount}"><video th:if="${story.videoUrl != null}" th:src="${story.videoUrl}" controls preload="metadata"></video><img th:if="${story.videoUrl == null and story.imageUrl != null}" th:src="${story.imageUrl}" alt="Tin" loading="lazy"><div class="feature-story__body"><strong th:text="${story.fullName != null and !story.fullName.isBlank() ? story.fullName : story.username}">Tác giả</strong><p th:text="${story.content}">Nội dung</p><small th:text="${'Hết hạn ' + story.expiresAt}">Hết hạn</small><button th:if="${story.userId == currentUser.id}" type="button" data-action="delete-story" th:attr="data-story-id=${story.id}">Xóa tin</button></div></article>
+      </div>
+    </div>
+    <div class="settings-layout" th:if="${pageKind == 'settings'}">
+      <aside class="settings-menu" aria-label="Danh mục cài đặt">
+        <h1>Cài đặt</h1>
+        <label class="settings-search"><span>⌕</span><input id="settingsSearch" type="search" placeholder="Tìm kiếm cài đặt" autocomplete="off"></label>
+        <div class="settings-menu__scroll">
+          <p class="settings-menu__group">Tài khoản của bạn</p>
+          <button type="button" class="settings-menu__item is-active" data-settings-target="profile"><span>◎</span>Chỉnh sửa hồ sơ</button>
+          <button type="button" class="settings-menu__item" data-settings-target="security"><span>⌁</span>Mật khẩu và bảo mật</button>
+          <p class="settings-menu__group">Quyền riêng tư</p>
+          <button type="button" class="settings-menu__item" data-settings-target="requests"><span>♙</span>Yêu cầu theo dõi</button>
+          <button type="button" class="settings-menu__item" data-settings-target="blocked"><span>⊘</span>Tài khoản đã chặn</button>
+          <p class="settings-menu__group">Kiểm soát tài khoản</p>
+          <button type="button" class="settings-menu__item" data-settings-target="account"><span>!</span>Quản lý tài khoản</button>
+        </div>
+      </aside>
+
+      <div class="settings-content">
+        <section class="feature-card settings-panel" data-settings-panel="profile">
+          <h2 class="settings-panel__heading">Chỉnh sửa trang cá nhân</h2>
+          <div class="settings-profile-summary">
+            <img id="settingsAvatarPreview" th:src="${profileUser.avatarUrl != null ? profileUser.avatarUrl : '/images/avatar_default.png'}" alt="Ảnh đại diện">
+            <div><strong th:text="${profileUser.username}">username</strong><span th:text="${profileUser.fullName}">Họ tên</span></div>
+            <label class="settings-change-photo">Đổi ảnh<input type="file" id="editAvatarInput" accept="image/*" hidden></label>
+          </div>
+          <form id="profileEditForm" class="settings-form">
+            <label>Họ và tên<input type="text" id="editFullName" th:value="${profileUser.fullName}" maxlength="100" required></label>
+            <label>Tên người dùng<input type="text" th:value="${profileUser.username}" disabled></label>
+            <label>Tiểu sử<textarea id="editBio" rows="4" maxlength="300" th:text="${profileUser.bio}"></textarea><small><span id="settingsBioCount">0</span> / 300</small></label>
+            <label class="settings-toggle-row" for="editPrivateAccount"><span><strong>Tài khoản riêng tư</strong><small>Người theo dõi mới cần được bạn chấp nhận.</small></span><input type="checkbox" id="editPrivateAccount" th:checked="${profileUser.privateAccount}"></label>
+            <button type="submit" class="settings-save">Lưu thay đổi</button>
+          </form>
+        </section>
+        <section class="feature-card settings-panel" data-settings-panel="security" hidden>
+          <div class="feature-card__title"><span class="feature-icon">⌁</span><div><h2>Mật khẩu và bảo mật</h2><p>Bảo vệ tài khoản bằng ứng dụng Authenticator.</p></div></div>
+          <div id="twoFactorStatus" class="feature-status">Đang kiểm tra…</div>
+          <label>Mật khẩu hiện tại<input id="securityPassword" type="password" autocomplete="current-password"></label>
+          <label>Mã xác thực<input id="securityCode" inputmode="numeric" autocomplete="one-time-code"></label>
+          <div class="feature-actions"><button type="button" data-action="setup-2fa">Thiết lập 2FA</button><button type="button" data-action="disable-2fa">Tắt 2FA</button></div>
+        </section>
+        <section class="feature-card settings-panel" data-settings-panel="requests" hidden>
+          <div class="feature-card__title"><span class="feature-icon">♙</span><div><h2>Yêu cầu theo dõi</h2><p>Duyệt người có thể xem tài khoản riêng tư.</p></div></div>
+          <div class="feature-list"><div class="feature-empty compact" th:if="${#lists.isEmpty(followRequests)}">Không có yêu cầu chờ duyệt.</div><div class="feature-list__row" th:each="request : ${followRequests}" th:attr="data-request-id=${request.id}"><a th:href="@{/profile/{id}(id=${request.followerId})}" th:text="${'Tài khoản #' + request.followerId}">Tài khoản</a><span><button type="button" data-action="accept-follow" th:attr="data-request-id=${request.id}">Chấp nhận</button><button type="button" data-action="reject-follow" th:attr="data-request-id=${request.id}">Từ chối</button></span></div></div>
+        </section>
+        <section class="feature-card settings-panel" data-settings-panel="blocked" hidden>
+          <div class="feature-card__title"><span class="feature-icon">⊘</span><div><h2>Tài khoản đã chặn</h2><p>Quản lý những người không thể xem hồ sơ hoặc liên hệ với bạn.</p></div></div>
+          <div class="feature-list"><div class="feature-empty compact" th:if="${#lists.isEmpty(blocks)}">Bạn chưa chặn tài khoản nào.</div><div class="feature-list__row" th:each="block : ${blocks}" th:attr="data-block-id=${block.targetId}"><span th:text="${'Tài khoản #' + block.targetId}">Tài khoản</span><button type="button" data-action="unblock" th:attr="data-user-id=${block.targetId}">Bỏ chặn</button></div></div>
+        </section>
+        <section class="feature-card feature-danger settings-panel" data-settings-panel="account" hidden>
+          <div class="feature-card__title"><span class="feature-icon">!</span><div><h2>Quản lý tài khoản</h2><p>Vô hiệu hóa tạm thời hoặc xóa và ẩn danh dữ liệu.</p></div></div>
+          <label>Mật khẩu hiện tại<input id="accountPassword" type="password" autocomplete="current-password"></label>
+          <label>Mã 2FA hoặc mã khôi phục<input id="accountCode" autocomplete="one-time-code"></label>
+          <div class="feature-actions"><button type="button" data-action="deactivate-account">Vô hiệu hóa</button><button type="button" class="danger" data-action="delete-account">Xóa tài khoản</button></div>
+        </section>
+      </div>
+    </div>
+    <div class="feature-stack" th:if="${pageKind == 'moderation'}">
+      <div class="feature-empty" th:if="${#lists.isEmpty(moderationQueue['reports']) and #lists.isEmpty(moderationQueue['posts']) and #lists.isEmpty(moderationQueue['comments'])}"><strong>Hàng đợi đã sạch</strong><span>Không có nội dung nào cần xem xét.</span></div>
+      <article class="feature-card feature-review" th:each="item : ${moderationQueue['reports']}" th:attr="data-review-type=${item.targetType},data-review-id=${item.targetId},data-report-id=${item.id}"><span class="feature-chip">Báo cáo người dùng</span><h2 th:text="${item.targetType + ' · ' + item.targetId}">Nội dung</h2><p th:text="${item.reason}">Lý do</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button><button type="button" data-action="dismiss-review">Bác báo cáo</button></div></article>
+      <article class="feature-card feature-review" th:each="post : ${moderationQueue['posts']}" data-review-type="POST" th:attr="data-review-id=${post.id}"><span class="feature-chip">Tự động phát hiện</span><h2>Bài viết cần duyệt</h2><p th:text="${post.content}">Nội dung</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button></div></article>
+      <article class="feature-card feature-review" th:each="comment : ${moderationQueue['comments']}" data-review-type="COMMENT" th:attr="data-review-id=${comment.id}"><span class="feature-chip">Tự động phát hiện</span><h2>Bình luận cần duyệt</h2><p th:text="${comment.content}">Nội dung</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button></div></article>
+    </div>
+  </main>
+</section></body></html>

@@ -2,10 +2,6 @@ package com.aloute.dto.response;
 
 import java.time.LocalDateTime;
 
-/**
- * Thông tin 1 hội nhóm dành cho giao diện. Các field {@code member}/{@code admin} là theo GÓC NHÌN
- * của người đang xem (dùng để tô nút "Tham gia"/"Đã tham gia" và huy hiệu "Quản trị").
- */
 public class CommunityResponse {
 
     private Long id;
@@ -13,14 +9,12 @@ public class CommunityResponse {
     private String description;
     private String avatarUrl;
     private String coverUrl;
-    private String privacy; // PUBLIC | PRIVATE
+    private String privacy;
     private int memberCount;
     private LocalDateTime createdAt;
 
-    /** Người đang xem đã là thành viên hay chưa. */
     private boolean member;
 
-    /** Người đang xem có phải quản trị viên của hội nhóm hay không. */
     private boolean admin;
 
     public Long getId() {

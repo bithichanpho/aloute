@@ -5,15 +5,17 @@ import java.util.Map;
 public class ReactionResponse {
 
     private String postId;
-    /** Loại reaction hiện tại của người dùng, null nếu không còn reaction nào. */
+
     private String currentUserReaction;
     private int totalCount;
     private Map<String, Integer> reactionCounts;
 
-    public ReactionResponse() {
-    }
+    public ReactionResponse() {}
 
-    public ReactionResponse(String postId, String currentUserReaction, int totalCount,
+    public ReactionResponse(
+            String postId,
+            String currentUserReaction,
+            int totalCount,
             Map<String, Integer> reactionCounts) {
         this.postId = postId;
         this.currentUserReaction = currentUserReaction;

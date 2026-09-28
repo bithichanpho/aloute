@@ -1,15 +1,5 @@
 package com.aloute.config;
 
-import java.io.IOException;
-
-import org.springframework.lang.NonNull;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
-
 import com.aloute.service.UserDetailsServiceImpl;
 
 import jakarta.servlet.FilterChain;
@@ -18,18 +8,16 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-/**
- * Lọc JWT cho MỌI request (kể cả các trang Thymeleaf permitAll như /feed, /chat...).
- *
- * Vì ứng dụng vừa là REST API (gọi bằng fetch từ app.js) vừa render HTML server-side
- * (Thymeleaf), token được chấp nhận từ 2 nguồn:
- *  1) Header "Authorization: Bearer xxx"  — dùng khi gọi API thuần (Postman, mobile...)
- *  2) Cookie "ALOUTE_TOKEN"               — tự động gửi kèm mọi request cùng origin,
- *     kể cả khi load lại trang /feed, /chat bằng URL trực tiếp (F5), giúp
- *     ViewController biết "ai đang đăng nhập" để đổ dữ liệu vào model.
- *
- * Cookie này được AuthController set (HttpOnly) ngay khi đăng nhập/đăng ký thành công.
- */
+import org.jspecify.annotations.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -47,7 +35,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain) throws ServletException, IOException {
+            @NonNull FilterChain filterChain)
+            throws ServletException, IOException {
 
         String token = extractToken(request);
 
@@ -57,16 +46,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 if (username != null) {
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                    if (jwtUtil.isTokenValid(token, username) && userDetails.isEnabled()) {
-                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                userDetails, null, userDetails.getAuthorities());
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    if (jwtUtil.isTokenValid(token, username)
+                            && userDetails.isEnabled()
+                            && (!(userDetails instanceof com.aloute.security.AloutePrincipal p)
+                                    || p.getTokensRevokedAt() == null
+                                    || jwtUtil.issuedAt(token).isAfter(p.getTokensRevokedAt()))) {
+                        UsernamePasswordAuthenticationToken authToken =
+                                new UsernamePasswordAuthenticationToken(
+                                        userDetails, null, userDetails.getAuthorities());
+                        authToken.setDetails(
+                                new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authToken);
                     }
                 }
             } catch (Exception e) {
-                // Token hỏng/hết hạn/user không còn tồn tại — coi như request chưa đăng nhập,
-                // không throw để các route permitAll (trang HTML) vẫn render bình thường.
+
                 SecurityContextHolder.clearContext();
             }
         }

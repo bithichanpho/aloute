@@ -1,16 +1,18 @@
 package com.aloute.repository;
 
-import java.util.List;
+import com.aloute.model.document.ChatMessage;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
 
-import com.aloute.model.document.ChatMessage;
+import java.util.List;
 
 public interface IChatMessageRepository extends MongoRepository<ChatMessage, String> {
 
-    List<ChatMessage> findByConversationIdOrderBySentAtDesc(String conversationId, org.springframework.data.domain.Pageable pageable);
+    List<ChatMessage> findByConversationIdOrderBySentAtDesc(
+            String conversationId, org.springframework.data.domain.Pageable pageable);
 
-    List<ChatMessage> findBySenderIdOrReceiverIdOrderBySentAtDesc(String senderId, String receiverId);
+    List<ChatMessage> findBySenderIdOrReceiverIdOrderBySentAtDesc(
+            String senderId, String receiverId);
 
     List<ChatMessage> findByReceiverIdAndSenderIdAndReadFalse(String receiverId, String senderId);
 
@@ -18,8 +20,8 @@ public interface IChatMessageRepository extends MongoRepository<ChatMessage, Str
 
     long countByReceiverIdAndReadFalse(String receiverId);
 
-    // ---- Dành cho nhóm: conversationId dạng "group_<id>" ----
-    java.util.Optional<ChatMessage> findFirstByConversationIdOrderBySentAtDesc(String conversationId);
+    java.util.Optional<ChatMessage> findFirstByConversationIdOrderBySentAtDesc(
+            String conversationId);
 
     long countByConversationIdAndSentAtAfter(String conversationId, java.time.LocalDateTime after);
 

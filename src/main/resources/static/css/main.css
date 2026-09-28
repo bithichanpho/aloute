@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #000000;
   --bg-panel: #181818;
   --bg-pill: #1e1e1e;
@@ -33,11 +33,11 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+html { scrollbar-gutter: stable; }
+
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 img { max-width: 100%; display: block; }
-
-/* ============ Bố cục tổng thể ============ */
 
 .app-shell { display: flex; min-height: 100vh; }
 
@@ -52,9 +52,6 @@ img { max-width: 100%; display: block; }
   padding: 28px 24px 80px;
 }
 
-/* ============ Thanh điều hướng (sidebar có nhãn) ============ */
-
-/* Wrapper added so feed/chat can grow as a fixed overlay without changing the rail layout. */
 .sidebar__panel {
   display: flex;
   flex: 1 1 auto;
@@ -72,7 +69,12 @@ img { max-width: 100%; display: block; }
   padding: 22px 14px;
   background: var(--bg);
   z-index: 10;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+
+.sidebar::-webkit-scrollbar { display: none; }
 
 .sidebar__logo {
   display: flex;
@@ -142,8 +144,6 @@ img { max-width: 100%; display: block; }
 
 .sidebar__more { margin-top: auto; }
 
-/* ============ Header trang (tiêu đề + nút tùy chọn) ============ */
-
 .page-header {
   display: flex;
   align-items: center;
@@ -157,16 +157,12 @@ img { max-width: 100%; display: block; }
 }
 .page-header svg { width: 24px; height: 24px; stroke-width: 1.8; }
 
-/* ============ Panel feed (khung bo góc chứa compose + bài viết) ============ */
-
 .feed-panel {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 18px;
   overflow: visible;
 }
-
-/* ============ Ô soạn bài viết (compose box) ============ */
 
 .compose {
   display: flex;
@@ -192,8 +188,6 @@ img { max-width: 100%; display: block; }
 }
 .btn-post:disabled { opacity: 0.3; cursor: default; }
 
-/* ============ Nhãn "Thịnh hành" ============ */
-
 .trending {
   display: flex; align-items: center; gap: 6px;
   padding: 14px 22px 0;
@@ -206,8 +200,6 @@ img { max-width: 100%; display: block; }
   padding: 1px 5px; border-radius: 4px; font-weight: 700;
 }
 
-/* ============ Nhãn phân cách "First thread" ============ */
-
 .thread-divider {
   display: flex; align-items: center; gap: 6px;
   padding: 16px 22px 4px;
@@ -216,15 +208,11 @@ img { max-width: 100%; display: block; }
 }
 .thread-divider svg { width: 15px; height: 15px; stroke-width: 1.8; }
 
-/* ============ Bài viết (post) ============ */
-
 .post {
   position: relative;
   display: flex; flex-wrap: wrap; gap: 12px;
   padding: 12px 22px 16px;
 }
-
-/* Repost banner occupies its own full row above the post body. */
 
 .post__avatar-col { flex-shrink: 0; position: relative; }
 
@@ -256,9 +244,9 @@ img { max-width: 100%; display: block; }
   white-space: pre-line; word-break: break-word;
 }
 
-.post__image {
+.post__image,.post__video {
   width: 100%; border-radius: 14px; border: 1px solid var(--border);
-  margin-bottom: 8px; max-height: 420px; object-fit: cover;
+  margin-bottom: 8px; max-height: 420px; object-fit: cover; background:#050505;
 }
 
 .post__actions { display: flex; align-items: center; gap: 30px; }
@@ -274,11 +262,8 @@ img { max-width: 100%; display: block; }
 .action--like.is-liked { color: var(--accent-like); }
 .action--like.is-liked svg { fill: var(--accent-like); stroke: var(--accent-like); }
 
-/* ============ Reaction đa emoji (thay cho Like đơn giản) ============ */
-
 .reaction { position: relative; display: inline-flex; }
 
-/* Khi đã chọn 1 emoji cụ thể, ẩn icon trái tim mặc định và hiện emoji tương ứng */
 .action--like__emoji { display: none; font-size: 23px; line-height: 1; }
 .action--like.is-reacted svg { display: none; }
 .action--like.is-reacted .action--like__emoji { display: inline-block; }
@@ -290,11 +275,6 @@ img { max-width: 100%; display: block; }
 .reacted--SAD { color: #f7b928; }
 .reacted--ANGRY { color: #e0552b; }
 
-/* Bảng chọn emoji — ẩn mặc định. Việc mở/đóng do JS điều khiển hoàn toàn qua class
-   .reaction-picker--open (hover có delay + auto-đóng ngay sau khi chọn 1 emoji, xem app.js);
-   KHÔNG dùng ":hover" thuần CSS ở đây nữa vì con trỏ vẫn còn nằm trong .reaction ngay sau khi
-   bấm chọn emoji, khiến bảng bị giữ hiện dù JS đã yêu cầu đóng. :focus-within vẫn giữ lại để
-   bàn phím (Tab) mở được bảng cho a11y. */
 .reaction-picker {
   position: absolute; bottom: calc(100% + 8px); left: -8px;
   display: flex; gap: 3px;
@@ -315,8 +295,6 @@ img { max-width: 100%; display: block; }
 }
 .reaction-picker__emoji:hover { transform: scale(1.28); background: var(--bg-hover); }
 
-/* ============ Repost (đăng lại) ============ */
-
 .action--repost.is-reposted { color: #2fbf71; }
 .action--repost.is-reposted svg { stroke: #2fbf71; }
 
@@ -335,8 +313,6 @@ img { max-width: 100%; display: block; }
 .post__repost-banner a:hover { color: var(--text-primary); text-decoration: underline; }
 .post__repost-icon { display:inline-flex; width:14px; height:14px; align-items:center; justify-content:center; font-size:15px; }
 
-/* "cùng N người khác" — hiện danh sách tên+avatar ngay khi rê chuột vào, không cần bấm.
-   Dùng span (không phải <details>) vì <details> chỉ mở được bằng click. */
 .post__repost-others { position: relative; display: inline-block; }
 .post__repost-others__trigger { cursor: pointer; color: var(--text-secondary); font-weight: 600; }
 .post__repost-others__trigger:hover { color: var(--text-primary); text-decoration: underline; }
@@ -374,10 +350,8 @@ img { max-width: 100%; display: block; }
 .repost-card__header a, .repost-card__header span:first-of-type { font-weight: 600; font-size: 13.5px; }
 .repost-card__header span:last-child { color: var(--text-tertiary); font-size: 12.5px; }
 .repost-card p { margin: 0 0 6px; font-size: 14px; white-space: pre-line; word-break: break-word; }
-.repost-card__image { width: 100%; border-radius: 10px; max-height: 300px; object-fit: cover; }
+.repost-card__image,.repost-card__video { width: 100%; border-radius: 10px; max-height: 420px; object-fit: contain; background:#050505; }
 .repost-card--deleted { color: var(--text-tertiary); font-style: italic; font-size: 13.5px; }
-
-/* Icon lưu bài — nổi bên ngoài panel, hiện khi rê chuột vào bài viết */
 
 .post__save {
   position: absolute;
@@ -398,8 +372,6 @@ img { max-width: 100%; display: block; }
   .post__save { display: none; }
 }
 
-/* Nút "+" nổi góc dưới phải */
-
 .fab {
   position: fixed; right: 32px; bottom: 32px;
   width: 56px; height: 56px; border-radius: 50%;
@@ -410,8 +382,6 @@ img { max-width: 100%; display: block; }
   z-index: 20;
 }
 .fab svg { width: 24px; height: 24px; stroke-width: 2; }
-
-/* ============ Trang xác thực (login/register) ============ */
 
 .auth-shell { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .auth-card { width: 100%; max-width: 360px; }
@@ -430,9 +400,6 @@ img { max-width: 100%; display: block; }
 .field input::placeholder, .field textarea::placeholder { color: var(--text-tertiary); }
 .field input:focus, .field textarea:focus { border-color: var(--text-primary); }
 
-/* Mỗi lựa chọn là 1 hàng thẻ bo góc: chữ bên trái, radio ở cuối dòng bên phải
-   (trước đó không có CSS riêng nên rơi vào rule "width:100%" của input ở trên,
-   khiến nút radio bị kéo to và rớt xuống dòng dưới). */
 .field--inline { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .field--inline label {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
@@ -470,8 +437,6 @@ img { max-width: 100%; display: block; }
 }
 .field-hint { font-size: 12.5px; color: var(--text-tertiary); margin: -6px 0 12px 2px; }
 
-/* ============ Trang hồ sơ (profile) ============ */
-
 .profile-header__top { display: flex; justify-content: space-between; align-items: flex-start; }
 .profile-header__name { font-size: 21px; font-weight: 700; margin: 0; }
 .profile-header__username { color: var(--text-secondary); font-size: 14.5px; margin: 2px 0 0; }
@@ -487,7 +452,6 @@ img { max-width: 100%; display: block; }
 }
 .btn-outline:hover { background: var(--bg-hover); }
 
-/* Nút "Bạn thân" trên trang cá nhân — nằm ngay dưới nút Theo dõi/Đang theo dõi */
 .btn-close-friend {
   width: 100%; padding: 9px; margin-top: 8px;
   background: transparent; color: var(--text-primary);
@@ -502,7 +466,6 @@ img { max-width: 100%; display: block; }
 .btn-close-friend.is-close:hover { opacity: 0.88; }
 .btn-close-friend:disabled { opacity: 0.6; cursor: default; }
 
-/* Thanh "X đã gửi lời mời kết bạn thân" kèm 2 nút chấp nhận/từ chối trên trang cá nhân */
 .close-friend-request-bar {
   margin-top: 8px; padding: 10px 12px;
   background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 10px;
@@ -527,16 +490,12 @@ img { max-width: 100%; display: block; }
 }
 .profile-tabs__item--active { color: var(--text-primary); border-bottom-color: var(--text-primary); }
 
-/* ============ Responsive ============ */
-
 @media (max-width: 900px) {
   :root { --rail-width: 0px; }
   .sidebar { display: none; }
   .content-inner { padding-bottom: 90px; }
   .fab { right: 20px; bottom: 20px; }
 }
-
-/* ============ Badge thông báo trên icon sidebar ============ */
 
 .sidebar__icon-wrap { position: relative; display: flex; }
 
@@ -554,11 +513,7 @@ img { max-width: 100%; display: block; }
   line-height: 1;
 }
 
-/* ============ Layout rộng hơn cho trang chat ============ */
-
 .content-inner--wide { max-width: 900px; }
-
-/* ============ Trang chat (2 cột: danh sách hội thoại + khung chat) ============ */
 
 .content-inner--chat {
   height: 100vh;
@@ -612,8 +567,7 @@ img { max-width: 100%; display: block; }
 }
 .chat-thread__menu-btn svg { width: 18px; height: 18px; }
 .chat-thread__menu-btn:hover { background: var(--bg-hover); }
-
-/* ============ Tạo hội nhóm — chọn ảnh bìa + ảnh đại diện ============ */
+.chat-thread__menu-btn.is-active { background:var(--bg-hover); color:var(--text-primary); }
 
 .community-create__media {
   position: relative; margin: 0 0 46px;
@@ -636,9 +590,6 @@ img { max-width: 100%; display: block; }
 }
 .community-create__cover.has-image .community-create__cover-btn:hover { opacity: 1; }
 
-/* Avatar đè lên góc dưới-trái ảnh bìa (kiểu Facebook) thay vì nằm rời một hàng riêng
-   bên dưới — trước đó .community-create__avatar-row nằm ngoài dòng chảy của cover nên
-   nhìn bị "lệch"/trôi nổi. Giờ đặt absolute ngay trong .community-create__media. */
 .community-create__avatar-btn {
   position: absolute; left: 18px; bottom: -30px; z-index: 2;
   width: 76px; height: 76px; border-radius: 50%;
@@ -654,8 +605,6 @@ img { max-width: 100%; display: block; }
 .community-create__avatar-btn svg { width: 26px; height: 26px; stroke-width: 1.6; }
 
 .community-create__media-hint { margin: 0 0 16px; text-align: right; }
-
-/* ============ Modal chung (tạo nhóm / thông tin nhóm) ============ */
 
 .modal-overlay {
   position: fixed; inset: 0; z-index: 1000;
@@ -673,8 +622,7 @@ img { max-width: 100%; display: block; }
   border-radius: 16px;
   padding: 20px;
 }
-/* Popup riêng cần nhiều chỗ hơn (ảnh bìa + ảnh đại diện + mô tả) — chỉ áp dụng cho
-   modal này qua class riêng, không đổi kích thước các modal-card khác (tạo nhóm chat...). */
+
 .modal-card--wide { max-width: 480px; }
 
 .modal-card__header {
@@ -726,6 +674,49 @@ img { max-width: 100%; display: block; }
   color: var(--text-primary); font-family: var(--font); font-size: 14px;
 }
 .chat-search input::placeholder { color: var(--text-tertiary); }
+.chat-utility-dialog { width:min(560px,calc(100vw - 28px)); max-width:none; padding:0; color:var(--text-primary); background:transparent; border:0; overflow:visible; }
+.chat-utility-dialog::backdrop { background:rgba(0,0,0,.76); backdrop-filter:blur(7px); }
+.chat-utility-card { width:100%; max-width:none; }
+.chat-utility-search { width:100%; padding:12px 14px; color:var(--text-primary); background:#171718; border:1px solid #343438; border-radius:11px; outline:0; font:inherit; }
+.chat-utility-search:focus { border-color:#66666e; }
+.chat-utility-results { display:grid; gap:7px; max-height:430px; margin-top:12px; overflow:auto; }
+.chat-utility-result { padding:12px 13px; overflow:hidden; color:var(--text-primary); background:#1c1c1f; border:1px solid #29292e; border-radius:10px; text-align:left; text-overflow:ellipsis; white-space:nowrap; }
+.chat-utility-result:hover { background:#27272b; }
+.chat-utility-empty { padding:28px 12px; color:var(--text-tertiary); text-align:center; }
+.chat-utility-media { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; max-height:520px; overflow:auto; }
+.chat-utility-media a { display:block; aspect-ratio:1; overflow:hidden; border-radius:8px; background:#080808; }
+.chat-utility-media img,.chat-utility-media video { width:100%; height:100%; object-fit:cover; }
+.chat-utility-actions { display:grid; gap:8px; }
+.chat-utility-actions button { width:100%; padding:13px 15px; color:var(--text-primary); background:#1b1b1e; border:1px solid #303035; border-radius:10px; text-align:left; font-weight:650; }
+.chat-utility-actions button:hover { background:#26262a; }
+.chat-utility-actions button.is-danger { color:#ff6b78; }
+.chat-details__more { width:100%; }
+.chat-details__more > summary { list-style:none; }
+.chat-details__more > summary::-webkit-details-marker { display:none; }
+.chat-details__more[open] > summary { background:#1c1c1e; }
+.chat-details__more-menu { display:grid; gap:4px; margin:6px 0 0 48px; padding:6px; background:#18181a; border:1px solid #303034; }
+.chat-details__more-menu button { width:100%; padding:11px 12px; color:var(--text-primary); background:transparent; border:0; text-align:left; font-size:14px; font-weight:600; }
+.chat-details__more-menu button:hover { background:#252529; }
+.chat-details__more-menu button.is-danger { color:#ff5c6c; }
+.msg-row.is-search-match { border-radius:12px; animation:chat-search-pulse 1.8s ease; }
+.msg-row__content { position:relative; }
+.msg-actions { position:absolute; top:50%; right:calc(100% + 7px); z-index:8; transform:translateY(-50%); }
+.msg-row--theirs .msg-actions { right:auto; left:calc(100% + 7px); }
+.msg-actions > summary { display:flex; align-items:center; justify-content:center; width:30px; height:30px; color:#8e8e93; border-radius:50%; list-style:none; font-weight:800; letter-spacing:1px; cursor:pointer; opacity:0; }
+.msg-actions > summary::-webkit-details-marker { display:none; }
+.msg-row:hover .msg-actions > summary,.msg-actions[open] > summary { opacity:1; background:#202023; }
+.msg-actions__menu { position:absolute; right:0; bottom:36px; display:grid; width:210px; padding:6px; background:#202023; border:1px solid #36363a; border-radius:10px; box-shadow:0 12px 35px #000a; }
+.msg-row--theirs .msg-actions__menu { right:auto; left:0; }
+.msg-actions__menu button { padding:11px 12px; color:var(--text-primary); background:transparent; border:0; border-radius:7px; text-align:left; }
+.msg-actions__menu button:hover { background:#303034; }
+.msg-actions__menu button.is-danger { color:#ff6572; }
+.story-reply-card { width:min(310px,70vw); overflow:hidden; background:#202023; border:1px solid #35353a; border-radius:14px; }
+.story-reply-card > img,.story-reply-card > video { width:100%; max-height:230px; object-fit:cover; background:#080808; }
+.story-reply-card__body { display:grid; gap:5px; padding:11px 13px; }
+.story-reply-card__body small { color:var(--text-tertiary); }
+.story-reply-card__original { overflow:hidden; color:var(--text-secondary); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.story-reply-card__body strong { font-size:14px; }
+@keyframes chat-search-pulse { 0%,100% { background:transparent; } 20%,65% { background:#ffffff14; } }
 
 .chat-list__scroll { flex: 1; overflow-y: auto; }
 
@@ -789,7 +780,6 @@ img { max-width: 100%; display: block; }
   flex-direction: column;
 }
 
-/* Dải phân cách theo ngày ("Hôm nay", "Hôm qua"...) chèn giữa danh sách tin nhắn */
 .msg-date-divider {
   display: flex; align-items: center; justify-content: center;
   margin: 16px 0 12px;
@@ -799,7 +789,6 @@ img { max-width: 100%; display: block; }
   background: var(--bg-hover); padding: 4px 12px; border-radius: 999px;
 }
 
-/* 1 dòng tin nhắn: avatar (nếu là đầu cụm, bên "theirs") + bubble */
 .msg-row {
   display: flex;
   margin-top: 10px;
@@ -821,7 +810,6 @@ img { max-width: 100%; display: block; }
   line-height: 1.4;
 }
 
-/* Góc "đuôi" mặc định — bo nhỏ ở phía trong cụm (trái với "theirs", phải với "mine") */
 .bubble--theirs {
   background: var(--bg-hover);
   border-bottom-left-radius: 4px;
@@ -832,8 +820,6 @@ img { max-width: 100%; display: block; }
   border-bottom-right-radius: 4px;
 }
 
-/* Tin nhắn nối tiếp cùng người gửi (có bubble ngay phía trên trong cùng cụm):
-   bo nhỏ luôn góc trên ở phía trong, để 2 bubble liền kề nhìn như 1 khối liền mạch. */
 .msg-row--grouped.msg-row--theirs .bubble--theirs { border-top-left-radius: 4px; }
 .msg-row--grouped.msg-row--mine .bubble--mine { border-top-right-radius: 4px; }
 
@@ -861,7 +847,6 @@ img { max-width: 100%; display: block; }
 .bubble--mine .bubble__time { color: rgba(0, 0, 0, 0.45); }
 .bubble--failed .bubble__time { color: var(--accent-like); font-weight: 600; }
 
-/* "Đã xem" hiển thị dưới bubble cuối cùng mình gửi */
 .msg-row__receipt {
   width: 100%;
   text-align: right;
@@ -903,7 +888,6 @@ img { max-width: 100%; display: block; }
   .chat-list { width: 100%; }
   .chat-list.has-active-thread { display: none; }
 }
-/* ============ Ô tìm kiếm (trang /search) ============ */
 
 .search-box {
   display: flex; align-items: center; gap: 10px;
@@ -934,7 +918,6 @@ img { max-width: 100%; display: block; }
 }
 .btn-follow.is-following { background: transparent; color: var(--text-primary); border: 1px solid var(--border-strong); }
 
-/* Hàng nút Theo dõi + Nhắn tin trên trang cá nhân (kiểu Threads: 2 nút bằng nhau, cạnh nhau) */
 .profile-header__actions { display: flex; gap: 8px; margin-top: 14px; }
 .profile-header__actions .btn-follow { flex: 1; border-radius: 10px; text-align: center; }
 .btn-message {
@@ -967,8 +950,6 @@ img { max-width: 100%; display: block; }
   justify-content: center;
 }
 
-/* ============ Trang hoạt động / thông báo (/activity) ============ */
-
 .notif-item {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 22px; border-bottom: 1px solid var(--border);
@@ -998,15 +979,11 @@ img { max-width: 100%; display: block; }
 .link-btn { background: none; border: none; color: var(--text-secondary); font-size: 13.5px; font-weight: 600; }
 .link-btn:hover { color: var(--text-primary); }
 
-/* ============ Trang placeholder (Đã lưu / Thông tin chi tiết) ============ */
-
 .placeholder-box {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 12px; padding: 80px 20px; color: var(--text-tertiary); text-align: center;
 }
 .placeholder-box svg { width: 44px; height: 44px; stroke-width: 1.4; }
-
-/* ============ Toast lỗi/thông báo nổi góc trên ============ */
 
 .toast {
   position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
@@ -1019,10 +996,9 @@ img { max-width: 100%; display: block; }
 .toast.toast--show { opacity: 1; }
 .toast.toast--error { border-color: var(--accent-like); }
 
-/* ============ Trang soạn bài viết riêng (/compose) ============ */
-
 .compose-page .compose { align-items: flex-start; }
 .compose-page .compose__avatar { margin-top: 4px; }
+.compose__body--editor { display:flex; flex-direction:column; align-items:stretch; }
 
 .compose-page textarea {
   width: 100%; min-height: 120px; border: none; outline: none; resize: vertical;
@@ -1031,7 +1007,7 @@ img { max-width: 100%; display: block; }
 }
 .compose-page textarea::placeholder { color: var(--text-tertiary); }
 .compose-page__preview { position: relative; margin: 10px 0; }
-.compose-page__preview img { width: 100%; border-radius: 14px; border: 1px solid var(--border); max-height: 360px; object-fit: cover; }
+.compose-page__preview img,.compose-page__preview video { width: 100%; border-radius: 14px; border: 1px solid var(--border); max-height: 440px; object-fit: contain; background:#050505; }
 .compose-page__preview button {
   position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%;
   background: rgba(0,0,0,0.7); color: #fff; border: none; display: flex; align-items: center; justify-content: center;
@@ -1042,14 +1018,17 @@ img { max-width: 100%; display: block; }
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
-.compose-page__tools { display: flex; align-items: center; gap: 14px; color: var(--text-secondary); }
-.compose-page__tools label { display: flex; cursor: pointer; }
+.compose-page__tools { display: flex; align-items: center; flex-wrap:wrap; gap: 10px; color: var(--text-secondary); }
+.compose-page__tools label { display: flex; align-items:center; cursor: pointer; }
 .compose-page__tools svg { width: 22px; height: 22px; stroke-width: 1.8; }
+.compose-page__image { gap:7px; padding:7px 10px; border-radius:10px; transition:background .18s ease,color .18s ease; }
+.compose-page__image:hover { color:var(--text-primary); background:var(--bg-hover); }
+.compose-page__image span,.compose-page__visibility span { font-size:13px; }
+.compose-page__visibility { gap:7px; padding-left:10px; border-left:1px solid var(--border); }
+.compose-page__visibility select { padding:7px 28px 7px 9px; color:var(--text-primary); background:var(--bg-panel); border:1px solid var(--border); border-radius:9px; outline:none; }
+.compose-page .btn-post { width:auto; min-width:84px; padding:9px 22px; }
 
-/* Nút "Đang theo dõi" trên header trang cá nhân (thay thế .btn-outline khi là user khác) */
 .profile-header__stats { display: flex; gap: 14px; }
-
-/* ============ Ô bình luận mở ngay dưới mỗi bài viết ============ */
 
 .comment-box { display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
 .comment-box.is-open { display: block; }
@@ -1075,7 +1054,7 @@ img { max-width: 100%; display: block; }
   padding: 8px 16px; border-radius: 999px; border: none;
   background: var(--white); color: var(--black); font-weight: 700; font-size: 13.5px;
 }
-/* ============ ALOUTE media chat + video call ============ */
+
 .chat-thread__actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .chat-thread__icon-btn {
   width: 34px; height: 34px; border: none; border-radius: 50%; background: transparent;
@@ -1108,11 +1087,6 @@ img { max-width: 100%; display: block; }
   .video-call-grid, .video-call-grid #remoteVideo { min-height: 260px; }
   .video-call-grid #localVideo { width: 120px; }
 }
-
-/* ============================================================
-   ALOUTE — Giao diện Chat 3 cột (dark mode)
-   Phỏng theo bố cục tham chiếu: danh sách | hội thoại | hồ sơ.
-   ============================================================ */
 
 .content-inner--chat {
   max-width: none;
@@ -1434,7 +1408,6 @@ img { max-width: 100%; display: block; }
   white-space: nowrap;
 }
 
-/* Khi chưa chọn chat: giữ bố cục nhẹ, ưu tiên khung hội thoại */
 .chat-shell:not(:has(.chat-details:not([hidden]))) .chat-thread {
   grid-column: 2 / 4;
 }
@@ -1448,7 +1421,7 @@ img { max-width: 100%; display: block; }
 
 @media (max-width: 980px) {
   .chat-shell { grid-template-columns: 300px minmax(0, 1fr); }
-  .chat-details { display: none !important; }
+  .chat-details { display: none           ; }
 }
 
 @media (max-width: 760px) {
@@ -1469,11 +1442,6 @@ img { max-width: 100%; display: block; }
   .bubble { max-width: 82%; }
 }
 
-
-/* ============================================================
-   ALOUTE CHAT — final visual polish
-   Dark mode, three-column desktop layout, clean iconography.
-   ============================================================ */
 .chat-action-muted svg { width: 19px; height: 19px; }
 .chat-input-mic { margin-left: -2px; }
 
@@ -1626,18 +1594,16 @@ img { max-width: 100%; display: block; }
 .chat-details__menu-item:hover { background:#181819; }
 .chat-details__menu-icon { width:30px; height:30px; background:#19191a; border:1px solid #242425; }
 
-/* Empty states */
 .empty-state--thread { min-height:100%; color:#86868b; }
 .empty-state--thread svg { width:38px; height:38px; color:#5e5e62; margin-bottom:8px; }
 
-/* Modal/call polish */
 .modal-overlay { background:rgba(0,0,0,.72); backdrop-filter:blur(7px); }
 .modal-card { background:#111112; border-color:#2d2d2f; box-shadow:0 30px 90px rgba(0,0,0,.45); }
 .modal-card__header { padding-bottom:10px; border-bottom:1px solid #242425; }
 .video-call-grid { border:1px solid #2a2a2b; border-radius:16px; min-height:420px; }
 .video-call-grid #remoteVideo { min-height:420px; }
 .video-call-grid #localVideo { width:190px; border-radius:12px; }
-.call-control { display:inline-flex !important; align-items:center; gap:7px; }
+.call-control { display:inline-flex           ; align-items:center; gap:7px; }
 .call-control svg { width:17px; height:17px; }
 .btn-outline, .btn-primary, .btn-danger { border-radius:11px; }
 
@@ -1659,9 +1625,6 @@ img { max-width: 100%; display: block; }
   .bubble { max-width:82%; }
 }
 
-/* ============================================================
-   ALOUTE CHAT — media & emoji composer
-   ============================================================ */
 .chat-thread__input { position: relative; }
 .chat-thread__input > input[type="file"] { display: none; }
 .emoji-picker {
@@ -1709,8 +1672,6 @@ img { max-width: 100%; display: block; }
   }
 }
 
-
-/* ===== ALOUTE media/file/call refinements ===== */
 .bubble__media { max-width: min(460px, 72vw); border-radius: 16px; }
 .bubble__media img { width: 100%; max-width: 460px; max-height: 520px; object-fit: contain; background: #080808; }
 .bubble__media video { width: 100%; max-width: 460px; max-height: 520px; object-fit: contain; background: #080808; }
@@ -1728,27 +1689,22 @@ img { max-width: 100%; display: block; }
 #rejectCallBtn { width:auto; margin-top:0; }
 @media (max-width:760px) { .bubble__media { max-width:82vw; } .bubble__media img,.bubble__media video { max-width:82vw; } }
 
-
-/* ===== ALOUTE voice/video call 60s waiting UX ===== */
-.video-call-grid[hidden], .audio-call-profile[hidden] { display:none !important; }
+.video-call-grid[hidden], .audio-call-profile[hidden] { display:none           ; }
 .audio-call-profile { min-height:360px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:#090909; border:1px solid #2a2a2b; border-radius:16px; }
 .audio-call-profile img { width:110px; height:110px; border-radius:50%; object-fit:cover; border:3px solid #2a2a2c; box-shadow:0 0 0 10px rgba(255,255,255,.03); }
 .audio-call-profile strong { font-size:19px; color:#fff; }
 .audio-call-profile span { color:#8d8d92; font-size:13px; }
 @media (max-width: 768px) { .audio-call-profile { min-height:260px; } }
 
-/* ---------- Call log / missed-call message ---------- */
-/* CALL phải override nền/padding của .bubble--mine/.bubble--theirs để không xuất hiện
-   một khung sáng lớn bao quanh card cuộc gọi. */
 .bubble--call,
 .bubble.bubble--call {
   width: fit-content;
   max-width: min(340px, 78vw);
-  padding: 0 !important;
+  padding: 0           ;
   margin: 0;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
+  background: transparent           ;
+  border: 0           ;
+  box-shadow: none           ;
   color: inherit;
 }
 
@@ -1839,9 +1795,6 @@ img { max-width: 100%; display: block; }
   .bubble__call { width: min(280px, 84vw); }
 }
 
-/* ===== Messenger-style attachments & call cards =====
-   Media/call are siblings of the text bubble, never children of .bubble.
-   This prevents the light message background from wrapping images/files/calls. */
 .msg-row__content {
   min-width: 0;
   max-width: min(74%, 640px);
@@ -1867,7 +1820,6 @@ img { max-width: 100%; display: block; }
 }
 .msg-row--mine .msg-row__timestamp { color: #6f6f74; }
 
-/* Standalone photo/video — no bubble background, no extra outer panel. */
 .chat-attachment {
   display: block;
   position: relative;
@@ -1898,7 +1850,6 @@ img { max-width: 100%; display: block; }
 }
 .chat-attachment--media video { max-height: 520px; }
 
-/* File card is also independent from .bubble. */
 .chat-attachment--file {
   width: min(360px, 72vw);
   min-height: 68px;
@@ -1958,7 +1909,6 @@ img { max-width: 100%; display: block; }
   font-size: 18px;
 }
 
-/* Call card is an independent message object, matching Messenger's compact call log. */
 .bubble__call {
   width: min(310px, 72vw);
   box-sizing: border-box;
@@ -2009,7 +1959,6 @@ img { max-width: 100%; display: block; }
 }
 .bubble__call-body span { font-size: 11px; line-height: 1.25; color: #92929a; }
 
-/* Failed optimistic message can be either a text bubble or a standalone attachment. */
 .chat-attachment.bubble--failed,
 .bubble__call.bubble--failed {
   cursor: pointer;
@@ -2028,10 +1977,6 @@ img { max-width: 100%; display: block; }
   .bubble__call { width: min(310px, 82vw); }
 }
 
-/* =====================================================================
-   ALOUTE CHAT — layout hardening (prevents long media/call history from
-   pushing the composer outside the viewport)
-   ===================================================================== */
 .chat-shell {
   min-height: 0;
   overflow: hidden;
@@ -2072,7 +2017,6 @@ img { max-width: 100%; display: block; }
   max-width: min(74%, 640px);
 }
 
-/* Standalone attachments and call logs must never stretch the message pane. */
 .chat-attachment,
 .bubble__call {
   min-width: 0;
@@ -2116,8 +2060,6 @@ img { max-width: 100%; display: block; }
   }
 }
 
-
-/* Instagram-inspired notes row directly under search. */
 .chat-notes {
   padding: 0 14px 14px;
   overflow: hidden;
@@ -2242,7 +2184,7 @@ img { max-width: 100%; display: block; }
 }
 
 @media (max-width: 980px) {
-  .page-chat .main-column { padding-left: 78px; }
+  .page-chat .main-column { padding-left: var(--rail-width); }
 }
 
 @media (max-width: 760px) {
@@ -2250,12 +2192,9 @@ img { max-width: 100%; display: block; }
   .chat-notes { padding-left: 12px; padding-right: 12px; }
 }
 
-/* ============================================================
-   FEED DESKTOP — responsive 4 khu vực, sidebar rail + feed + gợi ý + kết nối
-   ============================================================ */
 .main-column--feed {
   min-width: 0;
-  padding-left: 72px;
+  padding-left: var(--rail-width);
 }
 
 .main-column--feed .content-inner {
@@ -2266,6 +2205,15 @@ img { max-width: 100%; display: block; }
 }
 
 .feed-page { width: 100%; min-width: 0; }
+.story-tray { display:flex; gap:16px; margin:0 0 18px; padding:14px 4px 12px; overflow-x:auto; scrollbar-width:none; }
+.story-tray::-webkit-scrollbar { display:none; }
+.story-tray__item { display:grid; width:76px; flex:0 0 76px; gap:7px; justify-items:center; padding:0; color:#f4f4f5; background:transparent; border:0; font:inherit; font-size:12px; cursor:pointer; }
+.story-tray__item > span:last-child { width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
+.story-tray__avatar { position:relative; display:grid; width:66px; height:66px; padding:3px; place-items:center; background:linear-gradient(135deg,#ffcf54,#ff3d78 48%,#7a5cff); border-radius:50%; }
+.story-tray__avatar img { width:100%; height:100%; object-fit:cover; background:#242429; border:3px solid #09090b; border-radius:50%; }
+.story-tray__item.is-viewed .story-tray__avatar { background:#505057; }
+.story-tray__create .story-tray__avatar { background:#333339; }
+.story-tray__avatar i { position:absolute; right:0; bottom:0; display:grid; width:22px; height:22px; place-items:center; color:#fff; background:#536dff; border:2px solid #09090b; border-radius:50%; font-size:17px; font-style:normal; line-height:1; }
 
 .feed-layout {
   width: 100%;
@@ -2316,12 +2264,11 @@ img { max-width: 100%; display: block; }
 .post__username { font-size: 15.5px; }
 .post__time { font-size: 13px; }
 .post__content { font-size: 16px; margin: 5px 0 9px; }
-.post__image { max-height: min(560px, 58vh); border-radius: 12px; }
+.post__image,.post__video { max-height: min(560px, 58vh); border-radius: 12px; }
 .post__actions { gap: 22px; }
 .action svg { width: 25px; height: 25px; }
 .action span { font-size: 14.5px; }
 
-/* Cột đề xuất ở giữa: nhẹ hơn rail phải, ưu tiên người có kết nối chung. */
 .feed-suggestions {
   min-width: 0;
   padding-top: 14px;
@@ -2417,7 +2364,6 @@ img { max-width: 100%; display: block; }
   padding: 8px 4px;
 }
 
-/* Rail phải liền mạch, không chia card như phiên bản trước. */
 .feed-rail {
   min-width: 0;
   display: flex;
@@ -2578,7 +2524,7 @@ img { max-width: 100%; display: block; }
 }
 
 @media (max-width: 980px) {
-  .main-column--feed { padding-left: 72px; }
+  .main-column--feed { padding-left: var(--rail-width); }
   .main-column--feed .content-inner { padding: 46px 18px 80px; }
   .feed-layout { grid-template-columns: minmax(0, 1fr) 260px; }
 }
@@ -2598,8 +2544,6 @@ img { max-width: 100%; display: block; }
   .feed-main { width: 100%; }
 }
 
-
-/* Các trang thường: hoạt động, tìm kiếm, hồ sơ, soạn bài viết... */
 .content-inner:not(.content-inner--chat) {
   padding-top: clamp(32px, 5vh, 64px);
   padding-left: clamp(24px, 3vw, 48px);
@@ -2619,7 +2563,6 @@ img { max-width: 100%; display: block; }
   }
 }
 
-/* Trang Feed dùng bố cục riêng (.main-column--feed .content-inner) */
 .main-column--feed .content-inner {
   padding-top: clamp(56px, 8vh, 112px);
   padding-left: clamp(32px, 3.6vw, 64px);
@@ -2646,11 +2589,6 @@ img { max-width: 100%; display: block; }
   }
 }
 
-/* ============================================================
-   Trang tìm kiếm (/search) — bố cục kiểu Threads
-   Ô tìm kiếm dính trên đầu + khu vực khám phá (gợi ý & xu hướng).
-   ============================================================ */
-
 .search-page { padding-bottom: 120px; }
 
 .search-page__header { align-items: flex-start; margin-bottom: 16px; }
@@ -2659,8 +2597,6 @@ img { max-width: 100%; display: block; }
   font-size: 14px;
   color: var(--text-secondary);
 }
-
-/* ---------- Ô tìm kiếm ---------- */
 
 .search-bar {
   position: sticky;
@@ -2713,8 +2649,6 @@ img { max-width: 100%; display: block; }
 .search-bar__clear svg { width: 13px; height: 13px; stroke-width: 2.4; }
 .search-bar__clear:hover { background: #454545; }
 
-/* ---------- Tab kết quả ---------- */
-
 .search-tabs {
   display: flex;
   gap: 8px;
@@ -2739,8 +2673,6 @@ img { max-width: 100%; display: block; }
 
 .search-results { margin-top: 18px; }
 .search-results .feed-panel { padding: 4px 0; }
-
-/* ---------- Thẻ khám phá (gợi ý / xu hướng) ---------- */
 
 .search-discover {
   display: flex;
@@ -2780,8 +2712,6 @@ img { max-width: 100%; display: block; }
   color: var(--text-secondary);
 }
 .discover-card__body { padding: 0 6px 6px; }
-
-/* ---------- Một người trong danh sách gợi ý / kết quả ---------- */
 
 .discover-user {
   display: flex;
@@ -2859,8 +2789,6 @@ img { max-width: 100%; display: block; }
   flex-shrink: 0;
 }
 
-/* ---------- Một chủ đề xu hướng ---------- */
-
 .trend {
   display: flex;
   align-items: center;
@@ -2924,8 +2852,6 @@ img { max-width: 100%; display: block; }
   font-weight: 800;
 }
 
-/* ---------- Trạng thái rỗng bên trong thẻ khám phá ---------- */
-
 .discover-empty {
   text-align: center;
   padding: 34px 20px;
@@ -2943,8 +2869,6 @@ img { max-width: 100%; display: block; }
   line-height: 1.5;
   color: var(--text-tertiary);
 }
-
-/* ---------- Khung xương lúc chờ tải ---------- */
 
 .skeleton-row {
   display: flex;
@@ -2975,8 +2899,6 @@ img { max-width: 100%; display: block; }
   .skeleton { animation: none; }
 }
 
-/* ---------- Màn hình nhỏ ---------- */
-
 @media (max-width: 720px) {
   .search-bar { top: 8px; padding: 11px 15px; }
   .discover-card { border-radius: 14px; }
@@ -2986,10 +2908,6 @@ img { max-width: 100%; display: block; }
   .trend__thumb, .trend__thumb--empty { width: 46px; height: 46px; }
   .discover-user__bio { display: none; }
 }
-
-/* ============================================================
-   Trang cá nhân — thống kê bấm được + hộp thoại danh sách kết nối
-   ============================================================ */
 
 .profile-stats {
   display: flex;
@@ -3016,8 +2934,6 @@ img { max-width: 100%; display: block; }
 }
 .profile-stat strong { color: var(--text-primary); font-weight: 700; }
 .profile-stat:hover { background: var(--bg-hover); color: var(--text-primary); }
-
-/* ---------- Hộp thoại ---------- */
 
 body.no-scroll { overflow: hidden; }
 
@@ -3152,16 +3068,8 @@ body.no-scroll { overflow: hidden; }
   }
 }
 
-/* ============================================================
-   TRANG CÁ NHÂN — bố cục kiểu Threads
-   Khung rộng hơn feed để hàng số liệu (bài viết / người theo dõi /
-   đang theo dõi / bạn thân) luôn nằm trên CÙNG MỘT DÒNG.
-   Tên + @handle bên trái, ảnh đại diện bên phải, nút hành động kéo dài.
-   ============================================================ */
-
 :root { --profile-width: 920px; }
 
-/* Thắng rule .content-inner { max-width: var(--feed-width) } ở đầu file */
 section.content-inner--profile,
 .main-column .content-inner--profile {
   max-width: var(--profile-width);
@@ -3169,8 +3077,6 @@ section.content-inner--profile,
 }
 
 .profile-cover { padding: 4px 0 0; }
-
-/* ---------- Hàng đầu: danh tính bên trái, avatar bên phải ---------- */
 
 .profile-cover__main {
   display: flex;
@@ -3234,8 +3140,6 @@ section.content-inner--profile,
   background: #1c1c1c;
 }
 
-/* ---------- Tiểu sử ---------- */
-
 .profile-cover__bio { margin-top: 14px; }
 .profile-cover__text {
   margin: 0;
@@ -3245,15 +3149,13 @@ section.content-inner--profile,
   word-break: break-word;
 }
 
-/* ---------- Hàng số liệu: BẮT BUỘC nằm ngang hàng ---------- */
-
 .profile-cover .profile-stats--row {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;          /* không cho "bạn thân" rớt xuống dòng */
+  flex-wrap: nowrap;
   gap: clamp(10px, 2.2vw, 30px);
   margin: 16px 0 0;
-  overflow-x: auto;           /* màn cực hẹp thì cuộn ngang thay vì xuống dòng */
+  overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -3272,7 +3174,7 @@ section.content-inner--profile,
   color: var(--text-secondary);
   font-family: var(--font);
   font-size: 14.5px;
-  white-space: nowrap;        /* "người theo dõi" không bị bẻ đôi */
+  white-space: nowrap;
   transition: background .16s ease, color .16s ease;
 }
 .profile-cover .profile-stats--row .profile-stat strong,
@@ -3285,8 +3187,6 @@ section.content-inner--profile,
   color: var(--text-primary);
 }
 .profile-stat--static { cursor: default; }
-
-/* ---------- Nút hành động: chia đều hết bề ngang ---------- */
 
 .profile-cover__actions {
   display: flex;
@@ -3350,8 +3250,6 @@ section.content-inner--profile,
   color: var(--highlight-text);
 }
 
-/* ---------- Thanh chuyển chế độ xem ---------- */
-
 .profile-views {
   display: flex;
   margin-top: 22px;
@@ -3383,14 +3281,10 @@ section.content-inner--profile,
   border-bottom-color: var(--text-primary);
 }
 
-/* ---------- Dòng thời gian ---------- */
-
 .profile-posts[hidden] { display: none; }
 .profile-posts .post { padding: 16px 0; border-bottom: 1px solid var(--border); }
 .profile-posts .post:last-of-type { border-bottom: none; }
 .profile-posts [data-load-posts] { margin: 16px auto 0; }
-
-/* ---------- Lưới (chỉ bài có ảnh) ---------- */
 
 .profile-grid-wrap[hidden] { display: none; }
 
@@ -3416,6 +3310,7 @@ section.content-inner--profile,
   object-fit: cover;
   display: block;
 }
+.grid-tile video.grid-tile__image { pointer-events:none; }
 
 .grid-tile__overlay {
   position: absolute;
@@ -3441,7 +3336,6 @@ section.content-inner--profile,
 }
 .grid-tile__stat svg { width: 17px; height: 17px; }
 
-/* Bài được chọn từ lưới sẽ sáng lên một nhịp cho dễ định vị */
 .post--highlight {
   animation: post-highlight 1.6s ease;
   border-radius: 12px;
@@ -3453,8 +3347,6 @@ section.content-inner--profile,
 @media (prefers-reduced-motion: reduce) {
   .post--highlight { animation: none; }
 }
-
-/* ---------- Nút gạt "tài khoản riêng tư" (trang /profile/edit) ---------- */
 
 .field--switch { margin: 4px 0 18px; }
 .switch-row {
@@ -3497,8 +3389,6 @@ section.content-inner--profile,
 }
 .switch-row input:focus-visible ~ .switch-row__track { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 
-/* ---------- Màn hình nhỏ ---------- */
-
 @media (max-width: 720px) {
   .profile-cover__name { font-size: 22px; }
   .profile-cover__handle { font-size: 14px; }
@@ -3516,9 +3406,6 @@ section.content-inner--profile,
   .profile-view span { font-size: 11px; }
 }
 
-/* ============================================================
-   ALOUTE COMMUNITY — search + compact list UI
-   ============================================================ */
 .community-page--list {
   max-width: 980px;
   padding-bottom: 110px;
@@ -3695,12 +3582,6 @@ section.content-inner--profile,
   .community-card__badge { grid-column: 2; justify-self: start; margin-top: 4px; }
 }
 
-/* ============================================================
-   ALOUTE CHAT — scroll hardening
-   Grid/flex children default to min-height:auto, which can make the
-   scroll container grow instead of scrolling. Explicit min-height:0
-   keeps both the conversation list and message pane inside the viewport.
-   ============================================================ */
 .page-chat { overflow: hidden; }
 .page-chat .main-column { min-width: 0; min-height: 100vh; overflow: hidden; }
 .content-inner--chat { min-height: 0; overflow: hidden; }
@@ -3730,367 +3611,66 @@ section.content-inner--profile,
 }
 .chat-details { min-height: 0; }
 
-
-
-
-/* ============================================================
-   Desktop rail + feed layout
-   This is the single implementation for collapsed Feed/Chat navigation.
-   ============================================================ */
-
-/* ---------- Sidebar: fixed 72px rail, panel-only expansion ---------- */
-@media (min-width: 761px) {
-  body.page-feed .sidebar.sidebar--feed-collapsed,
-  body.page-chat .sidebar.sidebar--chat-collapsed {
-    position: fixed !important;
-    inset: 0 auto 0 0 !important;
-    width: 72px !important;
-    min-width: 72px !important;
-    max-width: 72px !important;
-    height: 100vh !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    display: block !important;
-    overflow: visible !important;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    transition: none !important;
-    z-index: 5000 !important;
-    isolation: isolate !important;
-  }
-
-  /* Host/rail NEVER grows on hover. */
-  body.page-feed .sidebar.sidebar--feed-collapsed:hover,
-  body.page-feed .sidebar.sidebar--feed-collapsed:focus-within,
-  body.page-chat .sidebar.sidebar--chat-collapsed:hover,
-  body.page-chat .sidebar.sidebar--chat-collapsed:focus-within {
-    width: 72px !important;
-    min-width: 72px !important;
-    max-width: 72px !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed::before,
-  body.page-feed .sidebar.sidebar--feed-collapsed::after,
-  body.page-chat .sidebar.sidebar--chat-collapsed::before,
-  body.page-chat .sidebar.sidebar--chat-collapsed::after {
-    content: none !important;
-    display: none !important;
-    pointer-events: none !important;
-  }
-
-  /* Only this panel is allowed to expand. JS toggles .is-expanded. */
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__panel,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__panel {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
-    width: 72px !important;
-    min-width: 72px !important;
-    max-width: 72px !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    margin: 0 !important;
-    padding: 16px 12px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-    background: #000 !important;
-    border-right: 1px solid #171717 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    transition: width .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s ease !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__panel,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__panel {
-    width: 272px !important;
-    min-width: 272px !important;
-    max-width: 272px !important;
-    box-shadow: 18px 0 48px rgba(0,0,0,.34) !important;
-  }
-
-  /* Fixed icon anchor: x=24px in both states. */
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__logo,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__logo {
-    position: relative !important;
-    width: 48px !important;
-    min-width: 48px !important;
-    max-width: 48px !important;
-    height: 48px !important;
-    min-height: 48px !important;
-    flex: 0 0 48px !important;
-    margin: 0 0 24px !important;
-    padding: 0 !important;
-    display: block !important;
-    overflow: hidden !important;
-    border-radius: 12px !important;
-    white-space: nowrap !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__logo,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__logo {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-width: 248px !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__logo > svg,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__logo > svg {
-    position: absolute !important;
-    left: 12px !important;
-    top: 50% !important;
-    width: 24px !important;
-    height: 24px !important;
-    margin: 0 !important;
-    transform: translateY(-50%) !important;
-  }
-
-  /* Nav rows remain 48px-wide while collapsed. */
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__nav,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__nav {
-    position: relative !important;
-    width: 48px !important;
-    min-width: 48px !important;
-    max-width: 48px !important;
-    flex: 0 0 auto !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 7px !important;
-    overflow: hidden !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__nav,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__nav {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-width: 248px !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row {
-    position: relative !important;
-    width: 48px !important;
-    min-width: 48px !important;
-    max-width: 48px !important;
-    height: 48px !important;
-    min-height: 48px !important;
-    max-height: 48px !important;
-    flex: 0 0 48px !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border-radius: 12px !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-    white-space: nowrap !important;
-    display: block !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__row,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__row {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-width: 248px !important;
-  }
-
-  /* Hover cannot alter row geometry; only active/hover background is allowed. */
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row:hover,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row:hover { 
-    width: 48px !important;
-    min-width: 48px !important;
-    max-width: 48px !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__row:hover,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__row:hover {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-width: 248px !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > svg,
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > img,
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > .sidebar__icon-wrap,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > svg,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > img,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > .sidebar__icon-wrap {
-    position: absolute !important;
-    left: 12px !important;
-    top: 50% !important;
-    width: 24px !important;
-    height: 24px !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    transform: translateY(-50%) !important;
-    flex: none !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > img,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > img {
-    border-radius: 50% !important;
-    object-fit: cover !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > .sidebar__icon-wrap,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > .sidebar__icon-wrap {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__logo > span,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__logo > span,
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row > span:not(.sidebar__icon-wrap),
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row > span:not(.sidebar__icon-wrap) {
-    position: absolute !important;
-    left: 56px !important;
-    top: 50% !important;
-    width: auto !important;
-    max-width: 180px !important;
-    margin: 0 !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    transform: translateY(-50%) !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__logo > span,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__logo > span,
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__row > span:not(.sidebar__icon-wrap),
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__row > span:not(.sidebar__icon-wrap) {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__section,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__section {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-height: 120px !important;
-    margin-top: 22px !important;
-    padding: 0 !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    overflow: hidden !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__section,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__section {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-  }
-
-  /* Following has no icon, so align its text with the labels of icon rows. */
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__section-head,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__section-head {
-    padding-left: 56px !important;
-    padding-right: 0 !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__row--sub,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__row--sub {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-width: 248px !important;
-    height: 48px !important;
-    min-height: 48px !important;
-    margin: 0 !important;
-    padding: 0 12px 0 56px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    border-radius: 12px !important;
-    box-sizing: border-box !important;
-    overflow: hidden !important;
-  }
-
-  body.page-feed .sidebar.sidebar--feed-collapsed .sidebar__more,
-  body.page-chat .sidebar.sidebar--chat-collapsed .sidebar__more {
-    position: relative !important;
-    width: 48px !important;
-    min-width: 48px !important;
-    max-width: 48px !important;
-    height: 48px !important;
-    min-height: 48px !important;
-    flex: 0 0 48px !important;
-    margin-top: auto !important;
-  }
-  body.page-feed .sidebar.sidebar--feed-collapsed.is-expanded .sidebar__more,
-  body.page-chat .sidebar.sidebar--chat-collapsed.is-expanded .sidebar__more {
-    width: 248px !important;
-    min-width: 248px !important;
-    max-width: 248px !important;
-  }
-
-  body.page-feed .main-column--feed,
-  body.page-chat .main-column {
-    padding-left: 72px !important;
-    min-width: 0 !important;
-  }
-}
-
-/* ---------- Feed: one desktop grid; responsive fallbacks below ---------- */
-@media (min-width: 1400px) {
+@media (min-width: 1600px) {
   body.page-feed .main-column--feed .content-inner {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: clamp(58px, 7vh, 92px) 20px 88px 30px !important;
-    min-width: 0 !important;
+    width: 100%           ;
+    max-width: none           ;
+    margin: 0           ;
+    padding: clamp(58px, 7vh, 92px) 20px 88px 30px           ;
+    min-width: 0           ;
   }
   body.page-feed .feed-layout {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    display: grid !important;
-    grid-template-columns: minmax(760px, 1fr) 220px 250px !important;
-    column-gap: 24px !important;
-    row-gap: 28px !important;
-    align-items: start !important;
-    justify-content: start !important;
+    width: 100%           ;
+    max-width: none           ;
+    margin: 0           ;
+    display: grid           ;
+    grid-template-columns: minmax(760px, 1fr) 220px 250px           ;
+    column-gap: 24px           ;
+    row-gap: 28px           ;
+    align-items: start           ;
+    justify-content: start           ;
   }
   body.page-feed .feed-main,
   body.page-feed .feed-suggestions,
   body.page-feed .feed-rail {
-    min-width: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
+    min-width: 0           ;
+    width: 100%           ;
+    max-width: none           ;
   }
   body.page-feed .feed-suggestions,
-  body.page-feed .feed-rail { padding-top: 6px !important; }
-  body.page-feed .feed-panel { width: 100% !important; }
+  body.page-feed .feed-rail { padding-top: 6px           ; }
+  body.page-feed .feed-panel { width: 100%           ; }
 }
 
-@media (min-width: 981px) and (max-width: 1399px) {
+@media (min-width: 981px) and (max-width: 1599px) {
   body.page-feed .main-column--feed .content-inner {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 42px 24px 80px 28px !important;
+    width: 100%           ;
+    max-width: none           ;
+    margin: 0           ;
+    padding: 42px 24px 80px 28px           ;
   }
   body.page-feed .feed-layout {
-    width: 100% !important;
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) 290px !important;
-    gap: 26px !important;
+    width: 100%           ;
+    display: grid           ;
+    grid-template-columns: minmax(0, 1fr) 290px           ;
+    gap: 26px           ;
   }
-  body.page-feed .feed-suggestions { grid-column: 2 !important; grid-row: 1 !important; }
-  body.page-feed .feed-rail { grid-column: 2 !important; grid-row: 2 !important; }
+  body.page-feed .feed-suggestions { grid-column: 2           ; grid-row: 1           ; }
+  body.page-feed .feed-rail { grid-column: 2           ; grid-row: 2           ; }
 }
 
 @media (max-width: 980px) {
-  body.page-feed .main-column--feed .content-inner { padding: 30px 16px 72px !important; }
-  body.page-feed .feed-layout { grid-template-columns: minmax(0, 1fr) !important; gap: 22px !important; }
+  body.page-feed .main-column--feed .content-inner { padding: 30px 16px 72px           ; }
+  body.page-feed .feed-layout { grid-template-columns: minmax(0, 1fr)           ; gap: 22px           ; }
   body.page-feed .feed-suggestions,
-  body.page-feed .feed-rail { grid-column: auto !important; grid-row: auto !important; }
+  body.page-feed .feed-rail { grid-column: auto           ; grid-row: auto           ; }
 }
 
 @media (max-width: 760px) {
   body.page-feed .main-column--feed,
-  body.page-chat .main-column { padding-left: 0 !important; }
+  body.page-chat .main-column { padding-left: 0           ; }
 }
 
-/* Navigation progress bar. */
 .page-nav-progress {
   position: fixed;
   top: 0;

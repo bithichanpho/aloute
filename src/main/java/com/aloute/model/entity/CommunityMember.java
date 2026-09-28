@@ -5,9 +5,13 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "community_members", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_community_members_community_user", columnNames = {"community_id", "user_id"})
-})
+@Table(
+        name = "community_members",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_community_members_community_user",
+                    columnNames = {"community_id", "user_id"})
+        })
 public class CommunityMember {
 
     @Id
@@ -21,15 +25,23 @@ public class CommunityMember {
     private Long userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "community_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "community_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private Community community;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "user_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User user;
 
     @Column(nullable = false, length = 20)
-    private String role = "MEMBER"; // ADMIN | MEMBER
+    private String role = "MEMBER";
 
     @Column(name = "joined_at", nullable = false, updatable = false)
     private LocalDateTime joinedAt;
@@ -69,9 +81,13 @@ public class CommunityMember {
         this.userId = userId;
     }
 
-    public Community getCommunity() { return community; }
+    public Community getCommunity() {
+        return community;
+    }
 
-    public User getUser() { return user; }
+    public User getUser() {
+        return user;
+    }
 
     public String getRole() {
         return role;

@@ -8,10 +8,10 @@ public class AuthResponse {
     private String fullName;
     private String avatarUrl;
 
-    public AuthResponse() {
-    }
+    public AuthResponse() {}
 
-    public AuthResponse(String accessToken, Long userId, String username, String fullName, String avatarUrl) {
+    public AuthResponse(
+            String accessToken, Long userId, String username, String fullName, String avatarUrl) {
         this.accessToken = accessToken;
         this.userId = userId;
         this.username = username;

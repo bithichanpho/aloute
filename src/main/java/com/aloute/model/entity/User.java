@@ -5,10 +5,12 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "users", uniqueConstraints = {
-        @UniqueConstraint(columnNames = "username"),
-        @UniqueConstraint(columnNames = "email")
-})
+@Table(
+        name = "users",
+        uniqueConstraints = {
+            @UniqueConstraint(columnNames = "username"),
+            @UniqueConstraint(columnNames = "email")
+        })
 public class User {
 
     @Id
@@ -36,14 +38,6 @@ public class User {
     @Column(length = 300)
     private String bio;
 
-    /**
-     * Tài khoản riêng tư.
-     * false (mặc định): ai cũng có thể bấm "Nhắn tin" với người này.
-     * true: chỉ người đã theo dõi lẫn nhau (bạn bè) mới nhắn tin được.
-     *
-     * Dùng kiểu Boolean (nullable) để ddl-auto=update thêm cột vào bảng đã có
-     * dữ liệu mà không vướng ràng buộc NOT NULL; getter bên dưới coi null = false.
-     */
     @Column(name = "is_private")
     private Boolean privateAccount = Boolean.FALSE;
 
@@ -54,17 +48,18 @@ public class User {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    @lombok.Getter @lombok.Setter private Boolean selfDeactivated = false;
+    @lombok.Getter @lombok.Setter private java.time.Instant tokensRevokedAt;
+
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified = false;
 
     @Column(name = "verification_token", length = 100)
     private String verificationToken;
 
-    /** Hạn dùng của link xác thực (15 phút). Hết hạn phải bấm "gửi lại email". */
     @Column(name = "verification_token_expiry")
     private LocalDateTime verificationTokenExpiry;
 
-    /** Lần gửi email xác thực gần nhất — dùng để chặn spam (cooldown 60 giây). */
     @Column(name = "verification_email_sent_at")
     private LocalDateTime verificationEmailSentAt;
 
@@ -80,8 +75,7 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public User() {
-    }
+    public User() {}
 
     @PrePersist
     protected void onCreate() {
@@ -92,8 +86,6 @@ public class User {
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
-
-    // ===== Getters & Setters =====
 
     public Long getId() {
         return id;

@@ -1,14 +1,13 @@
 package com.aloute.model.entity;
 
-import java.time.LocalDateTime;
-
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+
 @Entity
-@Table(name = "notifications",
-        indexes = {
-                @Index(name = "idx_notifications_receiver", columnList = "receiver_id")
-        })
+@Table(
+        name = "notifications",
+        indexes = {@Index(name = "idx_notifications_receiver", columnList = "receiver_id")})
 public class Notification {
 
     @Id
@@ -19,21 +18,29 @@ public class Notification {
     private Long receiverId;
 
     @Column(name = "sender_id")
-    private Long senderId; // nullable — null nếu là thông báo hệ thống
+    private Long senderId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "receiver_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "receiver_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User receiver;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sender_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "sender_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User sender;
 
     @Column(nullable = false, length = 30)
-    private String type; // LIKE, COMMENT, FOLLOW, MESSAGE, MODERATION
+    private String type;
 
     @Column(name = "reference_id", length = 50)
-    private String referenceId; // id của Post/Comment bên Mongo (dạng String)
+    private String referenceId;
 
     @Column(nullable = false, length = 255)
     private String content;
@@ -64,9 +71,13 @@ public class Notification {
         this.receiverId = receiverId;
     }
 
-    public User getReceiver() { return receiver; }
+    public User getReceiver() {
+        return receiver;
+    }
 
-    public User getSender() { return sender; }
+    public User getSender() {
+        return sender;
+    }
 
     public Long getSenderId() {
         return senderId;

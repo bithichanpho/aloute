@@ -7,16 +7,12 @@ spring:
       max-request-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
       file-size-threshold: 2MB
 
-  # ===== Tốc độ: template & tài nguyên tĩnh =====
   thymeleaf:
-    # Cache template đã biên dịch. Khi đang sửa .html thì chạy với
-    # -Dspring.thymeleaf.cache=false hoặc dùng spring-boot-devtools.
     cache: ${THYMELEAF_CACHE:false}
 
   web:
     resources:
-      # Gắn mã băm nội dung vào tên file (/css/main-a1b2c3.css) nên có thể
-      # cache rất lâu mà vẫn tự động hết hạn mỗi lần file đổi nội dung.
+
       chain:
         enabled: true
         cache: true
@@ -27,12 +23,11 @@ spring:
             paths: /**
       cache:
         cachecontrol:
-          max-age: 30d
-          cache-public: true
+          max-age: ${STATIC_CACHE_MAX_AGE:0s}
+          cache-public: ${STATIC_CACHE_PUBLIC:false}
 
   jpa:
-    # Không giữ EntityManager/kết nối DB suốt vòng đời request.
-    # An toàn ở đây vì entity duy nhất có quan hệ (User.role) đang là EAGER.
+
     open-in-view: false
     properties:
       hibernate:
@@ -54,13 +49,14 @@ spring:
 
   data:
     mongodb:
-      # Tự tạo các index đã khai báo bằng @CompoundIndex/@Indexed trong
-      # Post, Like, ChatMessage. Từ Spring Boot 3 mặc định là false, nên
-      # nếu không bật thì mọi truy vấn feed/chat đều phải quét toàn bộ collection.
+
       auto-index-creation: true
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
 
   config:
     import:
+      - optional:file:.env[.properties]
       - application-db.yml
       - application-mongo.yml
       - application-jwt.yml
@@ -71,7 +67,6 @@ spring:
 server:
   port: 8080
 
-  # ===== Tốc độ: nén phản hồi trên đường truyền =====
   compression:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,image/svg+xml
@@ -89,6 +84,10 @@ server:
     connection-timeout: 20s
 
 app:
+  cache:
+    redis:
+      enabled: ${REDIS_CACHE_ENABLED:false}
+    ttl: ${APP_CACHE_TTL:2m}
   seed:
     demo-data: ${ALOUTE_SEED_DEMO_DATA:true}
   upload:

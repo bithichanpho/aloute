@@ -6,8 +6,7 @@ public class LikeResponse {
     private boolean liked;
     private int likeCount;
 
-    public LikeResponse() {
-    }
+    public LikeResponse() {}
 
     public LikeResponse(String postId, boolean liked, int likeCount) {
         this.postId = postId;

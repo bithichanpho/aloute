@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Dành cho bạn - ALOUTE</title></head>
 <body>
@@ -13,16 +13,22 @@
         </div>
       </div>
 
+      <section class="story-tray" aria-label="Tin của những người bạn đang theo dõi">
+        <a class="story-tray__item story-tray__create" th:href="@{/stories}">
+          <span class="story-tray__avatar"><img th:src="${currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}" alt=""><i>+</i></span>
+          <span>Tin của bạn</span>
+        </a>
+        <button type="button" class="story-tray__item" th:each="story : ${stories}"
+                th:classappend="${story.viewed} ? ' is-viewed' : ''" data-story-open
+                th:attr="data-story-id=${story.id},data-story-user-id=${story.userId},data-story-username=${story.username},data-story-name=${story.fullName},data-story-avatar=${story.avatarUrl},data-story-content=${story.content},data-story-image=${story.imageUrl},data-story-video=${story.videoUrl},data-story-liked=${story.liked},data-story-owned=${story.owned},data-story-views=${story.viewCount}">
+          <span class="story-tray__avatar"><img th:src="${story.avatarUrl != null ? story.avatarUrl : '/images/avatar_default.png'}" alt=""></span>
+          <span th:text="${story.owned ? 'Tin của bạn' : story.username}">username</span>
+        </button>
+      </section>
+
+      <div th:replace="~{fragments/post-composer :: postComposer}"></div>
+
       <div class="feed-panel">
-        <div class="compose">
-          <img class="compose__avatar"
-               th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}"
-               src="/images/avatar_default.png" alt="avatar của tôi">
-          <div class="compose__body">
-            <input class="compose__placeholder" type="text" placeholder="Có gì mới?">
-          </div>
-          <button class="btn-post" disabled>Đăng</button>
-        </div>
 
         <div th:if="${#lists.isEmpty(posts)}" class="empty-state">
           <span th:if="${activeTab == 'following'}">Bạn chưa follow ai, hoặc họ chưa đăng bài nào. Hãy thử tìm kiếm thêm bạn bè!</span>
@@ -39,7 +45,6 @@
                       mainUsername=${(isRepost and !isQuote) ? post.repostOf.username : post.username},
                       mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo}">
 
-          <!-- Repost thuần là quan hệ, hiển thị ngay trên bài GỐC thay vì một card mới. -->
           <div class="post__repost-banner" data-repost-banner
                th:if="${post.recentReposters != null and !#lists.isEmpty(post.recentReposters)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
@@ -82,16 +87,16 @@
               </button>
             </div>
 
-            <!-- Repost KHÔNG kèm lời bình: hiện thẳng nội dung/ảnh bài GỐC làm nội dung chính, không có card lồng bên dưới nữa (tránh lặp lại avatar+tên 2 lần) -->
             <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
                th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
             <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
                  th:src="${isRepost ? post.repostOf.imageUrl : post.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+            <video class="post__video" th:if="${!isQuote and (isRepost ? post.repostOf.videoUrl : post.videoUrl) != null}"
+                   th:src="${isRepost ? post.repostOf.videoUrl : post.videoUrl}" controls preload="metadata"></video>
             <div class="repost-card repost-card--deleted" th:if="${isRepost and !isQuote and post.repostOf.deleted}">
               Bài viết gốc không còn tồn tại.
             </div>
 
-            <!-- Repost CÓ kèm lời bình (Quote): lời bình của người đăng lại là nội dung chính, bài gốc lồng bên dưới trong 1 card riêng -->
             <p class="post__content post__content--quote" th:if="${isQuote}" th:text="${post.content}"></p>
             <div class="repost-card" th:if="${isQuote and !post.repostOf.deleted}">
               <div class="repost-card__header">
@@ -101,6 +106,7 @@
               </div>
               <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
               <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+              <video class="repost-card__video" th:if="${post.repostOf.videoUrl != null}" th:src="${post.repostOf.videoUrl}" controls preload="metadata"></video>
             </div>
             <div class="repost-card repost-card--deleted" th:if="${isQuote and post.repostOf.deleted}">
               Bài viết gốc không còn tồn tại.
@@ -137,8 +143,7 @@
                       th:classappend="${post.repostedByCurrentUser} ? ' is-reposted'"
                       th:attr="data-post-id=${isRepost ? post.repostOf.postId : post.id}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                <!-- Luôn hiện số đăng lại của bài GỐC (post.repostOf.repostCount) khi đang
-                     xem 1 bài repost — xem chú thích chi tiết trong profile/view.html. -->
+
                 <span th:attr="data-raw=${isRepost ? post.repostOf.repostCount : post.repostCount}"
                       th:text="${isRepost ? post.repostOf.repostCount : post.repostCount}">0</span>
               </button>

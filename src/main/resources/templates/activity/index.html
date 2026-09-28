@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Hoạt động — ALOUTE</title></head>
 <body>
@@ -29,7 +29,7 @@
       <div class="notif-item__body">
         <div th:text="${n.content}">Nội dung thông báo</div>
         <div class="notif-item__time" th:text="${#temporals.format(n.createdAt, 'HH:mm dd/MM/yyyy')}">1 giờ trước</div>
-        <!-- Lời mời kết bạn thân -> chấp nhận/từ chối ngay tại thông báo, referenceId = id người gửi -->
+
         <div th:if="${n.type == 'CLOSE_FRIEND_REQUEST'}" class="notif-item__actions" th:attr="data-sender-id=${n.referenceId}">
           <button type="button" class="notif-item__accept">Chấp nhận</button>
           <button type="button" class="notif-item__decline">Từ chối</button>

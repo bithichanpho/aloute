@@ -1,19 +1,20 @@
 package com.aloute.model.entity;
 
-import java.time.LocalDateTime;
-
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+
 @Entity
-@Table(name = "friends",
+@Table(
+        name = "friends",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_friends_follower_followed", columnNames = {"follower_id", "followed_id"})
+            @UniqueConstraint(
+                    name = "uk_friends_follower_followed",
+                    columnNames = {"follower_id", "followed_id"})
         },
-        // Hai chiều tra cứu nóng nhất: "tôi đang follow ai" và "ai đang follow tôi".
-        // Thiếu index, mỗi lần dựng feed/gợi ý là một lần quét toàn bảng.
         indexes = {
-                @Index(name = "idx_friends_follower", columnList = "follower_id"),
-                @Index(name = "idx_friends_followed", columnList = "followed_id")
+            @Index(name = "idx_friends_follower", columnList = "follower_id"),
+            @Index(name = "idx_friends_followed", columnList = "followed_id")
         })
 public class Friend {
 
@@ -22,17 +23,25 @@ public class Friend {
     private Long id;
 
     @Column(name = "follower_id", nullable = false)
-    private Long followerId;   // người thực hiện follow
+    private Long followerId;
 
     @Column(name = "followed_id", nullable = false)
-    private Long followedId;   // người được follow
+    private Long followedId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "follower_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "follower_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User follower;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "followed_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "followed_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User followed;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -72,9 +81,13 @@ public class Friend {
         this.followedId = followedId;
     }
 
-    public User getFollower() { return follower; }
+    public User getFollower() {
+        return follower;
+    }
 
-    public User getFollowed() { return followed; }
+    public User getFollowed() {
+        return followed;
+    }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

@@ -1,21 +1,16 @@
 package com.aloute.service;
 
+import com.aloute.repository.IUserRepository;
+
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Service;
-
-import com.aloute.repository.IUserRepository;
-
-/**
- * Quản lý thời gian chờ cuộc gọi. Nếu sau 30 giây người nhận chưa answer/reject,
- * cuộc gọi tự kết thúc và được ghi nhận là cuộc gọi nhỡ. Dùng scheduler trong JVM,
- * phù hợp với demo/đồ án 1 instance; production nhiều instance nên chuyển sang Redis/job queue.
- */
 @Service
 public class CallTimeoutService {
 
@@ -46,8 +41,11 @@ public class CallTimeoutService {
         if (callId == null || callId.isBlank()) return;
         cancel(callId);
 
-        ScheduledFuture<?> future = scheduler.schedule(() -> timeout(callId, callerId, receiverId, callType),
-                CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        ScheduledFuture<?> future =
+                scheduler.schedule(
+                        () -> timeout(callId, callerId, receiverId, callType),
+                        CALL_TIMEOUT_SECONDS,
+                        TimeUnit.SECONDS);
         pending.put(callId, future);
     }
 
@@ -58,37 +56,57 @@ public class CallTimeoutService {
     }
 
     private void timeout(String callId, Long callerId, Long receiverId, String callType) {
-        // Chỉ một callback được quyền xử lý timeout. Nếu answer/hangup đã cancel trước đó
-        // thì callId sẽ không còn trong map.
+
         ScheduledFuture<?> marker = pending.remove(callId);
         if (marker == null) return;
 
         String type = "audio".equalsIgnoreCase(callType) ? "voice" : "video";
-        userRepository.findById(callerId).ifPresent(caller ->
-                userRepository.findById(receiverId).ifPresent(receiver -> {
-                    Map<String, Object> signal = new java.util.HashMap<>();
-                    signal.put("type", "hangup");
-                    signal.put("reason", "timeout");
-                    signal.put("missed", true);
-                    signal.put("callId", callId);
-                    signal.put("callType", callType == null ? "video" : callType);
-                    signal.put("fromUserId", caller.getId());
-                    signal.put("fromUsername", caller.getUsername());
-                    signal.put("fromFullName", caller.getFullName());
-                    signal.put("fromAvatarUrl", caller.getAvatarUrl());
+        userRepository
+                .findById(callerId)
+                .ifPresent(
+                        caller ->
+                                userRepository
+                                        .findById(receiverId)
+                                        .ifPresent(
+                                                receiver -> {
+                                                    Map<String, Object> signal =
+                                                            new java.util.HashMap<>();
+                                                    signal.put("type", "hangup");
+                                                    signal.put("reason", "timeout");
+                                                    signal.put("missed", true);
+                                                    signal.put("callId", callId);
+                                                    signal.put(
+                                                            "callType",
+                                                            callType == null ? "video" : callType);
+                                                    signal.put("fromUserId", caller.getId());
+                                                    signal.put(
+                                                            "fromUsername", caller.getUsername());
+                                                    signal.put(
+                                                            "fromFullName", caller.getFullName());
+                                                    signal.put(
+                                                            "fromAvatarUrl", caller.getAvatarUrl());
 
-                    // Đóng popup/ring ở cả hai phía. Server là nguồn thời gian chuẩn,
-                    // nên nếu tab của caller bị đóng thì receiver vẫn tự hết giờ.
-                    messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/call", signal);
-                    messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/call", signal);
+                                                    messagingTemplate.convertAndSendToUser(
+                                                            receiver.getUsername(),
+                                                            "/queue/call",
+                                                            signal);
+                                                    messagingTemplate.convertAndSendToUser(
+                                                            caller.getUsername(),
+                                                            "/queue/call",
+                                                            signal);
 
-                    // Lưu cùng một bản ghi vào lịch sử chat: cuộc gọi nhỡ hoạt động như một
-                    // tin nhắn đặc biệt, có thời gian, status MISSED và tự cập nhật preview hội thoại.
-                    chatService.createMissedCallMessage(callerId, receiverId, callId, callType);
+                                                    chatService.createMissedCallMessage(
+                                                            callerId, receiverId, callId, callType);
 
-                    // Notification riêng vẫn được giữ để badge/Activity có thể hiển thị cuộc gọi nhỡ.
-                    notificationService.notify(receiverId, callerId, "CALL_MISSED", callId,
-                            "đã gọi " + type + " cho bạn nhưng bạn không trả lời trong 30 giây");
-                }));
+                                                    notificationService.notify(
+                                                            receiverId,
+                                                            callerId,
+                                                            "CALL_MISSED",
+                                                            callId,
+                                                            "đã gọi "
+                                                                    + type
+                                                                    + " cho bạn nhưng bạn không trả"
+                                                                    + " lời trong 30 giây");
+                                                }));
     }
 }

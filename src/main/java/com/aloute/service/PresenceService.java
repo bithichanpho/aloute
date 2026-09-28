@@ -1,3 +1,4 @@
+
 package com.aloute.service;
 
 import java.util.Map;
@@ -18,7 +19,9 @@ public class PresenceService {
     private final FriendService friendService;
     private final SimpMessagingTemplate messagingTemplate;
 
-    public PresenceService(IUserRepository userRepository, FriendService friendService,
+    public PresenceService(
+            IUserRepository userRepository,
+            FriendService friendService,
             SimpMessagingTemplate messagingTemplate) {
         this.userRepository = userRepository;
         this.friendService = friendService;
@@ -33,7 +36,9 @@ public class PresenceService {
     }
 
     public void userDisconnected(String username) {
-        Integer remaining = onlineConnectionsByUsername.computeIfPresent(username, (k, v) -> v <= 1 ? null : v - 1);
+        Integer remaining =
+                onlineConnectionsByUsername.computeIfPresent(
+                        username, (k, v) -> v <= 1 ? null : v - 1);
         if (remaining == null) {
             broadcastPresence(username, false);
         }
@@ -45,19 +50,30 @@ public class PresenceService {
 
     public boolean isOnline(Long userId) {
         if (userId == null) return false;
-        return userRepository.findById(userId)
+        return userRepository
+                .findById(userId)
                 .map(User::getUsername)
                 .map(this::isOnlineUsername)
                 .orElse(false);
     }
 
     private void broadcastPresence(String username, boolean online) {
-        userRepository.findByUsername(username).ifPresent(user -> {
-            Map<String, Object> payload = Map.of("userId", user.getId(), "online", online);
-            for (Long friendId : friendService.getMutualFriendIds(user.getId())) {
-                userRepository.findById(friendId).ifPresent(friend ->
-                        messagingTemplate.convertAndSendToUser(friend.getUsername(), "/queue/presence", payload));
-            }
-        });
+        userRepository
+                .findByUsername(username)
+                .ifPresent(
+                        user -> {
+                            Map<String, Object> payload =
+                                    Map.of("userId", user.getId(), "online", online);
+                            for (Long friendId : friendService.getMutualFriendIds(user.getId())) {
+                                userRepository
+                                        .findById(friendId)
+                                        .ifPresent(
+                                                friend ->
+                                                        messagingTemplate.convertAndSendToUser(
+                                                                friend.getUsername(),
+                                                                "/queue/presence",
+                                                                payload));
+                            }
+                        });
     }
 }

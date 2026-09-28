@@ -26,892 +26,508 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-	/**
-	 * Link xác thực email có hiệu lực trong 15 phút.
-	 */
-	private static final long VERIFICATION_TOKEN_MINUTES = 15;
-
-	/**
-	 * PendingUser chưa verify sẽ được giữ tối đa 24 giờ.
-	 */
-	private static final long PENDING_RETENTION_HOURS = 24;
-
-	/**
-	 * Token reset password có hiệu lực trong 30 phút.
-	 */
-	private static final long RESET_PASSWORD_TOKEN_MINUTES = 30;
-
-	/**
-	 * Không gửi liên tục email reset password. Sau khi gửi phải chờ ít nhất 60
-	 * giây.
-	 */
-	private static final long RESET_EMAIL_COOLDOWN_SECONDS = 60;
-
-	private final IUserRepository userRepository;
-	private final IPendingUserRepository pendingUserRepository;
-	private final IRoleRepository roleRepository;
-	private final PasswordEncoder passwordEncoder;
-	private final JwtUtil jwtUtil;
-	private final EmailService emailService;
-
-	/**
-	 * Service chuyên:
-	 *
-	 * 1. Sinh token bảo mật. 2. Hash token bằng SHA-256.
-	 *
-	 * Token thật gửi qua email. Database chỉ lưu hash.
-	 */
-	private final AuthTokenService authTokenService;
-
-	public AuthService(IUserRepository userRepository, IPendingUserRepository pendingUserRepository,
-			IRoleRepository roleRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailService emailService,
-			AuthTokenService authTokenService) {
-
-		this.userRepository = userRepository;
-		this.pendingUserRepository = pendingUserRepository;
-		this.roleRepository = roleRepository;
-		this.passwordEncoder = passwordEncoder;
-		this.jwtUtil = jwtUtil;
-		this.emailService = emailService;
-		this.authTokenService = authTokenService;
-	}
-
-	// =========================================================
-	// REGISTER
-	// =========================================================
-
-	/**
-	 * Đăng ký tài khoản.
-	 *
-	 * Chưa tạo User ngay.
-	 *
-	 * Quy trình:
-	 *
-	 * register ↓ PendingUser ↓ gửi email xác thực ↓ người dùng verify ↓ mới tạo
-	 * User thật
-	 *
-	 * Vì vậy người chưa xác thực sẽ không nhận JWT.
-	 */
-	public AuthResponse register(RegisterRequest request) {
-
-		String username = request.getUsername().trim();
-
-		String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
-
-		String fullName = request.getFullName().trim();
-
-		// =====================================================
-		// Kiểm tra User đã tồn tại
-		// =====================================================
-
-		if (userRepository.existsByUsername(username)) {
-			throw new BadRequestException("Tên đăng nhập đã được sử dụng");
-		}
-
-		if (userRepository.existsByEmailIgnoreCase(email)) {
-			throw new BadRequestException("Email đã được sử dụng");
-		}
-
-		LocalDateTime now = LocalDateTime.now();
-
-		/*
-		 * Kiểm tra xem username/email có PendingUser đang chờ xác thực hay không.
-		 */
-		removeExpiredPendingConflictsOrThrow(username, email, now);
-
-		// =====================================================
-		// Sinh verification token
-		// =====================================================
-
-		/*
-		 * token thật:
-		 *
-		 * Ví dụ: fjH9Pz....ABC
-		 *
-		 * Token này CHỈ được gửi qua email.
-		 */
-		String verificationToken = authTokenService.generateToken();
-
-		/*
-		 * DB không lưu token thật.
-		 *
-		 * DB chỉ lưu:
-		 *
-		 * SHA256(token)
-		 */
-		String verificationTokenHash = authTokenService.hashToken(verificationToken);
-
-		// =====================================================
-		// Tạo PendingUser
-		// =====================================================
-
-		PendingUser pending = new PendingUser();
-
-		pending.setFullName(fullName);
-		pending.setUsername(username);
-		pending.setEmail(email);
-
-		/*
-		 * Password vẫn dùng BCrypt như cũ.
-		 */
-		pending.setPassword(passwordEncoder.encode(request.getPassword()));
-
-		/*
-		 * QUAN TRỌNG:
-		 *
-		 * database lưu HASH, không lưu verificationToken thật.
-		 */
-		pending.setVerificationToken(verificationTokenHash);
-
-		pending.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
-
-		pending.setVerificationEmailSentAt(now);
-
-		pending.setExpiresAt(now.plusHours(PENDING_RETENTION_HOURS));
-
-		PendingUser saved;
-
-		try {
-
-			saved = pendingUserRepository.save(pending);
-
-		} catch (DataIntegrityViolationException exception) {
-
-			/*
-			 * Trường hợp 2 request register trùng chạy gần như cùng lúc.
-			 */
-			throw new BadRequestException("Tên đăng nhập hoặc email đã được sử dụng");
-		}
-
-		// =====================================================
-		// Gửi token THẬT qua email
-		// =====================================================
-
-		/*
-		 * KHÔNG dùng:
-		 *
-		 * saved.getVerificationToken()
-		 *
-		 * vì nó bây giờ là HASH.
-		 *
-		 * Email phải nhận verificationToken thật.
-		 */
-		try {
-			emailService.sendVerificationEmail(saved.getEmail(), saved.getFullName(), verificationToken);
-		} catch (com.aloute.common.exception.EmailDeliveryException ex) {
-			// SMTP thất bại: vẫn giữ PendingUser để token không bị mất, nhưng
-			// không áp cooldown 60 giây cho lần gửi lại.
-			saved.setVerificationEmailSentAt(now.minusMinutes(1));
-			pendingUserRepository.save(saved);
-			throw ex;
-		}
-
-		/*
-		 * Chưa verify:
-		 *
-		 * userId = null JWT = null
-		 */
-		return new AuthResponse(null, null, saved.getUsername(), saved.getFullName(), null);
-	}
-
-	// =========================================================
-	// PENDING USER CONFLICT
-	// =========================================================
-
-	private void removeExpiredPendingConflictsOrThrow(String username, String email, LocalDateTime now) {
-
-		var byUsername = pendingUserRepository.findByUsername(username);
-
-		var byEmail = pendingUserRepository.findByEmailIgnoreCase(email);
-
-		/*
-		 * Nếu PendingUser vẫn còn hạn 24 giờ thì không cho register lại.
-		 *
-		 * Người dùng phải dùng resend verification.
-		 */
-		boolean hasLiveConflict = byUsername.map(pending -> pending.getExpiresAt().isAfter(now)).orElse(false)
-
-				||
-
-				byEmail.map(pending -> pending.getExpiresAt().isAfter(now)).orElse(false);
-
-		if (hasLiveConflict) {
-
-			throw new BadRequestException("Đăng ký đang chờ xác thực. " + "Hãy dùng chức năng gửi lại email xác thực");
-		}
-
-		/*
-		 * Pending đã hết hạn thì được phép xóa.
-		 */
-		byUsername.ifPresent(pendingUserRepository::delete);
-
-		/*
-		 * Tránh delete cùng một PendingUser hai lần.
-		 */
-		byEmail.filter(pending -> byUsername.isEmpty() || !pending.getId().equals(byUsername.get().getId()))
-				.ifPresent(pendingUserRepository::delete);
-	}
-
-	// =========================================================
-	// LOGIN
-	// =========================================================
-
-	/**
-	 * Đăng nhập bằng:
-	 *
-	 * username hoặc email
-	 *
-	 * Chỉ user đã verify email mới nhận JWT.
-	 */
-	public AuthResponse login(LoginRequest request) {
-
-		String identifier = request.getUsername().trim();
-
-		var userOptional = userRepository.findByUsername(identifier)
-				.or(() -> userRepository.findByEmailIgnoreCase(identifier));
-
-		// =====================================================
-		// Không tìm thấy User thật
-		// =====================================================
-
-		if (userOptional.isEmpty()) {
-
-			/*
-			 * Kiểm tra xem có phải tài khoản đang nằm ở PendingUser hay không.
-			 */
-			var pendingOptional = pendingUserRepository.findByUsername(identifier)
-					.or(() -> pendingUserRepository.findByEmailIgnoreCase(identifier));
-
-			/*
-			 * Chỉ báo "chưa xác thực email" nếu mật khẩu nhập đúng.
-			 *
-			 * Nếu password sai vẫn báo chung:
-			 *
-			 * "Sai tên đăng nhập hoặc mật khẩu"
-			 *
-			 * để tránh lộ tài khoản tồn tại.
-			 */
-			if (pendingOptional.isPresent()
-					&& passwordEncoder.matches(request.getPassword(), pendingOptional.get().getPassword())) {
-
-				throw new UnauthorizedException("Vui lòng xác thực email " + "trước khi đăng nhập");
-			}
-
-			throw new UnauthorizedException("Sai tên đăng nhập hoặc mật khẩu");
-		}
-
-		User user = userOptional.get();
-
-		// =====================================================
-		// Check password
-		// =====================================================
-
-		if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-
-			throw new UnauthorizedException("Sai tên đăng nhập hoặc mật khẩu");
-		}
-
-		// =====================================================
-		// Check account active
-		// =====================================================
-
-		if (!user.isActive()) {
-
-			throw new UnauthorizedException("Tài khoản đã bị khóa");
-		}
-
-		// =====================================================
-		// Check email verified
-		// =====================================================
-
-		if (!user.isEmailVerified()) {
-
-			throw new UnauthorizedException("Vui lòng xác thực email " + "trước khi đăng nhập");
-		}
-
-		// =====================================================
-		// Generate JWT
-		// =====================================================
-
-		String token = jwtUtil.generateToken(user.getUsername(), user.getId(), user.getRole().getName());
-
-		return new AuthResponse(token, user.getId(), user.getUsername(), user.getFullName(), user.getAvatarUrl());
-	}
-
-	// =========================================================
-	// VERIFY EMAIL
-	// =========================================================
-
-	/**
-	 * Người dùng click link trong email.
-	 *
-	 * URL gửi token THẬT.
-	 *
-	 * Backend:
-	 *
-	 * token thật ↓ SHA-256 ↓ tìm hash trong database
-	 */
-	@Transactional
-	public void verifyEmail(String token) {
+    private static final long VERIFICATION_TOKEN_MINUTES = 15;
 
-		String value = token == null ? "" : token.trim();
+    private static final long PENDING_RETENTION_HOURS = 24;
 
-		if (value.isBlank()) {
+    private static final long RESET_PASSWORD_TOKEN_MINUTES = 30;
 
-			throw new BadRequestException("Link xác thực không hợp lệ");
-		}
+    private static final long RESET_EMAIL_COOLDOWN_SECONDS = 60;
 
-		// =====================================================
-		// Hash token nhận từ URL
-		// =====================================================
-
-		String tokenHash = authTokenService.hashToken(value);
-
-		/*
-		 * Với dữ liệu mới:
-		 *
-		 * DB chứa tokenHash.
-		 */
-		var pendingOptional = pendingUserRepository.findByVerificationToken(tokenHash);
-
-		// =====================================================
-		// Hỗ trợ token UUID cũ
-		// =====================================================
-
-		/*
-		 * Trước khi thêm hash, project của bạn dùng UUID và lưu thẳng vào DB.
-		 *
-		 * Ví dụ:
-		 *
-		 * 550e8400-e29b-41d4-a716-446655440000
-		 *
-		 * Chỉ fallback query token thô nếu input thực sự có định dạng UUID cũ.
-		 *
-		 * KHÔNG query raw đối với token mới.
-		 */
-		if (pendingOptional.isEmpty() && isLegacyUuidToken(value)) {
-
-			pendingOptional = pendingUserRepository.findByVerificationToken(value);
-		}
-
-		/*
-		 * Không tìm thấy PendingUser thì thử User của phiên bản cũ.
-		 */
-		if (pendingOptional.isEmpty()) {
-
-			verifyLegacyUser(value);
-			return;
-		}
-
-		PendingUser pending = pendingOptional.get();
-
-		// =====================================================
-		// Check expiry
-		// =====================================================
-
-		if (pending.getVerificationTokenExpiry() == null
-				|| !pending.getVerificationTokenExpiry().isAfter(LocalDateTime.now())) {
-
-			throw new BadRequestException("Link xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại email");
-		}
-
-		// =====================================================
-		// Kiểm tra conflict lần cuối
-		// =====================================================
-
-		if (userRepository.existsByUsername(pending.getUsername())
-				|| userRepository.existsByEmailIgnoreCase(pending.getEmail())) {
-
-			throw new BadRequestException("Tên đăng nhập hoặc email đã được sử dụng");
-		}
+    private final AccountSecurityService accountSecurity;
+    private final IUserRepository userRepository;
+    private final IPendingUserRepository pendingUserRepository;
+    private final IRoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
+    private final EmailService emailService;
 
-		// =====================================================
-		// Get ROLE_USER
-		// =====================================================
+    private final AuthTokenService authTokenService;
 
-		Role userRole = roleRepository.findByName("ROLE_USER")
-				.orElseThrow(() -> new ResourceNotFoundException("Chưa seed role ROLE_USER"));
+    public AuthService(
+            IUserRepository userRepository,
+            IPendingUserRepository pendingUserRepository,
+            IRoleRepository roleRepository,
+            PasswordEncoder passwordEncoder,
+            JwtUtil jwtUtil,
+            EmailService emailService,
+            AuthTokenService authTokenService,
+            AccountSecurityService accountSecurity) {
+        this.accountSecurity = accountSecurity;
 
-		// =====================================================
-		// Chuyển PendingUser → User
-		// =====================================================
+        this.userRepository = userRepository;
+        this.pendingUserRepository = pendingUserRepository;
+        this.roleRepository = roleRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtUtil = jwtUtil;
+        this.emailService = emailService;
+        this.authTokenService = authTokenService;
+    }
 
-		User user = new User();
+    public AuthResponse register(RegisterRequest request) {
 
-		user.setFullName(pending.getFullName());
+        String username = request.getUsername().trim();
 
-		user.setUsername(pending.getUsername());
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
 
-		user.setEmail(pending.getEmail());
+        String fullName = request.getFullName().trim();
 
-		/*
-		 * Password trong PendingUser đã là BCrypt hash, nên copy trực tiếp.
-		 */
-		user.setPassword(pending.getPassword());
+        if (userRepository.existsByUsername(username)) {
+            throw new BadRequestException("Tên đăng nhập đã được sử dụng");
+        }
 
-		user.setRole(userRole);
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new BadRequestException("Email đã được sử dụng");
+        }
 
-		user.setActive(true);
+        LocalDateTime now = LocalDateTime.now();
 
-		user.setEmailVerified(true);
+        removeExpiredPendingConflictsOrThrow(username, email, now);
 
-		userRepository.save(user);
+        String verificationToken = authTokenService.generateToken();
 
-		/*
-		 * Xóa PendingUser.
-		 *
-		 * Đồng nghĩa verification token cũng biến mất hoàn toàn.
-		 *
-		 * Link cũ không dùng lại được.
-		 */
-		pendingUserRepository.delete(pending);
-	}
+        String verificationTokenHash = authTokenService.hashToken(verificationToken);
 
-	// =========================================================
-	// RESEND VERIFICATION
-	// =========================================================
+        PendingUser pending = new PendingUser();
 
-	/**
-	 * Gửi lại email xác thực.
-	 *
-	 * Có thể nhập:
-	 *
-	 * username hoặc email
-	 *
-	 * Mỗi tài khoản phải chờ 60 giây.
-	 */
-	@Transactional
-	public void resendVerificationEmail(String identifier) {
+        pending.setFullName(fullName);
+        pending.setUsername(username);
+        pending.setEmail(email);
 
-		String value = identifier == null ? "" : identifier.trim();
+        pending.setPassword(passwordEncoder.encode(request.getPassword()));
 
-		var pendingOptional = pendingUserRepository.findByUsername(value)
-				.or(() -> pendingUserRepository.findByEmailIgnoreCase(value));
+        pending.setVerificationToken(verificationTokenHash);
 
-		// =====================================================
-		// Registration mới → PendingUser
-		// =====================================================
+        pending.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
 
-		if (pendingOptional.isPresent()) {
+        pending.setVerificationEmailSentAt(now);
 
-			resendPendingVerification(pendingOptional.get());
+        pending.setExpiresAt(now.plusHours(PENDING_RETENTION_HOURS));
 
-			return;
-		}
+        PendingUser saved;
 
-		// =====================================================
-		// User cũ chưa verify
-		// =====================================================
+        try {
 
-		/*
-		 * Nhánh này chỉ để tương thích dữ liệu được tạo trước khi có PendingUser.
-		 */
-		var userOptional = userRepository.findByUsername(value).or(() -> userRepository.findByEmailIgnoreCase(value));
+            saved = pendingUserRepository.save(pending);
 
-		/*
-		 * Không tồn tại hoặc đã verify thì im lặng return.
-		 *
-		 * Tránh tiết lộ account tồn tại.
-		 */
-		if (userOptional.isEmpty() || userOptional.get().isEmailVerified()) {
+        } catch (DataIntegrityViolationException exception) {
 
-			return;
-		}
+            throw new BadRequestException("Tên đăng nhập hoặc email đã được sử dụng");
+        }
 
-		User user = userOptional.get();
+        try {
+            emailService.sendVerificationEmail(
+                    saved.getEmail(), saved.getFullName(), verificationToken);
+        } catch (com.aloute.common.exception.EmailDeliveryException ex) {
 
-		LocalDateTime now = LocalDateTime.now();
+            saved.setVerificationEmailSentAt(now.minusMinutes(1));
+            pendingUserRepository.save(saved);
+            throw ex;
+        }
 
-		LocalDateTime lastSent = user.getVerificationEmailSentAt();
+        return new AuthResponse(null, null, saved.getUsername(), saved.getFullName(), null);
+    }
 
-		// =====================================================
-		// Cooldown 60 giây
-		// =====================================================
+    private void removeExpiredPendingConflictsOrThrow(
+            String username, String email, LocalDateTime now) {
 
-		if (lastSent != null && now.isBefore(lastSent.plusMinutes(1))) {
+        var byUsername = pendingUserRepository.findByUsername(username);
 
-			throw new BadRequestException("Vui lòng chờ 60 giây " + "trước khi gửi lại email");
-		}
+        var byEmail = pendingUserRepository.findByEmailIgnoreCase(email);
 
-		// =====================================================
-		// Sinh token mới
-		// =====================================================
+        boolean hasLiveConflict =
+                byUsername.map(pending -> pending.getExpiresAt().isAfter(now)).orElse(false)
+                        || byEmail.map(pending -> pending.getExpiresAt().isAfter(now))
+                                .orElse(false);
 
-		String newToken = authTokenService.generateToken();
+        if (hasLiveConflict) {
 
-		/*
-		 * Token mới ghi đè hash token cũ.
-		 *
-		 * Vì vậy email cũ tự động mất hiệu lực.
-		 */
-		user.setVerificationToken(authTokenService.hashToken(newToken));
+            throw new BadRequestException(
+                    "Đăng ký đang chờ xác thực. " + "Hãy dùng chức năng gửi lại email xác thực");
+        }
 
-		user.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
+        byUsername.ifPresent(pendingUserRepository::delete);
 
-		user.setVerificationEmailSentAt(now);
+        byEmail.filter(
+                        pending ->
+                                byUsername.isEmpty()
+                                        || !pending.getId().equals(byUsername.get().getId()))
+                .ifPresent(pendingUserRepository::delete);
+    }
 
-		userRepository.save(user);
+    public AuthResponse login(LoginRequest request) {
 
-		// =====================================================
-		// Mail nhận token THẬT
-		// =====================================================
+        String identifier = request.getUsername().trim();
 
-		emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), newToken);
-	}
+        var userOptional =
+                userRepository
+                        .findByUsername(identifier)
+                        .or(() -> userRepository.findByEmailIgnoreCase(identifier));
 
-	// =========================================================
-	// RESEND PENDING USER
-	// =========================================================
+        if (userOptional.isEmpty()) {
 
-	private void resendPendingVerification(PendingUser pending) {
+            var pendingOptional =
+                    pendingUserRepository
+                            .findByUsername(identifier)
+                            .or(() -> pendingUserRepository.findByEmailIgnoreCase(identifier));
 
-		LocalDateTime now = LocalDateTime.now();
+            if (pendingOptional.isPresent()
+                    && passwordEncoder.matches(
+                            request.getPassword(), pendingOptional.get().getPassword())) {
 
-		// =====================================================
-		// Pending registration đã hết hạn 24h
-		// =====================================================
+                throw new UnauthorizedException("Vui lòng xác thực email " + "trước khi đăng nhập");
+            }
 
-		if (!pending.getExpiresAt().isAfter(now)) {
+            throw new UnauthorizedException("Sai tên đăng nhập hoặc mật khẩu");
+        }
 
-			pendingUserRepository.delete(pending);
+        User user = userOptional.get();
 
-			throw new BadRequestException("Đăng ký đã hết hạn, " + "vui lòng đăng ký lại");
-		}
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
 
-		// =====================================================
-		// Cooldown 60 giây
-		// =====================================================
+            throw new UnauthorizedException("Sai tên đăng nhập hoặc mật khẩu");
+        }
 
-		LocalDateTime lastSent = pending.getVerificationEmailSentAt();
+        boolean reactivated = Boolean.TRUE.equals(user.getSelfDeactivated());
+        if (reactivated) {
+            accountSecurity.verifyLogin(user.getId(), request.getCode());
+            user.setActive(true);
+            user.setSelfDeactivated(false);
+            userRepository.save(user);
+        } else if (!user.isActive()) {
 
-		if (lastSent != null && now.isBefore(lastSent.plusMinutes(1))) {
+            throw new UnauthorizedException("Tài khoản đã bị khóa");
+        }
 
-			throw new BadRequestException("Vui lòng chờ 60 giây " + "trước khi gửi lại email");
-		}
+        if (!user.isEmailVerified()) {
 
-		// =====================================================
-		// Token mới
-		// =====================================================
+            throw new UnauthorizedException("Vui lòng xác thực email " + "trước khi đăng nhập");
+        }
 
-		String newToken = authTokenService.generateToken();
+        if (!reactivated) accountSecurity.verifyLogin(user.getId(), request.getCode());
+        String token =
+                jwtUtil.generateToken(user.getUsername(), user.getId(), user.getRole().getName());
 
-		/*
-		 * DB chỉ lưu hash.
-		 *
-		 * Token cũ bị ghi đè, nên link email cũ không còn hiệu lực.
-		 */
-		pending.setVerificationToken(authTokenService.hashToken(newToken));
+        return new AuthResponse(
+                token, user.getId(), user.getUsername(), user.getFullName(), user.getAvatarUrl());
+    }
 
-		pending.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
+    @Transactional
+    public void verifyEmail(String token) {
 
-		pending.setVerificationEmailSentAt(now);
+        String value = token == null ? "" : token.trim();
 
-		/*
-		 * Gia hạn PendingUser thêm 24 giờ tính từ lần resend.
-		 */
-		pending.setExpiresAt(now.plusHours(PENDING_RETENTION_HOURS));
+        if (value.isBlank()) {
 
-		pendingUserRepository.save(pending);
+            throw new BadRequestException("Link xác thực không hợp lệ");
+        }
 
-		// =====================================================
-		// Email dùng token THẬT
-		// =====================================================
+        String tokenHash = authTokenService.hashToken(value);
 
-		emailService.sendVerificationEmail(pending.getEmail(), pending.getFullName(), newToken);
-	}
+        var pendingOptional = pendingUserRepository.findByVerificationToken(tokenHash);
 
-	// =========================================================
-	// VERIFY LEGACY USER
-	// =========================================================
+        if (pendingOptional.isEmpty() && isLegacyUuidToken(value)) {
 
-	/**
-	 * Dành cho các tài khoản cũ:
-	 *
-	 * trước đây registration tạo User luôn, chưa dùng PendingUser.
-	 */
-	private void verifyLegacyUser(String token) {
+            pendingOptional = pendingUserRepository.findByVerificationToken(value);
+        }
 
-		if (token == null || token.isBlank()) {
+        if (pendingOptional.isEmpty()) {
 
-			throw new BadRequestException("Link xác thực không hợp lệ " + "hoặc đã được dùng");
-		}
+            verifyLegacyUser(value);
+            return;
+        }
 
-		// =====================================================
-		// Thử tìm theo HASH trước
-		// =====================================================
+        PendingUser pending = pendingOptional.get();
 
-		String tokenHash = authTokenService.hashToken(token);
+        if (pending.getVerificationTokenExpiry() == null
+                || !pending.getVerificationTokenExpiry().isAfter(LocalDateTime.now())) {
 
-		var userOptional = userRepository.findByVerificationToken(tokenHash);
+            throw new BadRequestException(
+                    "Link xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại email");
+        }
 
-		// =====================================================
-		// Hỗ trợ dữ liệu UUID thô cũ
-		// =====================================================
+        if (userRepository.existsByUsername(pending.getUsername())
+                || userRepository.existsByEmailIgnoreCase(pending.getEmail())) {
 
-		/*
-		 * Chỉ fallback raw nếu token nhập vào thực sự là UUID cũ.
-		 *
-		 * Điều này rất quan trọng.
-		 *
-		 * Nếu query raw mọi token thì người lấy được HASH trong database có thể dùng
-		 * chính hash đó làm URL, khiến việc hash token mất ý nghĩa.
-		 */
-		if (userOptional.isEmpty() && isLegacyUuidToken(token)) {
+            throw new BadRequestException("Tên đăng nhập hoặc email đã được sử dụng");
+        }
 
-			userOptional = userRepository.findByVerificationToken(token);
-		}
+        Role userRole =
+                roleRepository
+                        .findByName("ROLE_USER")
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Chưa seed role ROLE_USER"));
 
-		User user = userOptional
-				.orElseThrow(() -> new BadRequestException("Link xác thực không hợp lệ " + "hoặc đã được dùng"));
+        User user = new User();
 
-		// =====================================================
-		// Check expiry
-		// =====================================================
+        user.setFullName(pending.getFullName());
 
-		if (user.getVerificationTokenExpiry() == null
-				|| !user.getVerificationTokenExpiry().isAfter(LocalDateTime.now())) {
+        user.setUsername(pending.getUsername());
 
-			throw new BadRequestException("Link xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại email");
-		}
+        user.setEmail(pending.getEmail());
 
-		// =====================================================
-		// Verify
-		// =====================================================
+        user.setPassword(pending.getPassword());
 
-		user.setEmailVerified(true);
+        user.setRole(userRole);
 
-		/*
-		 * Token dùng xong bị xóa.
-		 */
-		user.setVerificationToken(null);
+        user.setActive(true);
 
-		user.setVerificationTokenExpiry(null);
+        user.setEmailVerified(true);
 
-		user.setVerificationEmailSentAt(null);
+        userRepository.save(user);
 
-		userRepository.save(user);
-	}
+        pendingUserRepository.delete(pending);
+    }
 
-	// =========================================================
-	// FORGOT PASSWORD
-	// =========================================================
+    @Transactional
+    public void resendVerificationEmail(String identifier) {
 
-	/**
-	 * Quên mật khẩu.
-	 *
-	 * Luôn trả về thành công kể cả email không tồn tại.
-	 *
-	 * Nhờ vậy attacker không dò được email nào đã đăng ký trong hệ thống.
-	 */
-	public void forgotPassword(String email) {
+        String value = identifier == null ? "" : identifier.trim();
 
-		String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        var pendingOptional =
+                pendingUserRepository
+                        .findByUsername(value)
+                        .or(() -> pendingUserRepository.findByEmailIgnoreCase(value));
 
-		if (normalizedEmail.isBlank()) {
-			return;
-		}
+        if (pendingOptional.isPresent()) {
 
-		userRepository.findByEmailIgnoreCase(normalizedEmail).ifPresent(user -> {
+            resendPendingVerification(pendingOptional.get());
 
-			LocalDateTime now = LocalDateTime.now();
+            return;
+        }
 
-			// =========================================
-			// Cooldown 60 giây / account
-			// =========================================
+        var userOptional =
+                userRepository
+                        .findByUsername(value)
+                        .or(() -> userRepository.findByEmailIgnoreCase(value));
 
-			/*
-			 * Hiện entity User chưa có field:
-			 *
-			 * resetPasswordEmailSentAt
-			 *
-			 * nên tạm suy ra thời điểm token được tạo từ expiry:
-			 *
-			 * expiry = createdAt + 30 phút
-			 *
-			 * createdAt = expiry - 30 phút
-			 */
-			if (user.getResetPasswordToken() != null && user.getResetPasswordExpiry() != null) {
+        if (userOptional.isEmpty() || userOptional.get().isEmailVerified()) {
 
-				LocalDateTime tokenCreatedAt = user.getResetPasswordExpiry().minusMinutes(RESET_PASSWORD_TOKEN_MINUTES);
+            return;
+        }
 
-				if (now.isBefore(tokenCreatedAt.plusSeconds(RESET_EMAIL_COOLDOWN_SECONDS))) {
+        User user = userOptional.get();
 
-					/*
-					 * Không throw lỗi ở đây.
-					 *
-					 * Controller vẫn trả thông báo chung "Nếu email tồn tại..."
-					 *
-					 * Nhờ vậy không lộ email tồn tại.
-					 */
-					return;
-				}
-			}
+        LocalDateTime now = LocalDateTime.now();
 
-			// =========================================
-			// Generate reset token
-			// =========================================
+        LocalDateTime lastSent = user.getVerificationEmailSentAt();
 
-			String resetToken = authTokenService.generateToken();
+        if (lastSent != null && now.isBefore(lastSent.plusMinutes(1))) {
 
-			/*
-			 * Database chỉ lưu hash.
-			 */
-			String resetTokenHash = authTokenService.hashToken(resetToken);
+            throw new BadRequestException("Vui lòng chờ 60 giây " + "trước khi gửi lại email");
+        }
 
-			user.setResetPasswordToken(resetTokenHash);
+        String newToken = authTokenService.generateToken();
 
-			user.setResetPasswordExpiry(now.plusMinutes(RESET_PASSWORD_TOKEN_MINUTES));
+        user.setVerificationToken(authTokenService.hashToken(newToken));
 
-			/*
-			 * Ghi token mới sẽ tự động làm token cũ mất hiệu lực.
-			 */
-			userRepository.save(user);
+        user.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
 
-			// =========================================
-			// Email nhận token THẬT
-			// =========================================
+        user.setVerificationEmailSentAt(now);
 
-			emailService.sendResetPasswordEmail(user.getEmail(), user.getFullName(), resetToken);
-		});
-	}
+        userRepository.save(user);
 
-	// =========================================================
-	// RESET PASSWORD
-	// =========================================================
+        emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), newToken);
+    }
 
-	/**
-	 * Đặt lại password bằng token nhận từ email.
-	 */
-	public void resetPassword(String token, String newPassword) {
+    private void resendPendingVerification(PendingUser pending) {
 
-		String value = token == null ? "" : token.trim();
+        LocalDateTime now = LocalDateTime.now();
 
-		if (value.isBlank()) {
+        if (!pending.getExpiresAt().isAfter(now)) {
 
-			throw new BadRequestException("Link đặt lại mật khẩu không hợp lệ " + "hoặc đã được dùng");
-		}
+            pendingUserRepository.delete(pending);
 
-		// =====================================================
-		// Token URL → SHA256
-		// =====================================================
+            throw new BadRequestException("Đăng ký đã hết hạn, " + "vui lòng đăng ký lại");
+        }
 
-		String tokenHash = authTokenService.hashToken(value);
+        LocalDateTime lastSent = pending.getVerificationEmailSentAt();
 
-		/*
-		 * Token mới:
-		 *
-		 * query bằng hash.
-		 */
-		var userOptional = userRepository.findByResetPasswordToken(tokenHash);
+        if (lastSent != null && now.isBefore(lastSent.plusMinutes(1))) {
 
-		// =====================================================
-		// Hỗ trợ reset token UUID cũ
-		// =====================================================
+            throw new BadRequestException("Vui lòng chờ 60 giây " + "trước khi gửi lại email");
+        }
 
-		if (userOptional.isEmpty() && isLegacyUuidToken(value)) {
+        String newToken = authTokenService.generateToken();
 
-			userOptional = userRepository.findByResetPasswordToken(value);
-		}
+        pending.setVerificationToken(authTokenService.hashToken(newToken));
 
-		User user = userOptional.orElseThrow(
-				() -> new BadRequestException("Link đặt lại mật khẩu " + "không hợp lệ hoặc đã được dùng"));
+        pending.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
 
-		// =====================================================
-		// Check expiry
-		// =====================================================
+        pending.setVerificationEmailSentAt(now);
 
-		if (user.getResetPasswordExpiry() == null || user.getResetPasswordExpiry().isBefore(LocalDateTime.now())) {
+        pending.setExpiresAt(now.plusHours(PENDING_RETENTION_HOURS));
 
-			throw new BadRequestException("Link đặt lại mật khẩu " + "đã hết hạn, vui lòng yêu cầu lại");
-		}
+        pendingUserRepository.save(pending);
 
-		// =====================================================
-		// Set password mới
-		// =====================================================
+        emailService.sendVerificationEmail(pending.getEmail(), pending.getFullName(), newToken);
+    }
 
-		user.setPassword(passwordEncoder.encode(newPassword));
+    private void verifyLegacyUser(String token) {
 
-		/*
-		 * Dùng xong token bị vô hiệu ngay.
-		 */
-		user.setResetPasswordToken(null);
+        if (token == null || token.isBlank()) {
 
-		user.setResetPasswordExpiry(null);
+            throw new BadRequestException("Link xác thực không hợp lệ " + "hoặc đã được dùng");
+        }
 
-		userRepository.save(user);
-	}
+        String tokenHash = authTokenService.hashToken(token);
 
-	// =========================================================
-	// CHANGE PASSWORD
-	// =========================================================
+        var userOptional = userRepository.findByVerificationToken(tokenHash);
 
-	/**
-	 * Người đã login đổi password.
-	 *
-	 * Phải nhập đúng password hiện tại.
-	 */
-	public void changePassword(Long userId, String currentPassword, String newPassword) {
+        if (userOptional.isEmpty() && isLegacyUuidToken(token)) {
 
-		User user = userRepository.findById(userId)
-				.orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+            userOptional = userRepository.findByVerificationToken(token);
+        }
 
-		// =====================================================
-		// Password hiện tại sai
-		// =====================================================
+        User user =
+                userOptional.orElseThrow(
+                        () ->
+                                new BadRequestException(
+                                        "Link xác thực không hợp lệ " + "hoặc đã được dùng"));
 
-		if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+        if (user.getVerificationTokenExpiry() == null
+                || !user.getVerificationTokenExpiry().isAfter(LocalDateTime.now())) {
 
-			throw new BadRequestException("Mật khẩu hiện tại không đúng");
-		}
+            throw new BadRequestException(
+                    "Link xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại email");
+        }
 
-		// =====================================================
-		// Không cho password mới giống password cũ
-		// =====================================================
+        user.setEmailVerified(true);
 
-		if (passwordEncoder.matches(newPassword, user.getPassword())) {
+        user.setVerificationToken(null);
 
-			throw new BadRequestException("Mật khẩu mới phải khác " + "mật khẩu hiện tại");
-		}
+        user.setVerificationTokenExpiry(null);
 
-		user.setPassword(passwordEncoder.encode(newPassword));
+        user.setVerificationEmailSentAt(null);
 
-		userRepository.save(user);
-	}
+        userRepository.save(user);
+    }
 
-	// =========================================================
-	// LEGACY TOKEN HELPER
-	// =========================================================
+    public void forgotPassword(String email) {
 
-	/**
-	 * Project cũ dùng:
-	 *
-	 * UUID.randomUUID().toString()
-	 *
-	 * Ví dụ:
-	 *
-	 * 550e8400-e29b-41d4-a716-446655440000
-	 *
-	 * Hàm này giúp nhận biết token cũ.
-	 *
-	 * Mục đích: các email được gửi trước khi update code vẫn có thể sử dụng trong
-	 * thời gian token còn hạn.
-	 */
-	private boolean isLegacyUuidToken(String token) {
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
 
-		if (token == null || token.isBlank()) {
+        if (normalizedEmail.isBlank()) {
+            return;
+        }
 
-			return false;
-		}
+        userRepository
+                .findByEmailIgnoreCase(normalizedEmail)
+                .ifPresent(
+                        user -> {
+                            LocalDateTime now = LocalDateTime.now();
 
-		try {
+                            if (user.getResetPasswordToken() != null
+                                    && user.getResetPasswordExpiry() != null) {
 
-			UUID.fromString(token);
+                                LocalDateTime tokenCreatedAt =
+                                        user.getResetPasswordExpiry()
+                                                .minusMinutes(RESET_PASSWORD_TOKEN_MINUTES);
 
-			return true;
+                                if (now.isBefore(
+                                        tokenCreatedAt.plusSeconds(RESET_EMAIL_COOLDOWN_SECONDS))) {
 
-		} catch (IllegalArgumentException exception) {
+                                    return;
+                                }
+                            }
 
-			return false;
-		}
-	}
+                            String resetToken = authTokenService.generateToken();
+
+                            String resetTokenHash = authTokenService.hashToken(resetToken);
+
+                            user.setResetPasswordToken(resetTokenHash);
+
+                            user.setResetPasswordExpiry(
+                                    now.plusMinutes(RESET_PASSWORD_TOKEN_MINUTES));
+
+                            userRepository.save(user);
+
+                            emailService.sendResetPasswordEmail(
+                                    user.getEmail(), user.getFullName(), resetToken);
+                        });
+    }
+
+    public void resetPassword(String token, String newPassword) {
+
+        String value = token == null ? "" : token.trim();
+
+        if (value.isBlank()) {
+
+            throw new BadRequestException(
+                    "Link đặt lại mật khẩu không hợp lệ " + "hoặc đã được dùng");
+        }
+
+        String tokenHash = authTokenService.hashToken(value);
+
+        var userOptional = userRepository.findByResetPasswordToken(tokenHash);
+
+        if (userOptional.isEmpty() && isLegacyUuidToken(value)) {
+
+            userOptional = userRepository.findByResetPasswordToken(value);
+        }
+
+        User user =
+                userOptional.orElseThrow(
+                        () ->
+                                new BadRequestException(
+                                        "Link đặt lại mật khẩu "
+                                                + "không hợp lệ hoặc đã được dùng"));
+
+        if (user.getResetPasswordExpiry() == null
+                || user.getResetPasswordExpiry().isBefore(LocalDateTime.now())) {
+
+            throw new BadRequestException(
+                    "Link đặt lại mật khẩu " + "đã hết hạn, vui lòng yêu cầu lại");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+
+        user.setResetPasswordToken(null);
+
+        user.setResetPasswordExpiry(null);
+
+        userRepository.save(user);
+    }
+
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+
+            throw new BadRequestException("Mật khẩu hiện tại không đúng");
+        }
+
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+
+            throw new BadRequestException("Mật khẩu mới phải khác " + "mật khẩu hiện tại");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+
+        userRepository.save(user);
+    }
+
+    private boolean isLegacyUuidToken(String token) {
+
+        if (token == null || token.isBlank()) {
+
+            return false;
+        }
+
+        try {
+
+            UUID.fromString(token);
+
+            return true;
+
+        } catch (IllegalArgumentException exception) {
+
+            return false;
+        }
+    }
 }

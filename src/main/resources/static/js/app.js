@@ -1,16 +1,7 @@
-/* ============================================================
-   ALOUTE — app.js
-   Thu vien JS dung chung cho toan bo trang (tru auth pages tu viet
-   rieng phan submit form cua minh, nhung van dung Aloute.api()).
 
-   Xac thuc: JWT duoc luu trong cookie HttpOnly "ALOUTE_TOKEN" (do
-   AuthController set), trinh duyet tu dong gui kem MOI request cung
-   origin (ke ca fetch), nen o day KHONG can tu set header Authorization.
-   ============================================================ */
 
 window.Aloute = (function () {
 
-  // ---------- Goi API JSON, tu nem loi neu backend tra success:false ----------
   async function api(path, options) {
     options = options || {};
     const opts = Object.assign({}, options);
@@ -24,23 +15,27 @@ window.Aloute = (function () {
       opts.headers['Content-Type'] = 'application/json';
     }
 
-    const res = await fetch(path, opts);
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch (error) {
+      throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối và thử lại.');
+    }
 
     let payload = null;
     try {
       payload = await res.json();
     } catch (e) {
-      // phan hoi khong co body JSON (vd. loi 500 dang HTML) - bo qua
+
     }
 
     if (!res.ok || (payload && payload.success === false)) {
-      const message = (payload && payload.message) || ('Loi ' + res.status);
+      const message = (payload && payload.message) || ('Máy chủ trả về lỗi ' + res.status);
       throw new Error(message);
     }
     return payload ? payload.data : null;
   }
 
-  // ---------- Toast thong bao noi goc tren ----------
   function toast(message, isError) {
     let host = document.getElementById('toastHost');
     if (!host) {
@@ -59,7 +54,6 @@ window.Aloute = (function () {
     }, 3200);
   }
 
-  // ---------- Dinh dang thoi gian tuong doi kieu "6 gio", "22 gio", "3 ngay" ----------
   function timeAgo(isoString) {
     if (!isoString) return '';
     const then = new Date(isoString).getTime();
@@ -95,21 +89,12 @@ window.Aloute = (function () {
     return String(n);
   }
 
-  // ============================================================
-  // Ket noi real-time (STOMP qua SockJS). Xac thuc da xay ra ngay
-  // luc bat tay HTTP dua tren cookie ALOUTE_TOKEN (xem WebSocketConfig
-  // + JwtHandshakeInterceptor phia backend) - JS o day khong can biet token.
-  // ============================================================
   let stompClient = null;
   let stompConnected = false;
   let realtimeStarting = false;
   let realtimeLibsPromise = null;
   const readyCallbacks = [];
 
-  // SockJS + Stomp nang ~60KB va CHI can cho realtime. Truoc day chung duoc nhung
-  // bang <script> cung trong layout nen MOI trang (ke ca trang tinh nhu /profile,
-  // /search) deu phai tai va parse chung truoc khi app.js chay. Gio chi tai khi
-  // that su sap ket noi, va tai bat dong bo nen khong chan hien thi trang.
   const REALTIME_LIBS = [
     'https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js'
@@ -139,7 +124,6 @@ window.Aloute = (function () {
     return realtimeLibsPromise;
   }
 
-  /** Tai thu vien (neu chua co) roi mo ket noi STOMP. */
   function connectRealtime() {
     if (stompClient || realtimeStarting) return;
     realtimeStarting = true;
@@ -156,12 +140,11 @@ window.Aloute = (function () {
     if (stompClient) return;
     const socket = new SockJS('/ws');
     stompClient = Stomp.over(socket);
-    stompClient.debug = null; // tat log debug on ao trong console
+    stompClient.debug = null;
 
     stompClient.connect({}, function () {
       stompConnected = true;
 
-      // Thong bao (like/comment/follow) real-time - cap nhat badge chuong + toast nhe
       stompClient.subscribe('/user/queue/notifications', function (frame) {
         const notif = JSON.parse(frame.body);
         bumpBadge('notifUnreadBadge');
@@ -169,50 +152,41 @@ window.Aloute = (function () {
         document.dispatchEvent(new CustomEvent('aloute:notification', { detail: notif }));
       });
 
-      // Tin nhan real-time - cap nhat badge Tin nhan; chat.js se tu subscribe them
-      // de hien thi vao dung khung chat dang mo (tranh xu ly trung o day).
       stompClient.subscribe('/user/queue/messages', function (frame) {
         const msg = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:message', { detail: msg }));
       });
 
-      // Bao "dang nhap" tu nguoi dang nhan tin (xem ChatController#typing)
       stompClient.subscribe('/user/queue/typing', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:typing', { detail: payload }));
       });
 
-      // Bao "da xem" tin nhan (xem ChatService#markAsRead)
       stompClient.subscribe('/user/queue/read-receipts', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:read', { detail: payload }));
       });
 
-      // Online/offline cua ban be (xem PresenceService#broadcastPresence)
       stompClient.subscribe('/user/queue/presence', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:presence', { detail: payload }));
       });
 
-      // Thay avatar theo thời gian thực khi bạn bè đổi ảnh đại diện.
       stompClient.subscribe('/user/queue/avatar-updates', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:avatar-update', { detail: payload }));
       });
 
-      // Tín hiệu WebRTC cho cuộc gọi 1-1: offer / answer / ICE / hangup
       stompClient.subscribe('/user/queue/call', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:call-signal', { detail: payload }));
       });
 
-      // Loi gui tin nhan (vd: chua la ban be, noi dung rong...) - xem ChatController#sendMessage
       stompClient.subscribe('/user/queue/errors', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:chat-error', { detail: payload }));
       });
 
-      // Nhom vua duoc tao / them nguoi / co nguoi roi - xem GroupService#broadcastGroupUpdate
       stompClient.subscribe('/user/queue/group-updates', function (frame) {
         const payload = JSON.parse(frame.body);
         document.dispatchEvent(new CustomEvent('aloute:group-update', { detail: payload }));
@@ -221,14 +195,13 @@ window.Aloute = (function () {
       readyCallbacks.forEach(cb => cb(stompClient));
       readyCallbacks.length = 0;
     }, function () {
-      // Mat ket noi - thu ket noi lai sau 3s (mang chap chon, server restart...)
+
       stompConnected = false;
       stompClient = null;
       setTimeout(connectRealtime, 3000);
     });
   }
 
-  /** Dang ky callback chay khi STOMP da ket noi xong (dung boi chat.js). */
   function onRealtimeReady(cb) {
     if (stompConnected && stompClient) cb(stompClient);
     else readyCallbacks.push(cb);
@@ -239,15 +212,9 @@ window.Aloute = (function () {
     if (!el) return;
     const current = parseInt(el.textContent, 10) || 0;
     const next = current + 1;
-    el.textContent = next > 99 ? '99+' : String(next);
-    el.style.display = '';
+    setBadge(elId, next);
   }
 
-  // ============================================================
-  // Tuong tac tren feed: like, mo form binh luan, dang bai, xoa bai
-  // ============================================================
-
-  /** Định dạng lại toàn bộ số đếm (like/comment) kiểu "1,2K" ngay lúc tải trang. */
   function formatInitialCounts() {
     document.querySelectorAll('[data-raw]').forEach(el => {
       el.textContent = formatCount(el.dataset.raw);
@@ -264,7 +231,7 @@ window.Aloute = (function () {
     if (emojiSpan) {
       emojiSpan.textContent = type ? (REACTION_EMOJI[type] || '👍') : '';
       if (type && animate) {
-        // Chạy lại animation "nảy" mỗi lần người dùng chủ động chọn cảm xúc.
+
         emojiSpan.classList.remove('reaction-bump');
         void emojiSpan.offsetWidth;
         emojiSpan.classList.add('reaction-bump');
@@ -278,9 +245,6 @@ window.Aloute = (function () {
     });
   }
 
-  // Đóng bảng chọn emoji đang mở (long-press trên mobile) khi bấm ra ngoài — đăng ký
-  // MỘT LẦN DUY NHẤT cho toàn trang (event delegation), thay vì mỗi bài viết tự thêm
-  // 1 listener riêng trên document (sẽ tích tụ hàng chục listener khi cuộn tải thêm bài).
   document.addEventListener('click', (e) => {
     document.querySelectorAll('.reaction-picker--open').forEach(picker => {
       if (!picker.parentElement || !picker.parentElement.contains(e.target)) {
@@ -291,8 +255,7 @@ window.Aloute = (function () {
 
   function initFeedInteractions() {
     document.querySelectorAll('[data-post-id]').forEach(postEl => {
-      // Với repost: data-post-id là document quan hệ (để có thể xóa lượt share),
-      // data-action-post-id mới là ID của bài gốc dùng cho like/comment/repost/share.
+
       const postId = postEl.dataset.actionPostId || postEl.dataset.postId;
 
       const reaction = postEl.querySelector('.reaction');
@@ -306,8 +269,6 @@ window.Aloute = (function () {
         const initialType = initialMatch ? initialMatch[1] : null;
         applyReactionUI(likeBtn, initialType);
 
-        // Optimistic UI + queue trạng thái mong muốn, cùng mô hình với like cũ nhưng
-        // "trạng thái" giờ là 1 trong 6 loại emoji (hoặc null = không reaction) thay vì boolean.
         const state = {
           desired: initialType,
           serverType: initialType,
@@ -316,7 +277,7 @@ window.Aloute = (function () {
         };
 
         function render(animate) {
-          // Đổi từ loại A sang loại B không đổi tổng số; chỉ +1/-1 khi bật/tắt hẳn.
+
           let delta = 0;
           if (state.desired && !state.serverType) delta = 1;
           else if (!state.desired && state.serverType) delta = -1;
@@ -355,13 +316,9 @@ window.Aloute = (function () {
           }
         }
 
-        // ----- Bảng chọn cảm xúc kiểu Facebook -----
-        // Desktop: rê chuột vào nút Thích một chút là bảng hiện ra, rê chuột LÊN emoji để chọn;
-        //          rời chuột ra ngoài thì bảng tự đóng sau một khoảng trễ ngắn (không cần bấm).
-        // Mobile : giữ (long-press) nút Thích để mở bảng.
         const canHover = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
-        const OPEN_DELAY = 250;   // rê chuột vào nút Thích bao lâu thì mở bảng
-        const CLOSE_DELAY = 300;  // rời chuột khỏi vùng (nút + bảng) bao lâu thì đóng bảng
+        const OPEN_DELAY = 250;
+        const CLOSE_DELAY = 300;
         let openTimer = null;
         let closeTimer = null;
         let pressTimer = null;
@@ -398,10 +355,8 @@ window.Aloute = (function () {
           closeTimer = setTimeout(closePicker, CLOSE_DELAY);
         }
 
-        // Bấm nút chính (icon): đã có reaction nào đó -> bỏ; chưa có -> đặt Thích (LIKE) mặc định.
-        // Giống cách Facebook xử lý khi bấm thẳng vào icon thay vì chọn từ bảng emoji.
         likeBtn.addEventListener('click', (e) => {
-          if (longPressed) { longPressed = false; e.preventDefault(); return; } // vừa long-press mở bảng, không tính là bấm
+          if (longPressed) { longPressed = false; e.preventDefault(); return; }
           closePicker();
           state.desired = state.desired ? null : 'LIKE';
           render(true);
@@ -410,7 +365,7 @@ window.Aloute = (function () {
 
         if (picker) {
           picker.querySelectorAll('.reaction-picker__emoji').forEach((emojiBtn, index) => {
-            // Nhãn tên cảm xúc hiển thị bằng CSS (thay cho tooltip mặc định của trình duyệt).
+
             if (!emojiBtn.dataset.label) emojiBtn.dataset.label = emojiBtn.getAttribute('title') || '';
             emojiBtn.removeAttribute('title');
             emojiBtn.style.setProperty('--i', String(index));
@@ -418,7 +373,7 @@ window.Aloute = (function () {
             emojiBtn.addEventListener('click', (e) => {
               e.stopPropagation();
               const type = emojiBtn.dataset.reaction;
-              // Bấm lại đúng emoji đang chọn -> bỏ reaction (giống bấm 2 lần để tắt).
+
               state.desired = state.desired === type ? null : type;
               closePicker();
               render(true);
@@ -427,13 +382,11 @@ window.Aloute = (function () {
           });
 
           if (canHover) {
-            // mouseenter/mouseleave gắn trên wrapper .reaction (chứa cả nút lẫn bảng) và bảng có
-            // "cầu nối" CSS lấp khe hở -> kéo chuột thẳng từ nút lên emoji không làm bảng đóng.
+
             reaction.addEventListener('mouseenter', scheduleOpen);
             reaction.addEventListener('mouseleave', scheduleClose);
           }
 
-          // Cảm ứng: giữ khoảng nửa giây để mở bảng.
           likeBtn.addEventListener('touchstart', () => {
             longPressed = false;
             pressTimer = setTimeout(() => { longPressed = true; openPicker(); }, 450);
@@ -459,9 +412,6 @@ window.Aloute = (function () {
         const originalPostId = repostBtn.dataset.postId || postId;
         const countEl = repostBtn.querySelector('span');
 
-        // Cùng mô hình với thả cảm xúc: đổi giao diện NGAY khi bấm (optimistic), request chạy
-        // nền theo hàng đợi. Bấm liên tục vẫn mượt — chỉ gửi khi trạng thái mong muốn còn lệch
-        // trạng thái server, và lỗi thì tự hoàn tác về đúng trạng thái server.
         const rState = {
           desired: repostBtn.classList.contains('is-reposted'),
           serverState: repostBtn.classList.contains('is-reposted'),
@@ -520,8 +470,7 @@ window.Aloute = (function () {
           banner.appendChild(names);
           if (actors.length > 3) {
             banner.appendChild(document.createTextNode(' cùng '));
-            // Popover hover (không phải <details>, vì <details> chỉ mở được bằng click) —
-            // hiện avatar + tên ngay khi rê chuột vào, đồng bộ với markup trong feed/index.html.
+
             const wrap = document.createElement('span');
             wrap.className = 'post__repost-others';
             wrap.tabIndex = 0;
@@ -558,8 +507,7 @@ window.Aloute = (function () {
           if (rState.inFlight) return;
           rState.inFlight = true;
           try {
-            // Endpoint /repost là TOGGLE: mỗi lần gọi đảo trạng thái, nên lặp cho tới khi
-            // trạng thái server khớp với trạng thái người dùng đang muốn.
+
             while (rState.desired !== rState.serverState) {
               const requested = rState.desired;
               try {
@@ -676,7 +624,7 @@ window.Aloute = (function () {
       }
       if (page === 0) listEl.innerHTML = '';
       listEl.insertAdjacentHTML('beforeend', comments.map(c => (
-        '<div class="comment-item">' +
+        '<div class="comment-item" data-comment-id="' + escapeHtml(c.id) + '">' +
         '  <img src="' + escapeHtml(c.userAvatarUrl || '/images/avatar_default.png') + '" alt="avatar">' +
         '  <div class="comment-item__body">' +
         '    <span class="comment-item__username">' + escapeHtml(c.username || '') + '</span>' +
@@ -702,55 +650,27 @@ window.Aloute = (function () {
     }
   }
 
-  /** O soan nhanh tren dau feed (chi text, muon them anh thi dung trang /compose day du). */
-  function initQuickComposeBox() {
-    const box = document.querySelector('.compose');
-    // Ô soạn bài trong trang hội nhóm có xử lý riêng (initCommunityPages) — nếu để đây bắt,
-    // bài viết sẽ bị đăng nhầm lên feed chung thay vì vào hội nhóm.
-    if (!box || box.closest('.community-page')) return;
-    const input = box.querySelector('.compose__placeholder');
-    const btn = box.querySelector('.btn-post');
-    if (!input || !btn) return;
-
-    input.addEventListener('input', () => {
-      btn.disabled = input.value.trim().length === 0;
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
-    });
-
-    btn.addEventListener('click', async () => {
-      const content = input.value.trim();
-      if (!content) return;
-      btn.disabled = true;
-      try {
-        await api('/api/posts', { method: 'POST', body: { content } });
-        toast('Da dang bai');
-        location.reload();
-      } catch (err) {
-        toast(err.message, true);
-        btn.disabled = false;
-      }
-    });
-  }
-
-  /** Trang /compose day du: text + anh. */
   function initComposePage() {
     const form = document.getElementById('composeForm');
     if (!form) return;
 
     const textarea = document.getElementById('composeContent');
     const fileInput = document.getElementById('composeImageInput');
+    const videoInput = document.getElementById('composeVideoInput');
     const preview = document.getElementById('composePreview');
     const submitBtn = document.getElementById('composeSubmit');
 
-    textarea.addEventListener('input', () => {
-      submitBtn.disabled = textarea.value.trim().length === 0;
-    });
+    const refreshComposeState = () => {
+      submitBtn.disabled = !textarea.value.trim() && !fileInput.files[0] && !videoInput.files[0];
+    };
+
+    textarea.addEventListener('input', refreshComposeState);
 
     fileInput.addEventListener('change', () => {
       const file = fileInput.files[0];
       if (!file) return;
+      videoInput.value = '';
+      refreshComposeState();
       const reader = new FileReader();
       reader.onload = () => {
         preview.innerHTML =
@@ -759,40 +679,68 @@ window.Aloute = (function () {
         document.getElementById('removeImageBtn').addEventListener('click', () => {
           fileInput.value = '';
           preview.innerHTML = '';
+          refreshComposeState();
         });
       };
       reader.readAsDataURL(file);
     });
 
+    videoInput.addEventListener('change', () => {
+      const file = videoInput.files[0];
+      if (!file) return;
+      fileInput.value = '';
+      refreshComposeState();
+      const objectUrl = URL.createObjectURL(file);
+      preview.innerHTML =
+        '<div class="compose-page__preview"><video src="' + objectUrl + '" controls preload="metadata"></video>' +
+        '<button type="button" id="removeVideoBtn" aria-label="Xóa video">&times;</button></div>';
+      document.getElementById('removeVideoBtn').addEventListener('click', () => {
+        URL.revokeObjectURL(objectUrl);
+        videoInput.value = '';
+        preview.innerHTML = '';
+        refreshComposeState();
+      });
+
+      stompClient.subscribe('/user/queue/message-deletions', function (frame) {
+        const payload = JSON.parse(frame.body);
+        document.dispatchEvent(new CustomEvent('aloute:message-deleted', { detail: payload }));
+      });
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const content = textarea.value.trim();
-      if (!content) return;
+      if (!content && !fileInput.files[0] && !videoInput.files[0]) return;
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Dang dang...';
       try {
         let imageUrl = null;
+        let videoUrl = null;
         if (fileInput.files[0]) {
           const fd = new FormData();
           fd.append('file', fileInput.files[0]);
           const res = await api('/api/upload/image', { method: 'POST', body: fd });
           imageUrl = res.url;
         }
-        await api('/api/posts', { method: 'POST', body: { content, imageUrl } });
-        toast('Da dang bai viet');
+        if (videoInput.files[0]) {
+          const fd = new FormData();
+          fd.append('file', videoInput.files[0]);
+          const res = await api('/api/upload/media', { method: 'POST', body: fd });
+          if (res.type !== 'video') throw new Error('Tệp đã chọn không phải video hợp lệ.');
+          videoUrl = res.url;
+        }
+        await api('/api/posts', { method: 'POST', body: { content, imageUrl, videoUrl, visibility: document.getElementById('postVisibility')?.value || 'PUBLIC' } });
+        toast('Đã đăng bài viết');
         window.location.href = '/feed';
       } catch (err) {
         toast(err.message, true);
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Dang';
+        submitBtn.textContent = 'Đăng';
       }
     });
   }
 
-  // ============================================================
-  // Nut Theo doi / Dang theo doi (trang ca nhan, ket qua tim kiem)
-  // ============================================================
   function initFollowButtons() {
     document.querySelectorAll('.btn-follow[data-user-id]').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -805,6 +753,10 @@ window.Aloute = (function () {
         try {
           const following = await api('/api/users/' + userId + '/follow', { method: 'POST' });
           applyFollowState(btn, following);
+          if (!following) {
+            const status = await api('/api/users/' + userId + '/follow-status');
+            if (status === 'PENDING') btn.textContent = 'Đã gửi yêu cầu · Hủy';
+          }
         } catch (err) {
           toast(err.message, true);
         } finally {
@@ -819,11 +771,6 @@ window.Aloute = (function () {
     btn.textContent = following ? 'Đang theo dõi' : 'Theo dõi';
   }
 
-  // ============================================================
-  // Nut "Ban than" (trang ca nhan, ket qua tim kiem) — mo hinh gui
-  // loi moi / cho chap nhan, khac voi Follow o tren (bam la co ngay).
-  // Trang thai: NONE | PENDING_SENT | PENDING_RECEIVED | ACCEPTED
-  // ============================================================
   function initCloseFriendButtons() {
     document.querySelectorAll('.btn-close-friend[data-user-id]').forEach(btn => {
       if (btn.dataset.bound) return;
@@ -835,8 +782,6 @@ window.Aloute = (function () {
       });
     });
 
-    // Thanh "X đã gửi lời mời kết bạn thân" render sẵn trên trang cá nhân (chỉ có ở đó,
-    // vì cần đủ chỗ cho 2 nút chấp nhận/từ chối cạnh nhau).
     document.querySelectorAll('.close-friend-request-bar[data-user-id]').forEach(bar => {
       if (bar.dataset.bound) return;
       bar.dataset.bound = '1';
@@ -925,11 +870,6 @@ window.Aloute = (function () {
     }
   }
 
-  // ============================================================
-  // Trang tim kiem (/search) — bo cuc kieu Threads:
-  // o tim kiem + tab ket qua (Moi nguoi / Bai viet) + khu vuc kham pha
-  // (Goi y cho ban & Xu huong) hien khi o tim kiem con trong.
-  // ============================================================
   function initSearchPage() {
     const input = document.getElementById('searchInput');
     const resultsEl = document.getElementById('searchResults');
@@ -999,7 +939,6 @@ window.Aloute = (function () {
       });
     }
 
-    // Bam vao mot chu de xu huong -> dua tu khoa do vao o tim kiem
     if (discoverEl) {
       discoverEl.addEventListener('click', (e) => {
         if (e.target.closest('.btn-follow') || e.target.closest('a')) return;
@@ -1095,7 +1034,6 @@ window.Aloute = (function () {
     }
   }
 
-  // ---------- Khu vuc kham pha: goi y ket ban + xu huong ----------
   async function loadDiscoverSections() {
     const suggestionList = document.getElementById('suggestionList');
     const trendingList = document.getElementById('trendingList');
@@ -1186,6 +1124,7 @@ window.Aloute = (function () {
       '    </div>' +
       '    <p class="post__content">' + escapeHtml(post.content || '') + '</p>' +
       (post.imageUrl ? '<img class="post__image" src="' + escapeHtml(post.imageUrl) + '" alt="ảnh bài viết">' : '') +
+      (post.videoUrl ? '<video class="post__video" src="' + escapeHtml(post.videoUrl) + '" controls preload="metadata"></video>' : '') +
       '    <div class="post__actions">' +
       '      <button class="action action--like' + (post.likedByCurrentUser ? ' is-liked' : '') + '">' +
       '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>' +
@@ -1229,9 +1168,6 @@ window.Aloute = (function () {
       ? '<button class="btn-follow is-following" data-user-id="' + u.id + '">Đang theo dõi</button>'
       : '<button class="btn-follow" data-user-id="' + u.id + '">Theo dõi</button>';
 
-    // Nut "Ban than" chi hien khi da la ban be (follow lan nhau) — va khong hien khi ho vua
-    // gui loi moi cho minh (PENDING_RECEIVED), vi user-row nho khong du cho 2 nut chap
-    // nhan/tu choi canh nhau; truong hop do phan hoi qua trang /activity hoac trang ca nhan.
     let closeFriendBtn = '';
     if (u.mutualFriend && u.closeFriendStatus !== 'PENDING_RECEIVED') {
       const status = u.closeFriendStatus || 'NONE';
@@ -1256,11 +1192,6 @@ window.Aloute = (function () {
     );
   }
 
-
-  // ============================================================
-  // Trang ca nhan — hop thoai danh sach ket noi
-  // (Nguoi theo doi / Dang theo doi / Ban than)
-  // ============================================================
   const PEOPLE_TABS = {
     followers: { title: 'Người theo dõi', url: id => '/api/users/' + id + '/followers',
                  empty: 'Chưa có ai theo dõi.' },
@@ -1361,7 +1292,6 @@ window.Aloute = (function () {
     return row + row + row;
   }
 
-  // ---------- Anh dai dien hong (URL Cloudinary chet, tai khoan cu...) -> ve anh mac dinh ----------
   let avatarFallbackBound = false;
   function initAvatarFallback() {
     if (avatarFallbackBound) return;
@@ -1373,11 +1303,9 @@ window.Aloute = (function () {
       if (img.getAttribute('src') === DEFAULT_AVATAR) return;
       img.dataset.fallbackApplied = '1';
       img.src = DEFAULT_AVATAR;
-    }, true); // capture: su kien error cua <img> khong bubble
+    }, true);
   }
 
-
-  // ---------- Trang ca nhan: chuyen giua dong thoi gian / luoi / dang lai ----------
   function initProfileViewToggle() {
     const buttons = Array.from(document.querySelectorAll('[data-profile-view]'));
     const gridWrap = document.getElementById('profileGridWrap');
@@ -1396,7 +1324,7 @@ window.Aloute = (function () {
     }
 
     buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.profileView)));
-    // MAC DINH: dong thoi gian (kieu threads). Luoi va Dang lai chi la che do xem phu.
+
     let initialView = 'list';
     if (location.hash === '#luoi' && gridWrap) initialView = 'grid';
     else if (location.hash === '#dang-lai' && repostsWrap) initialView = 'reposts';
@@ -1416,9 +1344,6 @@ window.Aloute = (function () {
     }
   }
 
-  // ============================================================
-  // Trang hoat dong / thong bao (/activity)
-  // ============================================================
   function initActivityPage() {
     const markAllBtn = document.getElementById('markAllReadBtn');
     if (markAllBtn) {
@@ -1426,8 +1351,7 @@ window.Aloute = (function () {
         try {
           await api('/api/notifications/read-all', { method: 'POST' });
           document.querySelectorAll('.notif-item--unread').forEach(el => el.classList.remove('notif-item--unread'));
-          const badge = document.getElementById('notifUnreadBadge');
-          if (badge) badge.style.display = 'none';
+          setBadge('notifUnreadBadge', 0);
           toast('Da danh dau tat ca la da doc');
         } catch (err) {
           toast(err.message, true);
@@ -1435,8 +1359,6 @@ window.Aloute = (function () {
       });
     }
 
-    // Loi moi ket ban than gui thang trong thong bao -> chap nhan/tu choi ngay tai day,
-    // khong can qua trang ca nhan cua nguoi gui.
     document.querySelectorAll('.notif-item__actions[data-sender-id]').forEach(actions => {
       const senderId = actions.dataset.senderId;
       const acceptBtn = actions.querySelector('.notif-item__accept');
@@ -1446,8 +1368,7 @@ window.Aloute = (function () {
         if (acceptBtn) acceptBtn.disabled = true;
         if (declineBtn) declineBtn.disabled = true;
       };
-      // Lời mời có thể đã được xử lý ở nơi khác (trang cá nhân, tab khác...) từ trước khi
-      // trang này tải — nếu bấm mà API báo không tìm thấy, chỉ cần ẩn 2 nút đi, không phải lỗi thật.
+
       const resolveWithLabel = (label) => {
         actions.innerHTML = '<span style="color:var(--text-tertiary); font-size:13px;">' + label + '</span>';
       };
@@ -1481,9 +1402,6 @@ window.Aloute = (function () {
     });
   }
 
-  // ============================================================
-  // Trang chinh sua ho so (/profile/edit)
-  // ============================================================
   function initProfileEditPage() {
     const form = document.getElementById('profileEditForm');
     if (!form) return;
@@ -1493,12 +1411,16 @@ window.Aloute = (function () {
       const fullName = document.getElementById('editFullName').value.trim();
       const bio = document.getElementById('editBio').value.trim();
       const privateToggle = document.getElementById('editPrivateAccount');
+      if (!fullName || fullName.length > 100) {
+        toast('Họ tên phải có từ 1 đến 100 ký tự.', true);
+        return;
+      }
       const payload = { fullName, bio };
       if (privateToggle) payload.privateAccount = privateToggle.checked;
       try {
         await api('/api/users/me', { method: 'PUT', body: payload });
-        toast('Da luu thay doi');
-        window.location.href = '/profile/me';
+        toast('Đã lưu thay đổi');
+        if (!form.closest('.settings-page')) window.location.href = '/profile/me';
       } catch (err) {
         toast(err.message, true);
       }
@@ -1513,7 +1435,7 @@ window.Aloute = (function () {
         fd.append('avatar', file);
         try {
           await api('/api/users/me/avatar', { method: 'POST', body: fd });
-          toast('Da cap nhat anh dai dien');
+          toast('Đã cập nhật ảnh đại diện');
           window.location.reload();
         } catch (err) {
           toast(err.message, true);
@@ -1522,9 +1444,6 @@ window.Aloute = (function () {
     }
   }
 
-  // ============================================================
-  // Doi mat khau (trong trang /profile/edit)
-  // ============================================================
   function initChangePasswordForm() {
     const form = document.getElementById('changePasswordForm');
     if (!form) return;
@@ -1541,8 +1460,8 @@ window.Aloute = (function () {
       const newPassword = document.getElementById('newPassword').value;
       const confirmNewPassword = document.getElementById('confirmNewPassword').value;
 
-      if (newPassword.length < 6) {
-        errorBox.textContent = 'Mat khau moi phai co it nhat 6 ky tu.';
+      if (newPassword.length < 8 || newPassword.length > 72 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword) || !/[^\p{L}\p{N}\s]/u.test(newPassword)) {
+        errorBox.textContent = 'Mật khẩu phải có 8–72 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
         errorBox.style.display = 'block';
         return;
       }
@@ -1567,9 +1486,6 @@ window.Aloute = (function () {
     });
   }
 
-  // ============================================================
-  // Dang xuat (nut cuoi sidebar, xuat hien o moi trang da dang nhap)
-  // ============================================================
   function initLogout() {
     const btn = document.getElementById('logoutBtn');
     if (!btn) return;
@@ -1578,17 +1494,12 @@ window.Aloute = (function () {
       try {
         await api('/api/auth/logout', { method: 'POST' });
       } catch (e2) {
-        // du loi van dieu huong ve trang dang nhap cho chac
+
       }
       window.location.href = '/login';
     });
   }
 
-  // ============================================================
-  // Khoi dong khi DOM san sang
-  // ============================================================
-  // Bai moi tai them cung phai xuat hien trong tab "Luoi" neu co anh,
-  // de bam vao o luoi luon nhay dung toi bai do trong dong thoi gian.
   function appendGridTiles(posts) {
     const grid = document.getElementById('profileGrid');
     if (!grid) return;
@@ -1627,8 +1538,7 @@ window.Aloute = (function () {
           fragment.innerHTML = await response.text();
           const posts = fragment.content.querySelectorAll('.post');
           const count = posts.length;
-          // Nut "Tai them" nam ngay trong container bai viet, nen luon chen TRUOC nut
-          // de thu tu dong thoi gian khong bi vo.
+
           posts.forEach(post => button.before(post));
           appendGridTiles(posts);
           page++;
@@ -1645,10 +1555,6 @@ window.Aloute = (function () {
     });
   }
 
-  // ============================================================
-  // Hội nhóm: tạo nhóm, tham gia/rời nhóm, đăng bài trong nhóm
-  // ============================================================
-
   function setCommunityJoinButton(btn, joined) {
     btn.classList.toggle('is-joined', joined);
     btn.classList.toggle('btn-outline', joined);
@@ -1660,7 +1566,6 @@ window.Aloute = (function () {
     const page = document.querySelector('.community-page');
     if (!page) return;
 
-    // ----- Tìm hội nhóm: LIKE %keyword% + ignore-case ở backend -----
     const communitySearchInput = document.getElementById('communitySearchInput');
     const communitySearchClear = document.getElementById('communitySearchClear');
     const communitySearchResults = document.getElementById('communitySearchResults');
@@ -1782,7 +1687,6 @@ window.Aloute = (function () {
       });
     }
 
-    // ----- Modal "Tạo hội nhóm" (trang danh sách) -----
     const openBtn = document.getElementById('openCreateCommunityBtn');
     const modal = document.getElementById('createCommunityModal');
     if (openBtn && modal) {
@@ -1793,7 +1697,6 @@ window.Aloute = (function () {
       const nameInput = document.getElementById('newCommunityName');
       const descInput = document.getElementById('newCommunityDescription');
 
-      // ----- Chọn + xem trước ảnh bìa / ảnh đại diện (upload thật sự diễn ra lúc submit) -----
       const coverInput = document.getElementById('newCommunityCoverInput');
       const coverPreview = document.getElementById('newCommunityCoverPreview');
       const avatarInput = document.getElementById('newCommunityAvatarInput');
@@ -1885,7 +1788,6 @@ window.Aloute = (function () {
       });
     }
 
-    // ----- Nút Tham gia / Đã tham gia trong danh sách khám phá (optimistic) -----
     document.querySelectorAll('.btn-community-join').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (btn.dataset.busy === '1') return;
@@ -1906,7 +1808,6 @@ window.Aloute = (function () {
       });
     });
 
-    // ----- Trang chi tiết hội nhóm -----
     const communityId = page.dataset.communityId;
     if (!communityId) return;
 
@@ -1916,7 +1817,7 @@ window.Aloute = (function () {
         joinBtn.disabled = true;
         try {
           await api('/api/communities/' + communityId + '/join', { method: 'POST' });
-          location.reload(); // tải lại để hiện ô đăng bài + (với nhóm riêng tư) mở khóa bài viết
+          location.reload();
         } catch (err) {
           toast(err.message || 'Không thể tham gia hội nhóm', true);
           joinBtn.disabled = false;
@@ -1968,7 +1869,6 @@ window.Aloute = (function () {
     }
   }
 
-  /** Chèn bài vừa đăng lên đầu feed hội nhóm mà không phải tải lại cả trang. */
   async function showNewCommunityPost(communityId, postId) {
     const panel = document.getElementById('communityFeedPanel');
     try {
@@ -1993,33 +1893,38 @@ window.Aloute = (function () {
     }
   }
 
-  // ============================================================
-  // FIRST-PAINT OPTIMIZATION
-  // - Badge unread is deliberately not part of server-side page render.
-  // - Sidebar navigation prefetches HTML on hover and can swap the body
-  //   without a full-document reload for non-chat pages.
-  // ============================================================
   function setBadge(elId, count) {
     const el = document.getElementById(elId);
     if (!el) return;
     const n = Math.max(0, Number(count) || 0);
+    navBadgeCounts.set(elId, n);
     el.textContent = n > 99 ? '99+' : String(n);
     el.style.display = n > 0 ? '' : 'none';
   }
 
+  const navBadgeCounts = new Map();
+  let navBadgeUser = null;
   let navBadgeRefreshAt = 0;
   let navBadgeRequest = null;
 
   function refreshNavBadges(force) {
-    if (!document.body.dataset.currentUserId) return;
+    const userId = document.body.dataset.currentUserId;
+    if (!userId) return;
+    if (navBadgeUser !== userId) {
+      navBadgeCounts.clear();
+      navBadgeRefreshAt = 0;
+      navBadgeUser = userId;
+    }
     const now = Date.now();
-    if (!force && navBadgeRequest) return;
-    if (!force && now - navBadgeRefreshAt < 5000) return;
+    navBadgeCounts.forEach((count, id) => setBadge(id, count));
+    if (navBadgeRequest) return navBadgeRequest;
+    if (!force && now - navBadgeRefreshAt < 30000) return;
 
     navBadgeRequest = Promise.allSettled([
       api('/api/notifications/unread-count', { method: 'GET' }),
       api('/api/chat/unread-count', { method: 'GET' })
     ]).then(function (results) {
+      if (document.body.dataset.currentUserId !== userId) return;
       if (results[0].status === 'fulfilled') setBadge('notifUnreadBadge', results[0].value?.count ?? results[0].value ?? 0);
       if (results[1].status === 'fulfilled') setBadge('chatUnreadBadge', results[1].value?.count ?? results[1].value ?? 0);
       navBadgeRefreshAt = Date.now();
@@ -2028,9 +1933,7 @@ window.Aloute = (function () {
     });
   }
 
-
-  const softPageCache = new Map();
-  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/insights', '/saved', '/profile/me', '/communities'];
+  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/saved', '/profile/me', '/communities', '/settings', '/stories', '/admin/moderation'];
   let restoringHistory = false;
   let softNavigationBusy = false;
 
@@ -2056,29 +1959,11 @@ window.Aloute = (function () {
     if (bar) bar.classList.toggle('is-active', !!show);
   }
 
-  function prefetchPage(url) {
-    const key = url.href;
-    if (softPageCache.has(key)) return;
-    fetch(key, { credentials: 'same-origin', headers: { 'X-ALOUTE-Navigation': 'prefetch' }, cache: 'no-store' })
-      .then(function (res) {
-        if (!res.ok || !res.headers.get('content-type')?.includes('text/html')) throw new Error('prefetch');
-        return res.text();
-      })
-      .then(function (html) {
-        softPageCache.set(key, { html: html, at: Date.now() });
-        if (softPageCache.size > 8) softPageCache.delete(softPageCache.keys().next().value);
-      })
-      .catch(function () {});
-  }
-
   async function fetchPageHtml(url) {
     const key = url.href;
-    const cached = softPageCache.get(key);
-    if (cached && Date.now() - cached.at < 30_000) return cached.html;
     const res = await fetch(key, { credentials: 'same-origin', headers: { 'X-ALOUTE-Navigation': 'soft' }, cache: 'no-store' });
     if (!res.ok || !res.headers.get('content-type')?.includes('text/html')) throw new Error('navigation');
     const html = await res.text();
-    softPageCache.set(key, { html: html, at: Date.now() });
     return html;
   }
 
@@ -2118,7 +2003,6 @@ window.Aloute = (function () {
     initFeedInteractions();
     initPostPagination();
     formatInitialCounts();
-    initQuickComposeBox();
     initCommunityPages();
     initComposePage();
     initFollowButtons();
@@ -2130,43 +2014,9 @@ window.Aloute = (function () {
     initProfileEditPage();
     initChangePasswordForm();
     initLogout();
-    initSidebarHoverState();
     initSidebarNavigation();
     refreshNavBadges();
-  }
-
-  function initSidebarHoverState() {
-    // The rail itself stays 72px. Only .sidebar__panel owns the expandable
-    // hit area; binding pointerleave to the fixed rail caused the rail to
-    // close as soon as the pointer moved over the expanded panel.
-    if (!window.matchMedia || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-    document.querySelectorAll('.sidebar.sidebar--feed-collapsed, .sidebar.sidebar--chat-collapsed').forEach(function (sidebar) {
-      if (sidebar.dataset.hoverStateBound === '2') return;
-      sidebar.dataset.hoverStateBound = '2';
-      const panel = sidebar.querySelector('.sidebar__panel');
-      if (!panel) return;
-      let closeTimer = null;
-
-      const open = function () {
-        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
-        sidebar.classList.add('is-expanded');
-      };
-
-      const scheduleClose = function () {
-        if (closeTimer) clearTimeout(closeTimer);
-        closeTimer = setTimeout(function () {
-          sidebar.classList.remove('is-expanded');
-          closeTimer = null;
-        }, 90);
-      };
-
-      panel.addEventListener('pointerenter', open);
-      panel.addEventListener('pointerleave', scheduleClose);
-      sidebar.addEventListener('focusin', open);
-      sidebar.addEventListener('focusout', function (e) {
-        if (!sidebar.contains(e.relatedTarget)) scheduleClose();
-      });
-    });
+    document.dispatchEvent(new Event('aloute:navigated'));
   }
 
   function initSidebarNavigation() {
@@ -2179,7 +2029,6 @@ window.Aloute = (function () {
       try { url = new URL(raw, window.location.origin); } catch (_) { return; }
       if (!canSoftNavigate(url)) return;
       link.dataset.softNavBound = '1';
-      link.addEventListener('pointerenter', function () { prefetchPage(url); }, { passive: true });
       link.addEventListener('click', function (e) {
         if (isModifiedClick(e)) return;
         if (url.href === window.location.href) return;
@@ -2197,7 +2046,7 @@ window.Aloute = (function () {
   });
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Cho browser paint giao diện trước, sau đó mới dựng realtime + badge.
+
     runPageInitializers();
     const userId = document.body.dataset.currentUserId;
     if (userId) {

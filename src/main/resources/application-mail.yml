@@ -1,13 +1,11 @@
-# Real SMTP is required for registration/email verification.
-# Local/demo accounts from DemoDataSeeder do not use this flow.
-# For Gmail, use an App Password (not the normal account password).
+
 
 spring:
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
-    # Không commit mật khẩu SMTP thật vào source/.env.public.
+
     password: ${MAIL_PASSWORD:}
     properties:
       mail:
