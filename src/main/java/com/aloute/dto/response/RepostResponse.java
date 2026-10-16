@@ -3,29 +3,19 @@ package com.aloute.dto.response;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Kết quả của thao tác toggle "Đăng lại" (repost).
- * Front-end (app.js) đọc: {@code reposted} để bật/tắt màu nút, {@code repostCount} để cập nhật số đếm.
- */
 public class RepostResponse {
 
-    /** Id bài viết GỐC (luôn quy về bài gốc thật sự, kể cả khi người dùng bấm repost trên 1 bài repost). */
     private String postId;
 
-    /** true = vừa đăng lại; false = vừa bỏ đăng lại. */
     private boolean reposted;
 
-    /** Tổng số lượt đăng lại của bài gốc SAU thao tác này. */
     private int repostCount;
 
-    /** Id của bài repost vừa tạo; null khi thao tác là "bỏ đăng lại". */
     private String repostId;
 
-    /** Danh sách đầy đủ người đang repost bài viết, phục vụ cập nhật UI ngay sau toggle. */
     private List<PostResponse.RepostActor> reposters = new ArrayList<>();
 
-    public RepostResponse() {
-    }
+    public RepostResponse() {}
 
     public RepostResponse(String postId, boolean reposted, int repostCount, String repostId) {
         this.postId = postId;

@@ -1,14 +1,8 @@
 package com.aloute.dto.response;
 
-/**
- * Một mục trong danh sách "Xu hướng" của trang tìm kiếm.
- *
- * topic       — tiêu đề hiển thị (hashtag "#abc" hoặc trích đoạn bài viết nổi bật)
- * description — mô tả ngắn, lấy từ bài viết tiêu biểu của chủ đề
- * meta        — dòng thống kê đã format sẵn ("12 bài viết", "34 lượt thích")
- * query       — từ khóa sẽ được điền vào ô tìm kiếm khi người dùng bấm vào
- */
-public class TrendingTopicDto {
+public class TrendingTopicDto implements java.io.Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private String topic;
     private String description;

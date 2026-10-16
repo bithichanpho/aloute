@@ -1,12 +1,12 @@
 package com.aloute.repository;
 
-import java.util.List;
-import java.util.Optional;
+import com.aloute.model.document.Repost;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
-import com.aloute.model.document.Repost;
+import java.util.List;
+import java.util.Optional;
 
 public interface IRepostRepository extends MongoRepository<Repost, String> {
 

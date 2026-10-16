@@ -10,8 +10,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class AlouteApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(AlouteApplication.class, args);
-	}
-
+    public static void main(String[] args) {
+        SpringApplication.run(AlouteApplication.class, args);
+    }
 }

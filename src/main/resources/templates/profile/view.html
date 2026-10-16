@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title th:text="${profileUser != null ? profileUser.fullName + ' — ALOUTE' : 'Hồ sơ — ALOUTE'}">Hồ sơ — ALOUTE</title></head>
 <body>
@@ -6,7 +7,6 @@
 
   <div class="profile-cover" th:if="${profileUser != null}">
 
-    <!-- Hàng đầu kiểu Threads: tên + @handle bên trái, ảnh đại diện bên phải -->
     <div class="profile-cover__main">
       <div class="profile-cover__identity">
         <h1 class="profile-cover__name" th:text="${profileUser.fullName}">Họ tên</h1>
@@ -26,8 +26,8 @@
       <p class="profile-cover__text" th:text="${profileUser.bio}">Tiểu sử</p>
     </div>
 
-    <!-- Hàng số liệu: luôn nằm ngang hàng, bấm vào từng con số để mở danh sách người tương ứng -->
-    <div class="profile-stats profile-stats--row" th:attr="data-profile-user-id=${profileUser.id}">
+    <div class="profile-stats profile-stats--row"
+         th:attr="data-profile-user-id=${profileUser.id},data-own-profile=${isOwnProfile}">
       <span class="profile-stat profile-stat--static">
         <strong th:text="${postCount}">0</strong>
         <span>bài viết</span>
@@ -46,7 +46,6 @@
       </button>
     </div>
 
-    <!-- Nút hành động: kéo dài hết bề ngang, chia đều như Threads -->
     <div class="profile-cover__actions" th:if="${isOwnProfile}">
       <button type="button" class="btn-profile" onclick="location.href='/profile/edit'">Chỉnh sửa trang cá nhân</button>
       <button type="button" class="btn-profile" onclick="location.href='/saved'">Đã lưu</button>
@@ -56,9 +55,8 @@
       <button class="btn-profile btn-profile--primary btn-follow"
               th:classappend="${profileUser.followedByCurrentUser} ? ' is-following' : ''"
               th:attr="data-user-id=${profileUser.id}"
-              th:text="${profileUser.followedByCurrentUser} ? 'Đang theo dõi' : 'Theo dõi'">Theo dõi</button>
+              th:text="${profileUser.followedByCurrentUser ? 'Đang theo dõi' : (profileUser.followRequestPending ? 'Đã gửi yêu cầu · Hủy' : 'Theo dõi')}">Theo dõi</button>
 
-      <!-- Nhắn tin: mở cho mọi người, trừ khi chủ tài khoản bật chế độ riêng tư -->
       <button class="btn-profile"
               th:classappend="${!profileUser.canMessage} ? ' is-disabled' : ''"
               th:disabled="${!profileUser.canMessage}"
@@ -75,7 +73,6 @@
               th:text="${cfAccepted ? '★ Bạn thân' : (cfPending ? 'Đã gửi lời mời' : '+ Bạn thân')}">+ Bạn thân</button>
     </div>
 
-    <!-- Họ vừa gửi lời mời kết bạn thân cho mình -> cho chấp nhận/từ chối ngay tại đây -->
     <div th:if="${!isOwnProfile and profileUser.closeFriendStatus == 'PENDING_RECEIVED'}"
          class="close-friend-request-bar" th:attr="data-user-id=${profileUser.id}">
       <span th:text="${profileUser.fullName + ' đã gửi lời mời kết bạn thân'}">đã gửi lời mời kết bạn thân</span>
@@ -85,7 +82,6 @@
       </div>
     </div>
 
-    <!-- Mặc định mở ở Dòng thời gian (kiểu threads); Lưới chỉ gom bài có ảnh -->
     <div class="profile-views">
       <button type="button" class="profile-view is-active" data-profile-view="list">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -100,9 +96,7 @@
         </svg>
         <span>Lưới</span>
       </button>
-      <!-- Giống tab "Reposts" của Threads: chỉ gồm những lượt đăng lại KHÔNG kèm lời bình —
-           bài "Quote" (đăng lại kèm lời bình) vẫn nằm ở tab Dòng thời gian vì đó là nội dung
-           do chính user viết. -->
+
       <button type="button" class="profile-view" data-profile-view="reposts">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
           <path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
@@ -114,7 +108,6 @@
 
   <div th:if="${profileUser == null}" class="empty-state">Không tìm thấy người dùng này.</div>
 
-  <!-- ========== Dòng thời gian (mặc định) ========== -->
   <div class="profile-posts" id="profilePosts" th:if="${profileUser != null}">
 
     <div th:if="${#lists.isEmpty(userPosts)}" class="empty-state">
@@ -145,15 +138,27 @@
         <div class="post__header">
           <span class="post__username" th:text="${mainUsername}">username</span>
           <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
-          <button class="post__more post__delete" th:if="${isOwnProfile}" aria-label="Xóa bài viết">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
-          </button>
+          <div class="post__menu">
+            <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
+                    aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+            </button>
+            <div class="post__menu-list" role="menu">
+              <button type="button" class="post__menu-item post__delete post__menu-item--danger"
+                      th:if="${isOwnProfile}" role="menuitem" aria-label="Xóa bài viết">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2-2H7a2 2 0 0 1-2-2L4 6"/></svg>
+                <span>Xóa bài viết</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
            th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
         <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
              th:src="${isRepost ? post.repostOf.imageUrl : post.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+        <video class="post__video" th:if="${!isQuote and (isRepost ? post.repostOf.videoUrl : post.videoUrl) != null}"
+               th:src="${isRepost ? post.repostOf.videoUrl : post.videoUrl}" controls preload="metadata"></video>
         <div class="repost-card repost-card--deleted" th:if="${isRepost and !isQuote and post.repostOf.deleted}">
           Bài viết gốc không còn tồn tại.
         </div>
@@ -167,6 +172,7 @@
           </div>
           <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
           <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+          <video class="repost-card__video" th:if="${post.repostOf.videoUrl != null}" th:src="${post.repostOf.videoUrl}" controls preload="metadata"></video>
         </div>
         <div class="repost-card repost-card--deleted" th:if="${isQuote and post.repostOf.deleted}">
           Bài viết gốc không còn tồn tại.
@@ -181,7 +187,7 @@
                         data-count-sad=${post.reactionCounts.get('SAD')} ?: 0,
                         data-count-angry=${post.reactionCounts.get('ANGRY')} ?: 0">
             <button th:classappend="${post.currentUserReaction != null} ? 'is-reacted reacted--' + ${post.currentUserReaction} : ''"
-                    class="action action--like">
+                    class="action action--like" aria-label="Thích bài viết" title="Thích bài viết">
               <span class="action--like__emoji"></span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>
               <span th:attr="data-raw=${post.likeCount}" th:text="${post.likeCount}">0</span>
@@ -195,22 +201,19 @@
               <button type="button" class="reaction-picker__emoji" data-reaction="ANGRY" title="Phẫn nộ">😠</button>
             </div>
           </div>
-          <button class="action action--reply" th:attr="data-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}">
+          <button type="button" class="action action--reply" aria-label="Bình luận" title="Bình luận" th:attr="data-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.6 8.4c-1.3 0-2.6-.3-3.7-.9L3 20l1.1-5.4a8.3 8.3 0 0 1-.7-3.1A8.4 8.4 0 0 1 12.1 3a8.4 8.4 0 0 1 8.9 8.5Z"/></svg>
             <span th:attr="data-raw=${post.commentCount}" th:text="${post.commentCount}">0</span>
           </button>
-          <button class="action action--repost" aria-label="Đăng lại"
+          <button type="button" class="action action--repost" aria-label="Đăng lại" title="Đăng lại bài viết"
                   th:classappend="${post.repostedByCurrentUser} ? ' is-reposted'"
                   th:attr="data-post-id=${isRepost ? post.repostOf.postId : post.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            <!-- Luôn hiện số đăng lại của bài GỐC (post.repostOf.repostCount) khi đang xem
-                 1 bài repost — post.repostCount ở đây là số đăng lại của CHÍNH bài repost
-                 này, luôn = 0, nên trước đây nút này luôn hiện 0 dù bài gốc đã có người
-                 đăng lại. -->
+
             <span th:attr="data-raw=${isRepost ? post.repostOf.repostCount : post.repostCount}"
                   th:text="${isRepost ? post.repostOf.repostCount : post.repostCount}">0</span>
           </button>
-          <button class="action action--share" aria-label="Chia sẻ">
+          <button type="button" class="action action--share" aria-label="Gửi bài viết cho bạn bè" title="Gửi bài viết cho bạn bè">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
           </button>
         </div>
@@ -222,15 +225,15 @@
             th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'}">Tải thêm</button>
   </div>
 
-  <!-- ========== Lưới: CHỈ bài có ảnh ========== -->
   <div class="profile-grid-wrap" id="profileGridWrap" th:if="${profileUser != null}" hidden>
     <div th:if="${#lists.isEmpty(mediaPosts)}" class="empty-state">
-      Chưa có bài viết nào kèm hình ảnh.
+      Chưa có bài viết nào kèm ảnh hoặc video.
     </div>
     <div class="profile-grid" id="profileGrid" th:if="${not #lists.isEmpty(mediaPosts)}">
       <button type="button" class="grid-tile" th:each="post : ${mediaPosts}"
               th:attr="data-goto-post=${post.id}">
-        <img class="grid-tile__image" th:src="${post.imageUrl}" alt="" loading="lazy" decoding="async">
+        <img class="grid-tile__image" th:if="${post.imageUrl != null}" th:src="${post.imageUrl}" alt="" loading="lazy" decoding="async">
+        <video class="grid-tile__image" th:if="${post.imageUrl == null and post.videoUrl != null}" th:src="${post.videoUrl}" muted preload="metadata"></video>
         <span class="grid-tile__overlay">
           <span class="grid-tile__stat">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>
@@ -245,8 +248,6 @@
     </div>
   </div>
 
-  <!-- ========== Đăng lại: giống tab "Reposts" của Threads — chỉ các lượt đăng lại
-       KHÔNG kèm lời bình (bài "Quote" đã nằm sẵn ở tab Dòng thời gian) ========== -->
   <div class="profile-posts profile-reposts-wrap" id="profileRepostsWrap" th:if="${profileUser != null}" hidden>
 
     <div th:if="${#lists.isEmpty(repostPosts)}" class="empty-state">
@@ -277,15 +278,27 @@
         <div class="post__header">
           <span class="post__username" th:text="${mainUsername}">username</span>
           <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
-          <button class="post__more post__delete" th:if="${isOwnProfile}" aria-label="Xóa bài viết">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
-          </button>
+          <div class="post__menu">
+            <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
+                    aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+            </button>
+            <div class="post__menu-list" role="menu">
+              <button type="button" class="post__menu-item post__delete post__menu-item--danger"
+                      th:if="${isOwnProfile}" role="menuitem" aria-label="Xóa bài viết">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2-2H7a2 2 0 0 1-2-2L4 6"/></svg>
+                <span>Xóa bài viết</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
            th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
         <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
              th:src="${isRepost ? post.repostOf.imageUrl : post.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+        <video class="post__video" th:if="${!isQuote and (isRepost ? post.repostOf.videoUrl : post.videoUrl) != null}"
+               th:src="${isRepost ? post.repostOf.videoUrl : post.videoUrl}" controls preload="metadata"></video>
         <div class="repost-card repost-card--deleted" th:if="${isRepost and !isQuote and post.repostOf.deleted}">
           Bài viết gốc không còn tồn tại.
         </div>
@@ -299,6 +312,7 @@
           </div>
           <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
           <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+          <video class="repost-card__video" th:if="${post.repostOf.videoUrl != null}" th:src="${post.repostOf.videoUrl}" controls preload="metadata"></video>
         </div>
         <div class="repost-card repost-card--deleted" th:if="${isQuote and post.repostOf.deleted}">
           Bài viết gốc không còn tồn tại.
@@ -313,7 +327,7 @@
                         data-count-sad=${post.reactionCounts.get('SAD')} ?: 0,
                         data-count-angry=${post.reactionCounts.get('ANGRY')} ?: 0">
             <button th:classappend="${post.currentUserReaction != null} ? 'is-reacted reacted--' + ${post.currentUserReaction} : ''"
-                    class="action action--like">
+                    class="action action--like" aria-label="Thích bài viết" title="Thích bài viết">
               <span class="action--like__emoji"></span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>
               <span th:attr="data-raw=${post.likeCount}" th:text="${post.likeCount}">0</span>
@@ -327,18 +341,18 @@
               <button type="button" class="reaction-picker__emoji" data-reaction="ANGRY" title="Phẫn nộ">😠</button>
             </div>
           </div>
-          <button class="action action--reply" th:attr="data-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}">
+          <button type="button" class="action action--reply" aria-label="Bình luận" title="Bình luận" th:attr="data-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.6 8.4c-1.3 0-2.6-.3-3.7-.9L3 20l1.1-5.4a8.3 8.3 0 0 1-.7-3.1A8.4 8.4 0 0 1 12.1 3a8.4 8.4 0 0 1 8.9 8.5Z"/></svg>
             <span th:attr="data-raw=${post.commentCount}" th:text="${post.commentCount}">0</span>
           </button>
-          <button class="action action--repost" aria-label="Đăng lại"
+          <button type="button" class="action action--repost" aria-label="Đăng lại" title="Đăng lại bài viết"
                   th:classappend="${post.repostedByCurrentUser} ? ' is-reposted'"
                   th:attr="data-post-id=${isRepost ? post.repostOf.postId : post.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
             <span th:attr="data-raw=${isRepost ? post.repostOf.repostCount : post.repostCount}"
                   th:text="${isRepost ? post.repostOf.repostCount : post.repostCount}">0</span>
           </button>
-          <button class="action action--share" aria-label="Chia sẻ">
+          <button type="button" class="action action--share" aria-label="Gửi bài viết cho bạn bè" title="Gửi bài viết cho bạn bè">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
           </button>
         </div>
@@ -350,7 +364,6 @@
             th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/reposts/fragment'}">Tải thêm</button>
   </div>
 
-  <!-- Hộp thoại danh sách kết nối: người theo dõi / đang theo dõi / bạn thân -->
   <div class="people-modal" id="peopleModal" th:if="${profileUser != null}" hidden>
     <div class="people-modal__backdrop" data-people-close></div>
     <div class="people-modal__panel" role="dialog" aria-modal="true" aria-labelledby="peopleModalTitle">

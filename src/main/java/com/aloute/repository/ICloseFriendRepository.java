@@ -1,11 +1,11 @@
 package com.aloute.repository;
 
-import java.util.List;
-import java.util.Optional;
+import com.aloute.model.entity.CloseFriend;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.aloute.model.entity.CloseFriend;
+import java.util.List;
+import java.util.Optional;
 
 public interface ICloseFriendRepository extends JpaRepository<CloseFriend, Long> {
 
@@ -17,9 +17,9 @@ public interface ICloseFriendRepository extends JpaRepository<CloseFriend, Long>
 
     void deleteByRequesterIdAndReceiverId(Long requesterId, Long receiverId);
 
-    /** Toàn bộ lời mời mình đã gửi (mọi trạng thái) — dựng map trạng thái không cần lặp query. */
     List<CloseFriend> findByRequesterId(Long requesterId);
 
-    /** Toàn bộ lời mời mình nhận được (mọi trạng thái). */
     List<CloseFriend> findByReceiverId(Long receiverId);
+
+    void deleteByRequesterIdOrReceiverId(Long requesterId, Long receiverId);
 }

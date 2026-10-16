@@ -5,3 +5,11 @@
 target
 *.zip
 .env
+.env.*
+
+# Local secrets and Firebase service-account credentials
+.secret/
+.secrets/
+credentials/
+**/*firebase-adminsdk*.json
+**/*service-account*.json

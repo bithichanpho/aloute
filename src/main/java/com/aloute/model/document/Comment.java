@@ -1,29 +1,32 @@
 package com.aloute.model.document;
 
-import java.time.LocalDateTime;
-
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.LocalDateTime;
+
 @Document(collection = "comments")
 @org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_post_created", def = "{'postId': 1, 'createdAt': 1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_parent_created", def = "{'parentCommentId': 1, 'createdAt': 1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_user_created", def = "{'userId': 1, 'createdAt': -1}")
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "comments_post_created",
+            def = "{'postId': 1, 'createdAt': 1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "comments_parent_created",
+            def = "{'parentCommentId': 1, 'createdAt': 1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "comments_user_created",
+            def = "{'userId': 1, 'createdAt': -1}")
 })
 public class Comment {
 
-    @Id
-    private String id;
+    @Id private String id;
 
     private String postId;
     private String userId;
     private String content;
 
-    /** null = bình luận gốc (trả lời trực tiếp bài viết). Có giá trị = đang trả lời một bình luận khác (reply lồng nhau kiểu Threads). */
     private String parentCommentId;
 
-    /** Số lượt reply trực tiếp vào bình luận này (denormalized, cập nhật bởi CommentService). */
     private int replyCount = 0;
 
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;

@@ -1,12 +1,29 @@
 <!DOCTYPE html>
-<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<html lang="vi" data-bs-theme="dark" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem('aloute-theme');
+        if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+        document.documentElement.setAttribute('data-bs-theme', theme);
+      } catch (e) { /* Dùng theme tối mặc định nếu localStorage không khả dụng */ }
+    })();
+  </script>
   <title>Đăng ký / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261016-chat-receipts-width-v7}">
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261016-chat-receipts-width-v7}">
+  <script th:src="@{/js/ui.js?v=20261016-chat-receipts-width-v7}" defer></script>
 </head>
 <body class="auth-body">
+  <button type="button" class="auth-theme-toggle" data-theme-toggle aria-label="Chuyển giao diện sáng/tối" title="Chuyển giao diện sáng/tối">
+    <i class="bi bi-moon-stars theme-icon theme-icon--to-dark" aria-hidden="true"></i>
+    <i class="bi bi-sun theme-icon theme-icon--to-light" aria-hidden="true"></i>
+  </button>
 
   <div class="auth-shell">
     <div class="auth-card">
@@ -21,19 +38,24 @@
 
       <form id="registerForm" novalidate>
         <div class="field">
-          <input type="text" id="fullName" name="fullName" placeholder="Họ và tên" autocomplete="name" required>
+          <input type="text" id="fullName" name="fullName" placeholder="Họ và tên" autocomplete="name" maxlength="100" required>
         </div>
         <div class="field">
           <input type="text" id="username" name="username" placeholder="Tên đăng nhập" autocomplete="username" minlength="3" maxlength="50" required>
         </div>
         <div class="field">
-          <input type="email" id="email" name="email" placeholder="Email" autocomplete="email" required>
+          <input type="email" id="email" name="email" placeholder="Email" autocomplete="email" maxlength="254" required>
         </div>
         <div class="field">
-          <input type="password" id="password" name="password" placeholder="Mật khẩu (tối thiểu 6 ký tự)" autocomplete="new-password" minlength="6" required>
+          <input type="password" id="password" name="password" placeholder="8–72 ký tự, có hoa, thường, số và ký tự đặc biệt" autocomplete="new-password" minlength="8" maxlength="72" required>
         </div>
         <button type="submit" class="btn-primary" id="submitBtn">Đăng ký</button>
       </form>
+
+      <div id="pendingVerificationBox" style="display:none;margin-top:12px;">
+        <button type="button" class="btn-outline" id="resendPendingBtn">Gửi lại email xác thực</button>
+        <div id="resendPendingMessage" style="margin-top:10px;font-size:13.5px;"></div>
+      </div>
 
       <p class="auth-switch">
         Đã có tài khoản? <a th:href="@{/login}">Đăng nhập</a>
@@ -41,13 +63,32 @@
     </div>
   </div>
 
-  <script th:src="@{/js/app.js}"></script>
+  <script th:src="@{/js/app.js?v=20261016-chat-receipts-width-v7}"></script>
   <script th:inline="javascript">
+    const pendingVerificationBox = document.getElementById('pendingVerificationBox');
+    const resendPendingBtn = document.getElementById('resendPendingBtn');
+
+    resendPendingBtn.addEventListener('click', async function () {
+      const identifier = document.getElementById('email').value.trim() || document.getElementById('username').value.trim();
+      const message = document.getElementById('resendPendingMessage');
+      if (!identifier) { message.textContent = 'Vui lòng nhập email hoặc tên đăng nhập.'; return; }
+      this.disabled = true;
+      try {
+        const result = await Aloute.api('/api/auth/resend-verification', {
+          method: 'POST', body: JSON.stringify({ identifier })
+        });
+        message.textContent = result?.message || 'Email xác thực mới đã được gửi. Hãy kiểm tra hộp thư.';
+      } catch (err) {
+        message.textContent = err.message || 'Không thể gửi lại email xác thực.';
+      } finally { this.disabled = false; }
+    });
+
     document.getElementById('registerForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       const errorBox = document.getElementById('formError');
       const submitBtn = document.getElementById('submitBtn');
       errorBox.style.display = 'none';
+      pendingVerificationBox.style.display = 'none';
 
       const fullName = document.getElementById('fullName').value.trim();
       const username = document.getElementById('username').value.trim();
@@ -64,8 +105,13 @@
         errorBox.style.display = 'block';
         return;
       }
-      if (password.length < 6) {
-        errorBox.textContent = 'Mật khẩu phải có ít nhất 6 ký tự.';
+      if (!/^[A-Za-z0-9_](?:[A-Za-z0-9_.-]{1,48}[A-Za-z0-9_])?$/.test(username)) {
+        errorBox.textContent = 'Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.';
+        errorBox.style.display = 'block';
+        return;
+      }
+      if (password.length < 8 || password.length > 72 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^\p{L}\p{N}\s]/u.test(password)) {
+        errorBox.textContent = 'Mật khẩu phải có 8–72 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
         errorBox.style.display = 'block';
         return;
       }
@@ -82,6 +128,9 @@
       } catch (err) {
         errorBox.textContent = err.message || 'Đăng ký thất bại, vui lòng thử lại.';
         errorBox.style.display = 'block';
+        if ((err.message || '').toLowerCase().includes('chờ xác thực')) {
+          pendingVerificationBox.style.display = 'block';
+        }
         submitBtn.disabled = false;
         submitBtn.textContent = 'Đăng ký';
       }

@@ -1,9 +1,7 @@
-# Spring Boot 4 uses spring.mongodb.uri for the connection URI.
+
 spring:
   data:
     mongodb:
       auto-index-creation: true
   mongodb:
     uri: ${MONGO_URI:mongodb://localhost:27017/aloute_db}
-    # Tự tạo index khai báo bằng @Indexed/@CompoundIndex trong Post, Like, ChatMessage.
-    # Từ Spring Boot 3 mặc định là false; không bật thì feed/chat phải quét cả collection.

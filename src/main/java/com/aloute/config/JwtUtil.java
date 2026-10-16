@@ -1,16 +1,16 @@
 package com.aloute.config;
 
-import java.util.Date;
-import java.util.function.Function;
-
-import javax.crypto.SecretKey;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
+import java.util.Date;
+import java.util.function.Function;
+
+import javax.crypto.SecretKey;
 
 @Component
 public class JwtUtil {
@@ -19,13 +19,11 @@ public class JwtUtil {
     private final long expirationMs;
 
     public JwtUtil(
-            @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration}") long expirationMs) {
+            @Value("${jwt.secret}") String secret, @Value("${jwt.expiration}") long expirationMs) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
         this.expirationMs = expirationMs;
     }
 
-    /** Sinh token mới cho username, kèm claim "userId" và "role". */
     public String generateToken(String username, Long userId, String role) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
@@ -40,9 +38,12 @@ public class JwtUtil {
                 .compact();
     }
 
-    /** Thời hạn token (ms) — dùng để set maxAge cho cookie ALOUTE_TOKEN ở AuthController. */
     public long getExpirationMs() {
         return expirationMs;
+    }
+
+    public java.time.Instant issuedAt(String token) {
+        return extractClaim(token, Claims::getIssuedAt).toInstant();
     }
 
     public String extractUsername(String token) {
@@ -75,10 +76,6 @@ public class JwtUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(secretKey)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
     }
 }

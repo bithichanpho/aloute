@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Hoạt động — ALOUTE</title></head>
 <body>
@@ -8,8 +9,14 @@
     <h1>Hoạt động</h1>
   </div>
 
-  <div class="page-actions">
+  <div class="page-actions activity-actions">
     <button class="link-btn" id="markAllReadBtn">Đánh dấu tất cả đã đọc</button>
+    <div class="push-notification-control">
+      <button type="button" class="btn-outline" id="enablePushNotificationsBtn" hidden>
+        <i class="bi bi-bell" aria-hidden="true"></i> Bật thông báo đẩy
+      </button>
+      <span id="pushNotificationStatus" class="push-notification-status" role="status" aria-live="polite"></span>
+    </div>
   </div>
 
   <div class="feed-panel">
@@ -29,7 +36,7 @@
       <div class="notif-item__body">
         <div th:text="${n.content}">Nội dung thông báo</div>
         <div class="notif-item__time" th:text="${#temporals.format(n.createdAt, 'HH:mm dd/MM/yyyy')}">1 giờ trước</div>
-        <!-- Lời mời kết bạn thân -> chấp nhận/từ chối ngay tại thông báo, referenceId = id người gửi -->
+
         <div th:if="${n.type == 'CLOSE_FRIEND_REQUEST'}" class="notif-item__actions" th:attr="data-sender-id=${n.referenceId}">
           <button type="button" class="notif-item__accept">Chấp nhận</button>
           <button type="button" class="notif-item__decline">Từ chối</button>

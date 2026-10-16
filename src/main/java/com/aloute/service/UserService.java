@@ -1,15 +1,16 @@
 package com.aloute.service;
 
-import com.aloute.common.util.AvatarUtil;
 import com.aloute.common.exception.ResourceNotFoundException;
+import com.aloute.common.util.AvatarUtil;
 import com.aloute.dto.request.UpdateProfileRequest;
 import com.aloute.dto.response.UserProfileDto;
+import com.aloute.model.entity.Friend;
 import com.aloute.model.entity.User;
 import com.aloute.repository.IFriendRepository;
 import com.aloute.repository.IUserRepository;
-import org.springframework.stereotype.Service;
+
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import java.util.Map;
+import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -20,10 +21,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.aloute.model.entity.Friend;
-
 @Service
 public class UserService {
+
+    private final ContentAccessService access;
 
     private final IUserRepository userRepository;
     private final IFriendRepository friendRepository;
@@ -36,7 +37,10 @@ public class UserService {
             IFriendRepository friendRepository,
             FriendService friendService,
             CloseFriendService closeFriendService,
-            SimpMessagingTemplate messagingTemplate) {
+            SimpMessagingTemplate messagingTemplate,
+            ContentAccessService access) {
+        this.access = access;
+
         this.userRepository = userRepository;
         this.friendRepository = friendRepository;
         this.friendService = friendService;
@@ -48,7 +52,6 @@ public class UserService {
         return userRepository.findById(userId);
     }
 
-    /** Nap nhieu user bang 1 query (thay cho vong lap findUserBasicInfo). */
     public List<User> findUsersByIds(List<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Collections.emptyList();
@@ -57,8 +60,12 @@ public class UserService {
     }
 
     public UserProfileDto getProfile(Long targetUserId, Long currentUserId) {
-        User user = userRepository.findById(targetUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        access.requireProfile(currentUserId, targetUserId);
+        User user =
+                userRepository
+                        .findById(targetUserId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
 
         UserProfileDto dto = new UserProfileDto();
         dto.setId(user.getId());
@@ -76,24 +83,28 @@ public class UserService {
             dto.setFollowedByCurrentUser(
                     friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId));
             dto.setMutualFriend(friendService.isFriend(currentUserId, targetUserId));
+            dto.setFollowRequestPending(
+                    "PENDING".equals(friendService.followStatus(currentUserId, targetUserId)));
             dto.setCloseFriendStatus(closeFriendService.getStatus(currentUserId, targetUserId));
         }
-        // Nhắn tin: mở cho mọi người, TRỪ khi chủ tài khoản bật riêng tư —
-        // lúc đó phải là bạn bè (theo dõi lẫn nhau) mới nhắn được.
+
         dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, targetUserId));
 
         return dto;
     }
 
-    /** Quy tắc dùng chung cho cả DTO lẫn ChatService: ai được nhắn tin cho ai. */
-    public static boolean canMessage(User target, boolean mutualFriend, Long currentUserId, Long targetUserId) {
+    public static boolean canMessage(
+            User target, boolean mutualFriend, Long currentUserId, Long targetUserId) {
         if (currentUserId == null || currentUserId.equals(targetUserId)) return false;
         return mutualFriend || !target.isPrivateAccount();
     }
 
     public UserProfileDto updateProfile(Long userId, UpdateProfileRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
 
         if (request.getFullName() != null && !request.getFullName().isBlank()) {
             user.setFullName(request.getFullName());
@@ -109,57 +120,62 @@ public class UserService {
     }
 
     public void updateAvatar(Long userId, String avatarUrl) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        User user =
+                userRepository
+                        .findById(userId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
         user.setAvatarUrl(avatarUrl);
         userRepository.save(user);
         Map<String, Object> payload = Map.of("userId", userId, "avatarUrl", avatarUrl);
         for (Long friendId : friendService.getMutualFriendIds(userId)) {
-            userRepository.findById(friendId).ifPresent(friend ->
-                    messagingTemplate.convertAndSendToUser(friend.getUsername(), "/queue/avatar-updates", payload));
+            userRepository
+                    .findById(friendId)
+                    .ifPresent(
+                            friend ->
+                                    messagingTemplate.convertAndSendToUser(
+                                            friend.getUsername(),
+                                            "/queue/avatar-updates",
+                                            payload));
         }
-        // đồng bộ các tab/thiết bị khác của chính người dùng
-        messagingTemplate.convertAndSendToUser(user.getUsername(), "/queue/avatar-updates", payload);
+
+        messagingTemplate.convertAndSendToUser(
+                user.getUsername(), "/queue/avatar-updates", payload);
     }
 
     public List<UserProfileDto> searchUsers(String keyword, Long currentUserId) {
-        List<User> users = userRepository
-                .findByUsernameContainingIgnoreCaseOrFullNameContainingIgnoreCase(keyword, keyword);
+        if (keyword != null && keyword.startsWith("@")) keyword = keyword.substring(1);
+        List<User> users =
+                userRepository.findByUsernameContainingIgnoreCaseOrFullNameContainingIgnoreCase(
+                        keyword, keyword);
         return toProfiles(users, currentUserId);
     }
 
-    /**
-     * Hồ sơ rút gọn cho thanh điều hướng: chỉ id/username/họ tên/avatar, đúng 1 query.
-     *
-     * {@link #getProfile} tốn khoảng 9 query (đếm follower, đếm following, trạng thái bạn thân...)
-     * nhưng navbar chỉ cần avatar và id — trước đây mọi trang đều trả giá đó.
-     */
     public UserProfileDto getLiteProfile(Long userId) {
-        return userRepository.findById(userId).map(user -> {
-            UserProfileDto dto = new UserProfileDto();
-            dto.setId(user.getId());
-            dto.setUsername(user.getUsername());
-            dto.setFullName(user.getFullName());
-            dto.setAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
-            return dto;
-        }).orElse(null);
+        return userRepository
+                .findById(userId)
+                .map(
+                        user -> {
+                            UserProfileDto dto = new UserProfileDto();
+                            dto.setId(user.getId());
+                            dto.setUsername(user.getUsername());
+                            dto.setFullName(user.getFullName());
+                            dto.setAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
+                            return dto;
+                        })
+                .orElse(null);
     }
 
-    /**
-     * Dựng hồ sơ cho MỘT DANH SÁCH người bằng số query cố định (4), thay vì ~9 query mỗi người.
-     *
-     * Đây là đường đi dùng chung cho tìm kiếm, gợi ý, danh sách follower/following — những
-     * chỗ trước đây gọi {@link #getProfile} trong vòng lặp và làm trang tải rất chậm.
-     * Lưu ý: closeFriendCount KHÔNG được tính ở đây (chỉ trang cá nhân mới cần con số đó).
-     */
     public List<UserProfileDto> toProfiles(List<User> users, Long currentUserId) {
         if (users == null || users.isEmpty()) {
             return Collections.emptyList();
         }
 
+        Set<Long> visibleIds = access.visibleUserIds(currentUserId, users);
+        users = users.stream().filter(u -> visibleIds.contains(u.getId())).toList();
+        if (users.isEmpty()) return List.of();
         List<Long> ids = users.stream().map(User::getId).collect(Collectors.toList());
 
-        // 1 query: số follower của tất cả những người trong danh sách
         Map<Long, Long> followerCounts = new HashMap<>();
         for (Object[] row : friendRepository.countFollowersGrouped(ids)) {
             followerCounts.put((Long) row[0], (Long) row[1]);
@@ -170,12 +186,16 @@ public class UserService {
         Map<Long, String> closeStatuses = Collections.emptyMap();
 
         if (currentUserId != null) {
-            // 2 query: quan hệ follow hai chiều của chính mình
-            followingSet = friendRepository.findByFollowerId(currentUserId).stream()
-                    .map(Friend::getFollowedId).collect(Collectors.toCollection(HashSet::new));
-            followerSet = friendRepository.findByFollowedId(currentUserId).stream()
-                    .map(Friend::getFollowerId).collect(Collectors.toCollection(HashSet::new));
-            // 2 query: toàn bộ quan hệ bạn thân của mình
+
+            followingSet =
+                    friendRepository.findByFollowerId(currentUserId).stream()
+                            .map(Friend::getFollowedId)
+                            .collect(Collectors.toCollection(HashSet::new));
+            followerSet =
+                    friendRepository.findByFollowedId(currentUserId).stream()
+                            .map(Friend::getFollowerId)
+                            .collect(Collectors.toCollection(HashSet::new));
+
             closeStatuses = closeFriendService.getStatusMap(currentUserId);
         }
 
@@ -205,18 +225,19 @@ public class UserService {
         return result;
     }
 
-    /** Dựng hồ sơ theo lô từ danh sách id (giữ nguyên thứ tự id truyền vào). */
     public List<UserProfileDto> getProfiles(List<Long> userIds, Long currentUserId) {
         if (userIds == null || userIds.isEmpty()) {
             return Collections.emptyList();
         }
-        Map<Long, User> byId = userRepository.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getId, u -> u));
+        Map<Long, User> byId =
+                userRepository.findAllById(userIds).stream()
+                        .collect(Collectors.toMap(User::getId, u -> u));
 
-        List<User> ordered = userIds.stream()
-                .map(byId::get)
-                .filter(java.util.Objects::nonNull)
-                .collect(Collectors.toList());
+        List<User> ordered =
+                userIds.stream()
+                        .map(byId::get)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(Collectors.toList());
 
         return toProfiles(ordered, currentUserId);
     }

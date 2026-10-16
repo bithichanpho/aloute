@@ -1,45 +1,102 @@
-<!DOCTYPE html>
-<html lang="vi" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, content)">
+<html lang="vi" data-bs-theme="dark" xmlns:th="http://www.thymeleaf.org" th:fragment="layout(title, content)">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
   <title th:replace="${title}">ALOUTE</title>
+
+  <!-- Áp dụng theme trước khi vẽ trang để không bị nháy sáng/tối -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('aloute-theme');
+        if (t !== 'light' && t !== 'dark') t = 'dark';
+        document.documentElement.setAttribute('data-bs-theme', t);
+      } catch (e) { /* localStorage bị chặn: giữ mặc định dark */ }
+    })();
+  </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
 
-  <!-- CSS cua chinh minh tai truoc va la thu duy nhat chan render -->
-  <link rel="stylesheet" th:href="@{/css/main.css?v=20260920-clean-v17}">
+  <!-- Bootstrap 5.3 (bản tuỳ biến, không có reboot) + Bootstrap Icons -->
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap/bootstrap-lite.min.css}">
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
 
-  <!-- Font tai khong chan render: trinh duyet ve trang bang font he thong truoc,
-       doi font Inter ve thi doi lai. Bo di ~200-400ms trang trang tren mang cham. -->
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261016-chat-receipts-width-v7}">
+
   <link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <noscript>
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   </noscript>
+  <link rel="stylesheet" th:href="@{/css/features.css?v=20261016-chat-receipts-width-v7}">
+  <!-- theme.css luôn nằm cuối: design tokens, dark/light, shell 3 cột, bottom nav -->
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261016-chat-receipts-width-v7}">
 </head>
 <body th:classappend="${activeNav == 'chat'} ? 'page-chat' : (${activeNav == 'feed'} ? 'page-feed' : '')" th:attr="data-current-user-id=${currentUser != null ? currentUser.id : ''}">
 
-<div id="toastHost"></div>
+<!-- Vùng hiển thị Bootstrap Toast (Aloute.toast() trong app.js tự đổ vào đây) -->
+<div id="toastHost" class="toast-container position-fixed top-0 start-50 translate-middle-x p-3"></div>
 
 <div class="app-shell">
 
   <div th:replace="~{fragments/navbar :: navbar}"></div>
+  <div th:replace="~{fragments/navbar :: mobileTopbar}"></div>
 
   <div class="main-column" th:classappend="${activeNav == 'feed'} ? 'main-column--feed' : ''">
     <div class="content-inner" th:replace="${content}"></div>
   </div>
 
   <button class="fab" th:if="${activeNav != 'chat'}" aria-label="Tạo bài viết mới" onclick="location.href='/compose'">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+    <i class="bi bi-plus-lg" aria-hidden="true"></i>
   </button>
+
+  <div th:replace="~{fragments/bottom-nav :: bottomNav}"></div>
 </div>
 
-<!-- SockJS/Stomp KHONG con nhung o day: app.js tu tai chung bat dong bo,
-     va chi khi nguoi dung da dang nhap (xem ensureRealtimeLibs trong app.js). -->
-<script th:src="@{/js/app.js}"></script>
+<!-- Shared portal: keep floating friend chats outside feed/sidebar overflow and stacking contexts. -->
+<div class="friends-chat-dock" id="friendsChatDock" aria-label="Cửa sổ trò chuyện bạn bè"></div>
+
+<!-- Modal xác nhận dùng chung: thay cho window.confirm() -->
+<div class="modal fade" id="alouteConfirmModal" tabindex="-1" aria-labelledby="alouteConfirmTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm-down">
+    <div class="modal-content">
+      <div class="modal-body text-center p-4">
+        <h2 class="h6 fw-bold mb-2" id="alouteConfirmTitle">Xác nhận</h2>
+        <p class="mb-0 text-secondary small" id="alouteConfirmMessage"></p>
+      </div>
+      <div class="modal-footer flex-nowrap p-0">
+        <button type="button" class="btn btn-link text-secondary text-decoration-none w-50 py-3 rounded-0 border-end" id="alouteConfirmCancel" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-link text-danger text-decoration-none fw-semibold w-50 py-3 rounded-0" id="alouteConfirmOk">Đồng ý</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal nhập liệu dùng chung: thay cho window.prompt() -->
+<div class="modal fade" id="aloutePromptModal" tabindex="-1" aria-labelledby="aloutePromptTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-4">
+        <h2 class="h6 fw-bold mb-3" id="aloutePromptTitle">Nhập nội dung</h2>
+        <label class="form-label small text-secondary" for="aloutePromptInput" id="aloutePromptLabel"></label>
+        <textarea class="form-control" id="aloutePromptInput" rows="3" maxlength="500"></textarea>
+      </div>
+      <div class="modal-footer flex-nowrap p-0">
+        <button type="button" class="btn btn-link text-secondary text-decoration-none w-50 py-3 rounded-0 border-end" id="aloutePromptCancel" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-link text-primary text-decoration-none fw-semibold w-50 py-3 rounded-0" id="aloutePromptOk">Gửi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/ui.js?v=20261016-chat-receipts-width-v7}"></script>
+<script th:src="@{/js/app.js?v=20261016-chat-receipts-width-v7}"></script>
+<script th:src="@{/js/friends-panel.js?v=20261016-chat-receipts-width-v7}"></script>
+<script th:src="@{/js/features.js?v=20261016-chat-receipts-width-v7}"></script>
+<script th:src="@{/js/firebase-client.js?v=20261016-chat-receipts-width-v7}"></script>
 </body>
 </html>

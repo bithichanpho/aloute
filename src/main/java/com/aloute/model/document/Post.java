@@ -1,41 +1,54 @@
 package com.aloute.model.document;
 
-import java.time.LocalDateTime;
-
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.LocalDateTime;
+
 @Document(collection = "posts")
 @org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "posts_created_desc", def = "{'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "posts_user_created", def = "{'userId': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "posts_community_created", def = "{'communityId': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "posts_repost_origin_created", def = "{'repostOfId': 1, 'createdAt': -1}")
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_created_desc",
+            def = "{'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_user_created",
+            def = "{'userId': 1, 'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_community_created",
+            def = "{'communityId': 1, 'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_repost_origin_created",
+            def = "{'repostOfId': 1, 'createdAt': -1}")
 })
 public class Post {
 
-    @Id
-    private String id;
+    @Id private String id;
 
-    private String userId;          // tham chiếu tới users.id (SQL), lưu dạng String
+    private String userId;
     private String content;
-    private String imageUrl;        // nullable, URL trả về từ Cloudinary
 
-    /** Null nếu là bài viết trên feed cá nhân bình thường; khác null nếu đăng trong 1 hội nhóm. */
+    @lombok.Getter @lombok.Setter
+    private java.util.List<PostRevision> editHistory = new java.util.ArrayList<>();
+
+    @lombok.Getter @lombok.Setter private PostVisibility visibility = PostVisibility.PUBLIC;
+
+    @lombok.Getter @lombok.Setter
+    private java.util.List<String> hashtags = new java.util.ArrayList<>();
+
+    @lombok.Getter @lombok.Setter
+    private java.util.List<String> mentions = new java.util.ArrayList<>();
+
+    private String imageUrl;
+    private String videoUrl;
+
     private String communityId;
 
     private int likeCount = 0;
     private int commentCount = 0;
     private int repostCount = 0;
 
-    /**
-     * Null nếu đây là bài viết bình thường. Nếu khác null, đây là một lượt "đăng lại"
-     * (repost) và giá trị này trỏ tới id bài viết GỐC. "content" của bài repost (nếu có)
-     * đóng vai trò như lời bình luận khi chia sẻ lại (giống "Quote" của Threads/X).
-     */
     private String repostOfId;
 
-    /** Đếm số phản ứng (reaction) theo từng loại emoji, vd {"LIKE": 5, "LOVE": 2}. Tổng của map này = likeCount. */
     private java.util.Map<String, Integer> reactionCounts = new java.util.HashMap<>();
 
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
@@ -86,6 +99,14 @@ public class Post {
 
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    public String getVideoUrl() {
+        return videoUrl;
+    }
+
+    public void setVideoUrl(String videoUrl) {
+        this.videoUrl = videoUrl;
     }
 
     public int getLikeCount() {

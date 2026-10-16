@@ -3,6 +3,7 @@ package com.aloute.controller;
 import java.util.List;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,106 +23,169 @@ import com.aloute.service.AuthRateLimitService;
 import com.aloute.service.CommunityService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
-/**
- * REST API Hội nhóm. Các trang HTML (/communities, /communities/{id}) và fragment tải thêm bài
- * nằm ở {@link ViewController}; controller này chỉ lo các thao tác dữ liệu.
- */
 @RestController
 @RequestMapping("/api/communities")
+@Validated
 public class CommunityController {
 
     private final CommunityService communityService;
     private final AuthRateLimitService rateLimitService;
 
-    public CommunityController(CommunityService communityService, AuthRateLimitService rateLimitService) {
+    public CommunityController(
+            CommunityService communityService, AuthRateLimitService rateLimitService) {
         this.communityService = communityService;
         this.rateLimitService = rateLimitService;
     }
 
-    /** POST /api/communities — tạo hội nhóm mới. */
     @PostMapping
     public ApiResponse<CommunityResponse> create(
             Authentication authentication, @Valid @RequestBody CreateCommunityRequest request) {
         Long userId = requireUserId(authentication);
 
-        // Chống spam tạo hội nhóm hàng loạt: tối đa 5 nhóm / 10 phút mỗi user.
-        rateLimitService.checkAndRecord("CREATE_COMMUNITY", String.valueOf(userId),
-                5, java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(10),
+        rateLimitService.checkAndRecord(
+                "CREATE_COMMUNITY",
+                String.valueOf(userId),
+                10,
+                java.time.Duration.ofHours(24),
+                java.time.Duration.ofMinutes(60),
                 "Bạn đã tạo hội nhóm quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
-                "Bạn đã tạo hội nhóm quá nhiều lần trong thời gian ngắn. Tạm khóa 10 phút.");
+                "Bạn đã tạo hội nhóm quá nhiều lần trong 24 giờ. Tạm khóa 60 phút.");
 
-        return ApiResponse.success("Đã tạo hội nhóm", communityService.createCommunity(userId, request));
+        return ApiResponse.success(
+                "Đã tạo hội nhóm", communityService.createCommunity(userId, request));
     }
 
-    /** GET /api/communities/mine — hội nhóm tôi đã tham gia. */
     @GetMapping("/mine")
     public ApiResponse<List<CommunityResponse>> mine(Authentication authentication) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(communityService.getMyCommunities(userId));
     }
 
-    /** GET /api/communities/discover?limit=30 — hội nhóm công khai đông thành viên nhất. */
     @GetMapping("/discover")
     public ApiResponse<List<CommunityResponse>> discover(
-            Authentication authentication, @RequestParam(defaultValue = "30") int limit) {
+            Authentication authentication, @RequestParam(defaultValue = "30") @Min(value = 1, message = "Giới hạn phải từ 1 trở lên") @Max(value = 50, message = "Giới hạn tối đa 50") int limit) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(communityService.getDiscoverList(userId, limit));
     }
 
-    /** GET /api/communities/search?q=keyword — tìm hội nhóm công khai theo tên. */
     @GetMapping("/search")
     public ApiResponse<List<CommunityResponse>> search(
-            Authentication authentication, @RequestParam("q") String keyword,
-            @RequestParam(defaultValue = "10") int limit) {
+            Authentication authentication,
+            @RequestParam("q") @NotBlank(message = "Từ khóa không được để trống") @Size(max = 100, message = "Từ khóa tối đa 100 ký tự") String keyword,
+            @RequestParam(defaultValue = "10") @Min(value = 1, message = "Giới hạn phải từ 1 trở lên") @Max(value = 50, message = "Giới hạn tối đa 50") int limit) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(communityService.searchCommunities(keyword, userId, limit));
     }
 
     @GetMapping("/{communityId}")
     public ApiResponse<CommunityResponse> getCommunity(
-            Authentication authentication, @PathVariable Long communityId) {
+            Authentication authentication, @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(communityService.getCommunity(communityId, userId));
     }
 
     @PostMapping("/{communityId}/join")
-    public ApiResponse<CommunityResponse> join(Authentication authentication, @PathVariable Long communityId) {
+    public ApiResponse<CommunityResponse> join(
+            Authentication authentication, @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
         Long userId = requireUserId(authentication);
-        return ApiResponse.success("Đã tham gia hội nhóm", communityService.join(communityId, userId));
+        rateLimitService.checkAndRecord(
+                "COMMUNITY_JOIN", userId.toString(), 30,
+                java.time.Duration.ofHours(1), java.time.Duration.ofMinutes(30),
+                "Bạn tham gia hội nhóm quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa tham gia hội nhóm do gửi quá nhiều yêu cầu.");
+        CommunityResponse result = communityService.join(communityId, userId);
+        return ApiResponse.success(
+                result.isMember() ? "Đã tham gia hội nhóm" : "Đã gửi yêu cầu tham gia",
+                result);
     }
 
-    /** data = null nếu hội nhóm đã bị xóa vì không còn thành viên nào. */
     @PostMapping("/{communityId}/leave")
-    public ApiResponse<CommunityResponse> leave(Authentication authentication, @PathVariable Long communityId) {
+    public ApiResponse<CommunityResponse> leave(
+            Authentication authentication, @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success("Đã rời hội nhóm", communityService.leave(communityId, userId));
     }
 
-    /** GET /api/communities/{id}/posts?page=0&size=20 — dạng JSON (dạng HTML fragment nằm ở ViewController). */
+    @GetMapping("/{communityId}/requests")
+    public ApiResponse<?> pendingMembers(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
+        return ApiResponse.success(
+                communityService.pendingMembers(communityId, requireUserId(authentication)));
+    }
+
+    @PostMapping("/{communityId}/requests/{userId}")
+    public ApiResponse<Void> decideMember(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            @RequestParam boolean accept) {
+        communityService.decideMember(communityId, requireUserId(authentication), userId, accept);
+        return ApiResponse.success(null);
+    }
+
+    @PostMapping("/{communityId}/members/{userId}/ban")
+    public ApiResponse<Void> banMember(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            @RequestParam(defaultValue = "true") boolean banned) {
+        communityService.banMember(communityId, requireUserId(authentication), userId, banned);
+        return ApiResponse.success(null);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/{communityId}")
+    public ApiResponse<CommunityResponse> updateCommunity(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @Valid @RequestBody CreateCommunityRequest request) {
+        return ApiResponse.success(
+                communityService.updateCommunity(
+                        communityId, requireUserId(authentication), request));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{communityId}")
+    public ApiResponse<Void> deleteCommunity(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
+        communityService.deleteCommunity(communityId, requireUserId(authentication));
+        return ApiResponse.success(null);
+    }
+
     @GetMapping("/{communityId}/posts")
     public ApiResponse<List<PostResponse>> getPosts(
-            Authentication authentication, @PathVariable Long communityId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "Kích thước trang phải từ 1 trở lên") @Max(value = 50, message = "Kích thước trang tối đa 50") int size) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(communityService.getFeed(communityId, userId, page, size));
     }
 
-    /** POST /api/communities/{id}/posts — đăng bài trong hội nhóm (chỉ thành viên). */
     @PostMapping("/{communityId}/posts")
     public ApiResponse<PostResponse> createPost(
-            Authentication authentication, @PathVariable Long communityId,
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
             @Valid @RequestBody CreatePostRequest request) {
         Long userId = requireUserId(authentication);
 
-        // Dùng chung bộ đếm CREATE_POST với PostController: tổng bài đăng (feed + hội nhóm) tối đa 20 / 10 phút.
-        rateLimitService.checkAndRecord("CREATE_POST", String.valueOf(userId),
-                20, java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(10),
+        rateLimitService.checkAndRecord(
+                "CREATE_POST",
+                String.valueOf(userId),
+                25,
+                java.time.Duration.ofHours(1),
+                java.time.Duration.ofMinutes(15),
                 "Bạn đã đăng bài quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
-                "Bạn đã đăng bài quá nhiều lần trong thời gian ngắn. Tạm khóa đăng bài 10 phút.");
+                "Bạn đã đăng bài quá nhiều lần trong thời gian ngắn. Tạm khóa đăng bài 15 phút.");
 
-        return ApiResponse.success("Đăng bài thành công", communityService.createPost(communityId, userId, request));
+        return ApiResponse.success(
+                "Đăng bài thành công", communityService.createPost(communityId, userId, request));
     }
 
     private Long requireUserId(Authentication authentication) {

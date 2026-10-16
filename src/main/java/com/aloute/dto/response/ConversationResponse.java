@@ -4,27 +4,22 @@ import java.time.LocalDateTime;
 
 public class ConversationResponse {
 
-    // --- Group Chat Properties ---
     private boolean group;
     private Long groupId;
     private String groupName;
     private int memberCount;
 
-    // --- Direct Chat Properties ---
     private Long otherUserId;
     private String otherUsername;
     private String otherFullName;
-    
-    // --- Shared Properties ---
-    private String otherAvatarUrl; // Used for both user avatar and group avatar
+
+    private String otherAvatarUrl;
     private String lastMessage;
     private LocalDateTime lastMessageAt;
     private long unreadCount;
     private String lastMessageTimeAgo;
-    private boolean online;           // người còn lại có đang mở app hay không (chấm xanh)
-    private boolean hasConversation = true; // false = bạn bè (follow lẫn nhau) nhưng chưa từng nhắn tin
-
-    // --- Getters and Setters ---
+    private boolean online;
+    private boolean hasConversation = true;
 
     public boolean isGroup() {
         return group;

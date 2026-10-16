@@ -9,6 +9,10 @@ public class ChatMessageResponse {
     private Long receiverId;
     private String content;
     private boolean read;
+    private boolean delivered;
+    private LocalDateTime deliveredAt;
+    private int deliveredCount;
+    private int readCount;
     private LocalDateTime sentAt;
     private Long groupId;
     private String senderUsername;
@@ -24,9 +28,12 @@ public class ChatMessageResponse {
     private String callId;
     private String callType;
     private String callStatus;
-    
-    public ChatMessageResponse() {
-    }
+    private String storyId;
+    private String storyContent;
+    private String storyImageUrl;
+    private String storyVideoUrl;
+
+    public ChatMessageResponse() {}
 
     public String getId() {
         return id;
@@ -60,18 +67,46 @@ public class ChatMessageResponse {
         this.content = content;
     }
 
+    public String getMessageType() {
+        return messageType;
+    }
 
-    public String getMessageType() { return messageType; }
-    public void setMessageType(String messageType) { this.messageType = messageType; }
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
 
-    public String getCallId() { return callId; }
-    public void setCallId(String callId) { this.callId = callId; }
+    public String getCallId() {
+        return callId;
+    }
 
-    public String getCallType() { return callType; }
-    public void setCallType(String callType) { this.callType = callType; }
+    public void setCallId(String callId) {
+        this.callId = callId;
+    }
 
-    public String getCallStatus() { return callStatus; }
-    public void setCallStatus(String callStatus) { this.callStatus = callStatus; }
+    public String getCallType() {
+        return callType;
+    }
+
+    public void setCallType(String callType) {
+        this.callType = callType;
+    }
+
+    public String getCallStatus() {
+        return callStatus;
+    }
+
+    public void setCallStatus(String callStatus) {
+        this.callStatus = callStatus;
+    }
+
+    public String getStoryId() { return storyId; }
+    public void setStoryId(String storyId) { this.storyId = storyId; }
+    public String getStoryContent() { return storyContent; }
+    public void setStoryContent(String storyContent) { this.storyContent = storyContent; }
+    public String getStoryImageUrl() { return storyImageUrl; }
+    public void setStoryImageUrl(String storyImageUrl) { this.storyImageUrl = storyImageUrl; }
+    public String getStoryVideoUrl() { return storyVideoUrl; }
+    public void setStoryVideoUrl(String storyVideoUrl) { this.storyVideoUrl = storyVideoUrl; }
 
     public boolean isRead() {
         return read;
@@ -81,6 +116,18 @@ public class ChatMessageResponse {
         this.read = read;
     }
 
+    public boolean isDelivered() { return delivered; }
+    public void setDelivered(boolean delivered) { this.delivered = delivered; }
+
+    public LocalDateTime getDeliveredAt() { return deliveredAt; }
+    public void setDeliveredAt(LocalDateTime deliveredAt) { this.deliveredAt = deliveredAt; }
+
+    public int getDeliveredCount() { return deliveredCount; }
+    public void setDeliveredCount(int deliveredCount) { this.deliveredCount = Math.max(0, deliveredCount); }
+
+    public int getReadCount() { return readCount; }
+    public void setReadCount(int readCount) { this.readCount = Math.max(0, readCount); }
+
     public LocalDateTime getSentAt() {
         return sentAt;
     }
@@ -88,7 +135,7 @@ public class ChatMessageResponse {
     public void setSentAt(LocalDateTime sentAt) {
         this.sentAt = sentAt;
     }
-    
+
     public Long getGroupId() {
         return groupId;
     }
@@ -120,7 +167,7 @@ public class ChatMessageResponse {
     public void setSenderAvatarUrl(String senderAvatarUrl) {
         this.senderAvatarUrl = senderAvatarUrl;
     }
-    
+
     public String getTimeAgo() {
         return timeAgo;
     }
@@ -145,17 +192,27 @@ public class ChatMessageResponse {
         this.mediaType = mediaType;
     }
 
+    public String getMediaName() {
+        return mediaName;
+    }
 
-    public String getMediaName() { return mediaName; }
-    public void setMediaName(String mediaName) { this.mediaName = mediaName; }
-    public Long getMediaSize() { return mediaSize; }
-    public void setMediaSize(Long mediaSize) { this.mediaSize = mediaSize; }
+    public void setMediaName(String mediaName) {
+        this.mediaName = mediaName;
+    }
 
-	public String getClientId() {
-		return clientId;
-	}
+    public Long getMediaSize() {
+        return mediaSize;
+    }
 
-	public void setClientId(String clientId) {
-		this.clientId = clientId;
-	}
+    public void setMediaSize(Long mediaSize) {
+        this.mediaSize = mediaSize;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
+    }
 }

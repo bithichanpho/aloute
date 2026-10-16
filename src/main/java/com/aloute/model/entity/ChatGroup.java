@@ -5,7 +5,9 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "chat_groups", indexes = { @Index(name = "idx_chat_groups_created_by", columnList = "created_by") })
+@Table(
+        name = "chat_groups",
+        indexes = {@Index(name = "idx_chat_groups_created_by", columnList = "created_by")})
 public class ChatGroup {
 
     @Id
@@ -22,7 +24,11 @@ public class ChatGroup {
     private Long createdBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @JoinColumn(
+            name = "created_by",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private User creator;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -56,7 +62,9 @@ public class ChatGroup {
         this.avatarUrl = avatarUrl;
     }
 
-    public User getCreator() { return creator; }
+    public User getCreator() {
+        return creator;
+    }
 
     public Long getCreatedBy() {
         return createdBy;

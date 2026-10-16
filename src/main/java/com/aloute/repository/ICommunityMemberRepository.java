@@ -1,11 +1,11 @@
 package com.aloute.repository;
 
-import java.util.List;
-import java.util.Optional;
+import com.aloute.model.entity.CommunityMember;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.aloute.model.entity.CommunityMember;
+import java.util.List;
+import java.util.Optional;
 
 public interface ICommunityMemberRepository extends JpaRepository<CommunityMember, Long> {
 
@@ -17,18 +17,22 @@ public interface ICommunityMemberRepository extends JpaRepository<CommunityMembe
 
     boolean existsByCommunityIdAndUserId(Long communityId, Long userId);
 
+    boolean existsByCommunityIdAndUserIdAndRoleIn(
+            Long communityId, Long userId, java.util.Collection<String> roles);
+
+    List<CommunityMember> findByCommunityIdAndRole(Long communityId, String role);
+
     void deleteByCommunityIdAndUserId(Long communityId, Long userId);
 
     long countByCommunityId(Long communityId);
 
+    long countByCommunityIdAndRoleIn(Long communityId, java.util.Collection<String> roles);
+
     void deleteByCommunityId(Long communityId);
 
-    /** Thành viên vào sớm nhất còn lại (dùng để tự động đôn ADMIN mới khi admin duy nhất rời nhóm). */
+    void deleteByUserId(Long userId);
+
     List<CommunityMember> findByCommunityIdOrderByJoinedAtAsc(Long communityId);
 
-    /**
-     * Trong danh sách hội nhóm đang hiển thị, user này đã là thành viên của những nhóm nào —
-     * 1 query duy nhất, dùng để tô đúng nút "Tham gia"/"Đã tham gia" theo lô, tránh N+1.
-     */
     List<CommunityMember> findByUserIdAndCommunityIdIn(Long userId, List<Long> communityIds);
 }

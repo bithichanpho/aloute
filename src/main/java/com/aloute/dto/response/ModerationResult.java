@@ -5,8 +5,7 @@ public class ModerationResult {
     private String label;
     private double score;
 
-    public ModerationResult() {
-    }
+    public ModerationResult() {}
 
     public ModerationResult(String label, double score) {
         this.label = label;

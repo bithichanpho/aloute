@@ -1,41 +1,40 @@
 package com.aloute.controller;
 
-import java.util.Collections;
-import java.util.List;
+import com.aloute.dto.response.ConversationResponse;
+import com.aloute.dto.response.PostResponse;
+import com.aloute.dto.response.UserProfileDto;
+import com.aloute.model.entity.ChatGroup;
+import com.aloute.model.entity.User;
+import com.aloute.security.SecurityUtils;
+import com.aloute.service.ChatService;
+import com.aloute.service.CommunityService;
+import com.aloute.service.DiscoveryService;
+import com.aloute.service.FriendService;
+import com.aloute.service.GroupService;
+import com.aloute.service.NotificationService;
+import com.aloute.service.PostService;
+import com.aloute.service.PresenceService;
+import com.aloute.service.SocialFeatureService;
+import com.aloute.service.UserService;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import com.aloute.dto.response.ConversationResponse;
-import com.aloute.dto.response.PostResponse;
-import com.aloute.dto.response.UserProfileDto;
-import com.aloute.security.SecurityUtils;
-import com.aloute.service.ChatService;
-import com.aloute.service.CommunityService;
-import com.aloute.service.FriendService;
-import com.aloute.service.NotificationService;
-import com.aloute.service.PostService;
-import com.aloute.service.UserService;
-import com.aloute.service.GroupService;
-import com.aloute.service.PresenceService;
-import com.aloute.service.DiscoveryService;
-import com.aloute.model.entity.ChatGroup;
-import com.aloute.model.entity.User;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
-/**
- * ViewController — trả về tên template Thymeleaf tương ứng cho từng URL, kèm
- * dữ liệu thật đổ vào model (không còn dữ liệu mẫu tĩnh trong .html nữa).
- *
- * Vì ứng dụng dùng JWT (không session), "đăng nhập hay chưa" được xác định
- * bởi JwtAuthFilter chạy TRƯỚC controller này (đọc cookie ALOUTE_TOKEN) và set
- * sẵn Authentication vào SecurityContext — ở đây chỉ cần kiểm tra Authentication
- * có null hay không để quyết định render trang hay redirect về /login.
- */
+import java.util.Collections;
+import java.util.List;
+
 @Controller
+@Validated
 public class ViewController {
 
     private final PostService postService;
@@ -47,6 +46,7 @@ public class ViewController {
     private final PresenceService presenceService;
     private final DiscoveryService discoveryService;
     private final CommunityService communityService;
+    private final SocialFeatureService socialFeatureService;
 
     public ViewController(
             PostService postService,
@@ -57,7 +57,8 @@ public class ViewController {
             GroupService groupService,
             PresenceService presenceService,
             DiscoveryService discoveryService,
-            CommunityService communityService) {
+            CommunityService communityService,
+            SocialFeatureService socialFeatureService) {
         this.postService = postService;
         this.userService = userService;
         this.friendService = friendService;
@@ -67,6 +68,7 @@ public class ViewController {
         this.presenceService = presenceService;
         this.discoveryService = discoveryService;
         this.communityService = communityService;
+        this.socialFeatureService = socialFeatureService;
     }
 
     @GetMapping("/")
@@ -84,20 +86,17 @@ public class ViewController {
         return isLoggedIn(authentication) ? "redirect:/feed" : "auth/register";
     }
 
-    /** Trang xác nhận sau khi bấm link trong email — verify thật sự do JS gọi /api/auth/verify-email. */
     @GetMapping("/verify-email")
     public String verifyEmailPage(@RequestParam(required = false) String token, Model model) {
         model.addAttribute("token", token);
         return "auth/verify";
     }
 
-    /** Trang nhập email để yêu cầu link đặt lại mật khẩu. */
     @GetMapping("/forgot-password")
     public String forgotPassword(Authentication authentication) {
         return isLoggedIn(authentication) ? "redirect:/feed" : "auth/forgot-password";
     }
 
-    /** Trang nhập mật khẩu mới, mở từ link trong email quên mật khẩu. */
     @GetMapping("/reset-password")
     public String resetPassword(@RequestParam(required = false) String token, Model model) {
         model.addAttribute("token", token);
@@ -106,40 +105,57 @@ public class ViewController {
 
     @GetMapping("/feed")
     public String feed(
-            Authentication authentication, Model model,
-            @RequestParam(defaultValue = "foryou") String tab) {
+            Authentication authentication,
+            Model model,
+            @RequestParam(defaultValue = "foryou") @Pattern(regexp = "(?i)foryou|following", message = "Tab feed không hợp lệ") String tab,
+            @RequestParam(required = false) @Size(max = 100, message = "Mã bài viết không hợp lệ") String postId) {
 
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
         List<Long> followingIds = friendService.getFollowingIds(userId);
-        List<PostResponse> posts = "following".equalsIgnoreCase(tab)
-                ? postService.getFeedByFollowing(userId, followingIds, 0, 20)
-                : postService.getFeed(userId, followingIds, 0, 20);
+        List<PostResponse> posts;
+        if (postId != null && !postId.isBlank()) {
+            // Shared post links open the requested post directly while preserving normal
+            // ContentAccessService visibility checks performed by PostService.getPost.
+            posts = List.of(postService.getPost(postId.trim(), userId));
+        } else {
+            posts = "following".equalsIgnoreCase(tab)
+                    ? postService.getFeedByFollowing(userId, followingIds, 0, 20)
+                    : postService.getFeed(userId, followingIds, 0, 20);
+        }
 
         model.addAttribute("posts", posts);
+        model.addAttribute("stories", socialFeatureService.stories(userId));
         model.addAttribute("activeTab", tab);
 
-        // Dữ liệu cho rail bên phải của feed: nhóm đang tham gia + bạn bè đang online.
-        // Đây chỉ là dữ liệu hiển thị, không thay đổi logic feed hiện tại.
         List<ChatGroup> feedGroups = groupService.getMyGroups(userId);
 
-        // Nạp TOÀN BỘ bạn bè chung (mutual friend) bằng 1 query duy nhất, rồi lọc "đang online"
-        // hoàn toàn trong bộ nhớ (PresenceService chỉ là 1 Map, không đụng DB).
-        // Bản trước gọi presenceService.isOnline(Long) cho từng bạn — hàm đó bên trong lại tự
-        // query DB để đổi userId -> username, tức là tốn thêm N query chỉ để tra 1 Map trong RAM.
-        List<User> mutualFriends = userService.findUsersByIds(friendService.getMutualFriendIds(userId));
-        List<User> activeFriends = mutualFriends.stream()
-                .filter(friend -> presenceService.isOnlineUsername(friend.getUsername()))
-                .limit(8)
-                .collect(java.util.stream.Collectors.toList());
+        List<User> mutualFriends =
+                new java.util.ArrayList<>(
+                        userService.findUsersByIds(friendService.getMutualFriendIds(userId)));
+        java.util.Set<Long> onlineFriendIds =
+                mutualFriends.stream()
+                        .filter(friend -> presenceService.isOnlineUsername(friend.getUsername()))
+                        .map(User::getId)
+                        .collect(java.util.stream.Collectors.toSet());
+        // Match the familiar friends panel pattern: online friends first, then offline friends.
+        mutualFriends.sort(
+                java.util.Comparator
+                        .comparing((User friend) -> !onlineFriendIds.contains(friend.getId()))
+                        .thenComparing(
+                                friend -> friend.getFullName() != null && !friend.getFullName().isBlank()
+                                        ? friend.getFullName()
+                                        : friend.getUsername(),
+                                String.CASE_INSENSITIVE_ORDER));
 
-        // Gợi ý kết bạn: dùng chung với trang /search (xem DiscoveryService).
-        // Truyền sẵn feedGroups vừa tải ở trên để DiscoveryService không phải tự
-        // query lại danh sách nhóm lần thứ 2 trong cùng 1 request /feed.
-        model.addAttribute("feedGroups", feedGroups.stream().limit(8).collect(java.util.stream.Collectors.toList()));
-        model.addAttribute("activeFriends", activeFriends);
-        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, 6, feedGroups));
+        model.addAttribute(
+                "feedGroups",
+                feedGroups.stream().limit(8).collect(java.util.stream.Collectors.toList()));
+        model.addAttribute("friends", mutualFriends);
+        model.addAttribute("onlineFriendIds", onlineFriendIds);
+        model.addAttribute(
+                "suggestedUsers", discoveryService.getSuggestedUsers(userId, 6, feedGroups));
 
         addCommonAttributes(model, userId, "feed");
         return "feed/index";
@@ -155,19 +171,38 @@ public class ViewController {
     }
 
     @GetMapping("/chat")
-    public String chat(Authentication authentication, Model model,
-            @org.springframework.web.bind.annotation.RequestParam(required = false) Long userId) {
+    public String chat(
+            Authentication authentication,
+            Model model,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long userId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long groupId) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
 
-        // userId != null: đến từ nút "Nhắn tin" trên trang cá nhân — đảm bảo luôn có
-        // sẵn ô hội thoại với người đó kể cả khi hai bên chưa từng nhắn/chưa là bạn bè.
-        List<ConversationResponse> conversations = chatService.getConversations(currentUserId, userId);
+        List<ConversationResponse> conversations =
+                chatService.getConversations(currentUserId, userId);
         model.addAttribute("conversations", conversations);
-        // Được điều hướng tới từ nút "Nhắn tin" trên trang cá nhân -> mở sẵn đúng hội thoại đó
+
         model.addAttribute("openUserId", userId);
+        model.addAttribute("openGroupId", groupId);
         addCommonAttributes(model, currentUserId, "chat");
         return "chat/index";
+    }
+
+    @GetMapping("/people/{username}")
+    public String mentionedProfile(
+            Authentication authentication,
+            @PathVariable @Size(min = 3, max = 50, message = "Tên đăng nhập không hợp lệ") String username) {
+        Long viewer = requireLogin(authentication);
+        if (viewer == null) return "redirect:/login";
+        return userService.searchUsers(username, viewer).stream()
+                .filter(u -> u.getUsername().equalsIgnoreCase(username))
+                .findFirst()
+                .map(u -> "redirect:/profile/" + u.getId())
+                .orElseThrow(
+                        () ->
+                                new com.aloute.common.exception.ResourceNotFoundException(
+                                        "Không tìm thấy tài khoản"));
     }
 
     @GetMapping("/profile/me")
@@ -178,7 +213,10 @@ public class ViewController {
     }
 
     @GetMapping("/profile/{userId}")
-    public String userProfile(Authentication authentication, @PathVariable Long userId, Model model) {
+    public String userProfile(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            Model model) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
         return renderProfile(userId, currentUserId, model);
@@ -204,14 +242,20 @@ public class ViewController {
     }
 
     @GetMapping("/api/posts/feed-fragment")
-    public String feedFragment(Authentication authentication, Model model,
-            @RequestParam(defaultValue = "foryou") String tab,
-            @RequestParam(defaultValue = "0") int page) {
+    public String feedFragment(
+            Authentication authentication,
+            Model model,
+            @RequestParam(defaultValue = "foryou") @Pattern(regexp = "(?i)foryou|following", message = "Tab feed không hợp lệ") String tab,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
-        model.addAttribute("posts", "following".equalsIgnoreCase(tab)
-                ? postService.getFeedByFollowing(userId, friendService.getFollowingIds(userId), page, 20)
-                : postService.getFeed(userId, friendService.getFollowingIds(userId), page, 20));
+        model.addAttribute(
+                "posts",
+                "following".equalsIgnoreCase(tab)
+                        ? postService.getFeedByFollowing(
+                                userId, friendService.getFollowingIds(userId), page, 20)
+                        : postService.getFeed(
+                                userId, friendService.getFollowingIds(userId), page, 20));
         var currentUser = new UserProfileDto();
         currentUser.setId(userId);
         model.addAttribute("currentUser", currentUser);
@@ -219,32 +263,43 @@ public class ViewController {
     }
 
     @GetMapping("/api/posts/user/{userId}/fragment")
-    public String profileFragment(Authentication authentication, Model model, @PathVariable Long userId,
-            @RequestParam(defaultValue = "0") int page) {
+    public String profileFragment(
+            Authentication authentication,
+            Model model,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
         List<PostResponse> userPosts = postService.getPostsByUser(userId, currentUserId, page, 20);
         model.addAttribute("userPosts", userPosts);
-        // profile/view được dùng làm template cho fragment .post nên Thymeleaf vẫn
-        // có thể đánh giá các biểu thức của tab Đăng lại. Phải luôn cung cấp list
-        // rỗng thay vì để biến null/missing gây TemplateProcessingException.
+
         model.addAttribute("repostPosts", Collections.emptyList());
-        model.addAttribute("mediaPosts", userPosts.stream()
-                .filter(post -> post.getImageUrl() != null && !post.getImageUrl().isBlank())
-                .collect(java.util.stream.Collectors.toList()));
+        model.addAttribute(
+                "mediaPosts",
+                userPosts.stream()
+                        .filter(
+                                post ->
+                                        (post.getImageUrl() != null
+                                                        && !post.getImageUrl().isBlank())
+                                                || (post.getVideoUrl() != null
+                                                        && !post.getVideoUrl().isBlank()))
+                        .collect(java.util.stream.Collectors.toList()));
         model.addAttribute("isOwnProfile", currentUserId.equals(userId));
         return "profile/view :: profileTimelinePost";
     }
 
     @GetMapping("/api/posts/user/{userId}/reposts/fragment")
-    public String profileRepostFragment(Authentication authentication, Model model, @PathVariable Long userId,
-            @RequestParam(defaultValue = "0") int page) {
+    public String profileRepostFragment(
+            Authentication authentication,
+            Model model,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
 
-        List<PostResponse> repostPosts = postService.getRepostsByUser(userId, currentUserId, page, 20);
-        // Cung cấp đủ model dùng trong profile/view để fragment không phụ thuộc vào
-        // thứ tự Thymeleaf xử lý các node ngoài phần .post.
+        List<PostResponse> repostPosts =
+                postService.getRepostsByUser(userId, currentUserId, page, 20);
+
         model.addAttribute("repostPosts", repostPosts);
         model.addAttribute("userPosts", Collections.emptyList());
         model.addAttribute("mediaPosts", Collections.emptyList());
@@ -268,16 +323,9 @@ public class ViewController {
         if (userId == null) return "redirect:/login";
         addCommonAttributes(model, userId, "saved");
         model.addAttribute("pageTitle", "Đã lưu");
-        return "placeholder/index";
-    }
-
-    @GetMapping("/insights")
-    public String insights(Authentication authentication, Model model) {
-        Long userId = requireLogin(authentication);
-        if (userId == null) return "redirect:/login";
-        addCommonAttributes(model, userId, "insights");
-        model.addAttribute("pageTitle", "Thông tin chi tiết");
-        return "placeholder/index";
+        model.addAttribute("pageKind", "saved");
+        model.addAttribute("savedPosts", socialFeatureService.saved(userId, 0));
+        return "features/index";
     }
 
     @GetMapping("/communities")
@@ -292,19 +340,20 @@ public class ViewController {
     }
 
     @GetMapping("/communities/{communityId}")
-    public String communityDetail(Authentication authentication, @PathVariable Long communityId, Model model) {
+    public String communityDetail(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            Model model) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
         model.addAttribute("community", communityService.getCommunity(communityId, userId));
-        // Template community/view.html dùng biến này ở cả nhánh mở và khóa.
-        // Phải luôn có giá trị mặc định để SpringEL không ném exception khi user
-        // là thành viên của hội nhóm công khai.
+
         model.addAttribute("feedLocked", false);
         try {
             model.addAttribute("posts", communityService.getFeed(communityId, userId, 0, 20));
-        } catch (com.aloute.common.exception.UnauthorizedException e) {
-            // Hội nhóm riêng tư và user chưa tham gia -> không xem được bài viết, chỉ xem thông tin chung.
+        } catch (com.aloute.common.exception.ForbiddenException e) {
+
             model.addAttribute("posts", java.util.Collections.emptyList());
             model.addAttribute("feedLocked", true);
         }
@@ -313,8 +362,11 @@ public class ViewController {
     }
 
     @GetMapping("/api/communities/{communityId}/posts/fragment")
-    public String communityFeedFragment(Authentication authentication, @PathVariable Long communityId, Model model,
-            @RequestParam(defaultValue = "0") int page) {
+    public String communityFeedFragment(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            Model model,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
         model.addAttribute("posts", communityService.getFeed(communityId, userId, page, 20));
@@ -324,36 +376,84 @@ public class ViewController {
         return "feed/index :: .post";
     }
 
-    // ===== Helpers =====
-
     private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
         UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
         List<PostResponse> userPosts = postService.getPostsByUser(profileUserId, currentUserId);
 
         model.addAttribute("profileUser", profile);
         model.addAttribute("userPosts", userPosts);
-        // Lưới chỉ hiển thị bài CÓ ẢNH (bài chỉ có chữ nằm ở tab Dòng thời gian).
-        model.addAttribute("mediaPosts", userPosts.stream()
-                .filter(post -> post.getImageUrl() != null && !post.getImageUrl().isBlank())
-                .collect(java.util.stream.Collectors.toList()));
-        // Luôn cấp dữ liệu cho tab Đăng lại; trước đây biến này bị bỏ quên khiến
-        // /profile/* nổ TemplateProcessingException ngay tại #lists.size(repostPosts).
-        model.addAttribute("repostPosts", postService.getRepostsByUser(profileUserId, currentUserId, 0, 20));
+
+        model.addAttribute(
+                "mediaPosts",
+                userPosts.stream()
+                        .filter(
+                                post ->
+                                        (post.getImageUrl() != null
+                                                        && !post.getImageUrl().isBlank())
+                                                || (post.getVideoUrl() != null
+                                                        && !post.getVideoUrl().isBlank()))
+                        .collect(java.util.stream.Collectors.toList()));
+
+        model.addAttribute(
+                "repostPosts", postService.getRepostsByUser(profileUserId, currentUserId, 0, 20));
         model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
-        model.addAttribute("isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
+        model.addAttribute(
+                "isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
         if (currentUserId != null) {
             addCommonAttributes(model, currentUserId, "profile");
         }
         return "profile/view";
     }
 
+    @GetMapping({"/settings", "/stories", "/admin/moderation"})
+    public String featurePage(
+            Authentication authentication,
+            Model model,
+            jakarta.servlet.http.HttpServletRequest request) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+        String path = request.getRequestURI();
+        if (path.startsWith("/admin")
+                && authentication.getAuthorities().stream()
+                        .noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN")))
+            throw new com.aloute.common.exception.UnauthorizedException(
+                    "Chỉ quản trị viên hệ thống được truy cập");
+        model.addAttribute(
+                "pageTitle",
+                path.equals("/settings")
+                        ? "Cài đặt và an toàn"
+                        : path.equals("/stories") ? "Tin 24 giờ" : "Kiểm duyệt nội dung");
+        String pageKind =
+                path.equals("/settings")
+                        ? "settings"
+                        : path.equals("/stories") ? "stories" : "moderation";
+        model.addAttribute("pageKind", pageKind);
+        if ("settings".equals(pageKind)) {
+            model.addAttribute("blocks", socialFeatureService.blocks(userId));
+            model.addAttribute("followRequests", socialFeatureService.requests(userId));
+            model.addAttribute("profileUser", userService.getProfile(userId, userId));
+        } else if ("stories".equals(pageKind)) {
+            model.addAttribute("stories", socialFeatureService.stories(userId));
+        } else {
+            model.addAttribute("moderationQueue", socialFeatureService.queue(userId));
+        }
+        addCommonAttributes(model, userId, "features");
+        return "features/index";
+    }
+
     private void addCommonAttributes(Model model, Long currentUserId, String activeNav) {
+        var authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext()
+                        .getAuthentication();
+        model.addAttribute(
+                "isSystemAdmin",
+                authentication != null
+                        && authentication.getAuthorities().stream()
+                                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")));
         model.addAttribute("activeNav", activeNav);
         if (currentUserId == null) return;
         model.addAttribute("currentUser", userService.getLiteProfile(currentUserId));
-        // Không chặn việc render cả trang chỉ để đếm badge. Hai con số này được
-        // tải song song sau first paint qua /api/notifications/unread-count và
-        // /api/chat/unread-count, rồi realtime sẽ cập nhật tiếp.
+
         model.addAttribute("unreadCount", 0L);
         model.addAttribute("unreadMessageCount", 0L);
     }
