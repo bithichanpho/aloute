@@ -1,5 +1,8 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import com.aloute.common.exception.BadRequestException;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashSet;
@@ -27,6 +30,7 @@ import com.aloute.dto.request.SharePostRequest;
 import com.aloute.service.ChatService;
 import com.aloute.service.ContentAccessService;
 import com.aloute.dto.response.LikeResponse;
+import com.aloute.dto.response.FeedCursorPage;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.dto.response.ReactionResponse;
 import com.aloute.dto.response.RepostResponse;
@@ -42,8 +46,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/posts")
 @Validated
 public class PostController {
@@ -77,8 +83,8 @@ public class PostController {
     public ApiResponse<List<PostResponse>> getFeed(
             Authentication authentication,
             @RequestParam(defaultValue = "foryou") @Pattern(regexp = "(?i)foryou|following", message = "Tab feed không hợp lệ") String tab,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page,
-            @RequestParam(defaultValue = "10") @Min(value = 1, message = "Kích thước trang phải từ 1 trở lên") @Max(value = 50, message = "Kích thước trang tối đa 50") int size) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang sâu hơn cần dùng cursor") int page,
+            @RequestParam(defaultValue = "10") @Min(value = 1, message = "Kích thước trang phải từ 1 trở lên") @Max(value = 30, message = "Kích thước trang tối đa 30") int size) {
 
         Long currentUserId = SecurityUtils.currentUserId(authentication);
 
@@ -99,6 +105,19 @@ public class PostController {
                         currentUserId, friendService.getFollowingIds(currentUserId), page, size));
     }
 
+    @GetMapping("/feed/cursor")
+    public ApiResponse<FeedCursorPage> getCursorFeed(
+            Authentication authentication,
+            @RequestParam(defaultValue = "foryou") @Pattern(regexp = "(?i)foryou|following") String tab,
+            @RequestParam(required = false) @Size(max = 256) String cursor,
+            @RequestParam(required = false) @Size(max = 50) String hashtag,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(30) int size) {
+        Long currentUserId = requireUserId(authentication);
+        return ApiResponse.success(postService.getCursorFeed(
+                currentUserId, friendService.getFollowingIds(currentUserId),
+                tab, hashtag, cursor, size));
+    }
+
     @GetMapping("/{postId}")
     public ApiResponse<PostResponse> getPost(
             Authentication authentication, @PathVariable @NotBlank(message = "Thiếu mã bài viết") String postId) {
@@ -107,10 +126,11 @@ public class PostController {
     }
 
     @GetMapping("/user/{userId}")
+    @SecurityRequirements
     public ApiResponse<List<PostResponse>> getPostsByUser(
             Authentication authentication,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang sâu hơn cần dùng cursor") int page,
             @RequestParam(defaultValue = "20") @Min(value = 1, message = "Kích thước trang phải từ 1 trở lên") @Max(value = 50, message = "Kích thước trang tối đa 50") int size) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
         return ApiResponse.success(postService.getPostsByUser(userId, currentUserId, page, size));
@@ -190,7 +210,7 @@ public class PostController {
         var post = contentAccessService.requirePost(postId, senderId);
         Set<Long> recipients = new LinkedHashSet<>(request.recipientIds());
         if (recipients.contains(senderId)) {
-            throw new com.aloute.common.exception.BadRequestException(
+            throw new BadRequestException(
                     "Bạn không thể chia sẻ bài viết cho chính mình");
         }
 
@@ -198,7 +218,7 @@ public class PostController {
         // partial delivery caused by a recipient who is not allowed to see the post.
         for (Long recipientId : recipients) {
             if (!friendService.isFriend(senderId, recipientId)) {
-                throw new com.aloute.common.exception.BadRequestException(
+                throw new BadRequestException(
                         "Bạn chỉ có thể gửi bài viết trực tiếp cho bạn bè đang theo dõi lẫn nhau");
             }
             contentAccessService.requirePost(post.getId(), recipientId);

@@ -11,4 +11,6 @@ public interface IGroupReadStatusRepository extends JpaRepository<GroupReadStatu
     java.util.List<GroupReadStatus> findByUserId(Long userId);
 
     Optional<GroupReadStatus> findByGroupIdAndUserId(Long groupId, Long userId);
+
+    void deleteByUserId(Long userId);
 }

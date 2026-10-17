@@ -27,5 +27,9 @@ public interface IChatMessageRepository extends MongoRepository<ChatMessage, Str
 
     long countByConversationId(String conversationId);
 
+    java.util.Optional<ChatMessage> findBySenderIdAndClientId(String senderId, String clientId);
+
+    boolean existsBySenderIdAndClientId(String senderId, String clientId);
+
     java.util.Optional<ChatMessage> findByCallId(String callId);
 }

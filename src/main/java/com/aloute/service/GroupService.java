@@ -15,7 +15,12 @@ import com.aloute.repository.IGroupMemberRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -27,6 +32,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class GroupService {
+
+    private static final Logger log = LoggerFactory.getLogger(GroupService.class);
 
     private final IChatGroupRepository groupRepository;
     private final IGroupMemberRepository memberRepository;
@@ -47,6 +54,7 @@ public class GroupService {
         this.messagingTemplate = messagingTemplate;
     }
 
+    @Transactional
     public GroupResponse createGroup(Long creatorId, CreateGroupRequest request) {
         Set<Long> memberIds = new LinkedHashSet<>(request.getMemberIds());
         memberIds.remove(creatorId);
@@ -76,6 +84,7 @@ public class GroupService {
         return response;
     }
 
+    @Transactional
     public void addMember(Long groupId, Long requesterId, Long newUserId) {
         requireGroupExists(groupId);
         requireMember(groupId, requesterId);
@@ -94,6 +103,7 @@ public class GroupService {
         broadcastGroupUpdate(groupId, "member_added", newUserId, getMemberIds(groupId));
     }
 
+    @Transactional
     public void removeMember(Long groupId, Long requesterId, Long targetUserId) {
         requireGroupExists(groupId);
         GroupMember requesterMembership = requireMember(groupId, requesterId);
@@ -149,6 +159,7 @@ public class GroupService {
         return dto;
     }
 
+    @Transactional
     public GroupResponse updateGroup(
             Long groupId, Long requesterId, String name, String avatarUrl) {
         ChatGroup group = requireGroupExists(groupId);
@@ -239,11 +250,29 @@ public class GroupService {
         payload.put("groupId", groupId);
         payload.put("action", action);
         payload.put("affectedUserId", affectedUserId);
-        for (User user : userRepository.findAllById(recipientUserIds)) {
-            if (user.isActive()) {
-                messagingTemplate.convertAndSendToUser(
-                        user.getUsername(), "/queue/group-updates", payload);
+        Runnable broadcast = () -> {
+            try {
+                for (User user : userRepository.findAllById(recipientUserIds)) {
+                    if (user.isActive()) {
+                        messagingTemplate.convertAndSendToUser(
+                                user.getUsername(), "/queue/group-updates", payload);
+                    }
+                }
+            } catch (RuntimeException ex) {
+                // SQL has already committed. A transient WebSocket failure must not make the
+                // client believe group creation/update rolled back; group state can be reloaded.
+                log.warn("Group update broadcast failed after commit (groupId={}, action={}, cause={})",
+                        groupId, action, ex.getClass().getSimpleName());
             }
+        };
+        // Don't publish group state before PostgreSQL commits; clients could otherwise observe
+        // a group/member update that was later rolled back.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { broadcast.run(); }
+            });
+        } else {
+            broadcast.run();
         }
     }
 }

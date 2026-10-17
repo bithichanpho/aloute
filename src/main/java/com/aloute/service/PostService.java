@@ -1,20 +1,18 @@
 package com.aloute.service;
 
 import com.aloute.common.exception.ResourceNotFoundException;
+import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ForbiddenException;
-import com.aloute.common.util.AvatarUtil;
 import com.aloute.common.util.ReactionType;
-import com.aloute.common.util.TimeAgoUtil;
+import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.request.CreatePostRequest;
 import com.aloute.dto.request.RepostRequest;
 import com.aloute.dto.response.ModerationResult;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.dto.response.RepostResponse;
-import com.aloute.model.document.Like;
 import com.aloute.model.document.ModerationStatus;
 import com.aloute.model.document.Post;
 import com.aloute.model.document.Repost;
-import com.aloute.model.entity.User;
 import com.aloute.repository.ICommentRepository;
 import com.aloute.repository.ILikeRepository;
 import com.aloute.repository.INotificationRepository;
@@ -23,17 +21,26 @@ import com.aloute.repository.IRepostRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.TextCriteria;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import com.aloute.dto.response.FeedCursorPage;
+import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,7 +50,11 @@ import java.util.stream.Collectors;
 @Service
 public class PostService {
 
+    private static final Logger log = LoggerFactory.getLogger(PostService.class);
+
     private final ContentAccessService access;
+    private final RepostPresentationService repostPresentationService;
+    private final PostResponseMapper postResponseMapper;
 
     private final IPostRepository postRepository;
     private final IUserRepository userRepository;
@@ -54,8 +65,12 @@ public class PostService {
     private final ICommentRepository commentRepository;
     private final INotificationRepository notificationRepository;
     private final IRepostRepository repostRepository;
-    private final ImageStorageService imageStorageService;
+    private final PostModerationCoordinator moderationCoordinator;
+    private final MediaAssetLifecycleService postMediaAssets;
+    private final FeedCacheInvalidator feedCacheInvalidator;
+    private final MongoTransactionRetryExecutor transactionRetryExecutor;
 
+    @Autowired
     public PostService(
             IPostRepository postRepository,
             IUserRepository userRepository,
@@ -66,10 +81,14 @@ public class PostService {
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
             IRepostRepository repostRepository,
-            ImageStorageService imageStorageService,
-            ContentAccessService access) {
+            ContentAccessService access,
+            RepostPresentationService repostPresentationService,
+            PostResponseMapper postResponseMapper,
+            PostModerationCoordinator moderationCoordinator,
+            MediaAssetLifecycleService postMediaAssets,
+            FeedCacheInvalidator feedCacheInvalidator,
+            MongoTransactionRetryExecutor transactionRetryExecutor) {
         this.access = access;
-
         this.postRepository = postRepository;
         this.userRepository = userRepository;
         this.likeRepository = likeRepository;
@@ -79,7 +98,34 @@ public class PostService {
         this.commentRepository = commentRepository;
         this.notificationRepository = notificationRepository;
         this.repostRepository = repostRepository;
-        this.imageStorageService = imageStorageService;
+        this.repostPresentationService = repostPresentationService;
+        this.postResponseMapper = postResponseMapper;
+        this.moderationCoordinator = moderationCoordinator;
+        this.postMediaAssets = postMediaAssets;
+        this.feedCacheInvalidator = feedCacheInvalidator;
+        this.transactionRetryExecutor = transactionRetryExecutor;
+    }
+
+    /** Compatibility constructor retained for unit tests that construct PostService directly. */
+    public PostService(
+            IPostRepository postRepository,
+            IUserRepository userRepository,
+            ILikeRepository likeRepository,
+            ModerationService moderationService,
+            NotificationService notificationService,
+            MongoTemplate mongoTemplate,
+            ICommentRepository commentRepository,
+            INotificationRepository notificationRepository,
+            IRepostRepository repostRepository,
+            ContentAccessService access,
+            RepostPresentationService repostPresentationService,
+            PostResponseMapper postResponseMapper,
+            PostModerationCoordinator moderationCoordinator,
+            MediaAssetLifecycleService postMediaAssets) {
+        this(postRepository, userRepository, likeRepository, moderationService, notificationService,
+                mongoTemplate, commentRepository, notificationRepository, repostRepository, access,
+                repostPresentationService, postResponseMapper, moderationCoordinator, postMediaAssets,
+                null, null);
     }
 
     public PostResponse createPost(Long currentUserId, CreatePostRequest request) {
@@ -88,14 +134,18 @@ public class PostService {
 
     public PostResponse createPost(
             Long currentUserId, CreatePostRequest request, String communityId) {
-        ModerationResult moderation = moderationService.check(request.getContent());
-        ModerationStatus status = moderationService.resolveStatus(moderation.getScore());
-        if (!moderationService.isMediaApproved(request.getImageUrl(), "image"))
-            throw new com.aloute.common.exception.BadRequestException(
-                    "Ảnh không vượt qua kiểm duyệt an toàn");
-        if (!moderationService.isMediaApproved(request.getVideoUrl(), "video"))
-            throw new com.aloute.common.exception.BadRequestException(
-                    "Video không vượt qua kiểm duyệt an toàn");
+        // Production moderation runs after persistence on a bounded background executor. The
+        // post remains hidden from every viewer except its author until the decision is stored.
+        if (postMediaAssets != null) {
+            postMediaAssets.validatePostMediaUrl(request.getImageUrl(), null, String.valueOf(currentUserId));
+            postMediaAssets.validatePostMediaUrl(request.getVideoUrl(), null, String.valueOf(currentUserId));
+        }
+        ModerationResult initialResult = moderationService.isEnabled()
+                ? null
+                : moderationService.check(request.getContent());
+        ModerationStatus initialStatus = moderationService.isEnabled()
+                ? ModerationStatus.PENDING
+                : moderationService.resolveStatus(initialResult);
 
         Post post = new Post();
         post.setUserId(String.valueOf(currentUserId));
@@ -105,24 +155,34 @@ public class PostService {
         post.setVisibility(request.getVisibility());
         post.setHashtags(ContentTagService.extract(request.getContent(), '#'));
         post.setMentions(ContentTagService.extract(request.getContent(), '@'));
-        post.setModerationStatus(status);
-        post.setToxicityScore(moderation.getScore());
+        post.setModerationStatus(initialStatus);
+        post.setToxicityScore(initialResult == null ? 0.0 : initialResult.getScore());
         post.setCommunityId(communityId);
+        post.setNotifyMentionsAfterModeration(initialStatus == ModerationStatus.PENDING);
 
         Post saved = postRepository.save(post);
-        for (String mention : post.getMentions())
-            userRepository
-                    .findByUsernameIgnoreCase(mention)
+        markPostMediaAttached(saved.getId(), String.valueOf(currentUserId), saved.getImageUrl(), saved.getVideoUrl());
+        if (initialStatus == ModerationStatus.PENDING && moderationCoordinator != null) {
+            afterCommitSafely("post moderation enqueue", () -> moderationCoordinator.submit(saved.getId()));
+        } else {
+            notifyReadableMentions(saved, currentUserId);
+        }
+        PostResponse response = toResponse(saved, currentUserId);
+        invalidateViewerFeedCache(currentUserId);
+        return response;
+    }
+
+    void notifyReadableMentions(Post saved, Long authorId) {
+        if (saved == null || saved.getMentions() == null
+                || saved.getModerationStatus() == ModerationStatus.HIDDEN
+                || saved.getModerationStatus() == ModerationStatus.PENDING) return;
+        for (String mention : saved.getMentions()) {
+            userRepository.findByUsernameIgnoreCase(mention)
                     .filter(u -> access.canRead(saved, u.getId()))
-                    .ifPresent(
-                            u ->
-                                    notificationService.notify(
-                                            u.getId(),
-                                            currentUserId,
-                                            "MENTION",
-                                            saved.getId(),
-                                            "đã nhắc đến bạn trong bài viết"));
-        return toResponse(saved, currentUserId);
+                    .ifPresent(u -> afterCommitSafely("mention notification",
+                            () -> notificationService.notify(u.getId(), authorId, "MENTION",
+                                    saved.getId(), "đã nhắc đến bạn trong bài viết")));
+        }
     }
 
     private Query ownTimelineQuery(Long userId, Pageable pageable) {
@@ -140,100 +200,171 @@ public class PostService {
         return new Query(criteria).with(pageable);
     }
 
+    /**
+     * Stable chronological keyset pagination. The cursor points at the last raw document
+     * consumed, not a page number, so new posts do not shift already visited pages.
+     * The single feed traversal implementation deliberately prioritizes stable, scalable
+     * keyset scrolling and avoids a bounded in-memory ranking window.
+     */
+    @Cacheable(
+            cacheNames = "feedPages",
+            key = "T(com.aloute.service.FeedCacheKey).create(#currentUserId, #followingIds, #tab, #hashtag, #encodedCursor, #requestedSize)",
+            condition = "#currentUserId != null")
+    public FeedCursorPage getCursorFeed(
+            Long currentUserId,
+            List<Long> followingIds,
+            String tab,
+            String hashtag,
+            String encodedCursor,
+            int requestedSize) {
+        int size = Math.max(1, Math.min(30, requestedSize));
+        boolean followingOnly = "following".equalsIgnoreCase(tab);
+        List<String> followed = followingIds == null
+                ? List.of()
+                : followingIds.stream().filter(java.util.Objects::nonNull)
+                        .map(String::valueOf).collect(Collectors.toCollection(ArrayList::new));
+        if (currentUserId != null && !followed.contains(String.valueOf(currentUserId))) {
+            // Following feed includes the viewer's own posts as well as followed accounts.
+            followed.add(String.valueOf(currentUserId));
+        }
+        if (followingOnly && followed.isEmpty())
+            return new FeedCursorPage(List.of(), "", false);
+
+        String normalizedTag = normalizeHashtag(hashtag);
+        CursorPoint cursor = decodeFeedCursor(encodedCursor);
+        String nextCursor = encodedCursor == null ? "" : encodedCursor;
+        List<PostResponse> result = new ArrayList<>(size);
+        final int batchSize = Math.min(150, Math.max(50, size * 4));
+        boolean hasMore = false;
+        int batches = 0;
+
+        while (result.size() < size && batches < 20) {
+            List<Criteria> clauses = new ArrayList<>();
+            clauses.add(Criteria.where("moderationStatus").ne(ModerationStatus.HIDDEN));
+            clauses.add(new Criteria().orOperator(
+                    Criteria.where("repostOfId").is(null),
+                    new Criteria().andOperator(
+                            Criteria.where("repostOfId").ne(null),
+                            Criteria.where("content").nin(null, ""))));
+            if (followingOnly) clauses.add(Criteria.where("userId").in(followed));
+            if (!normalizedTag.isBlank()) clauses.add(Criteria.where("hashtags").is(normalizedTag));
+            if (cursor != null) {
+                clauses.add(new Criteria().orOperator(
+                        Criteria.where("createdAt").lt(cursor.createdAt()),
+                        new Criteria().andOperator(
+                                Criteria.where("createdAt").is(cursor.createdAt()),
+                                Criteria.where("id").lt(cursor.id()))));
+            }
+
+            Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                    .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
+                    .limit(batchSize);
+            List<Post> loaded = mongoTemplate.find(query, Post.class);
+            if (loaded.isEmpty()) {
+                hasMore = false;
+                break;
+            }
+
+            ContentAccessService.AccessBatch permissions = access.forPosts(loaded, currentUserId);
+            boolean stoppedAtPageBoundary = false;
+            for (int i = 0; i < loaded.size(); i++) {
+                Post candidate = loaded.get(i);
+                if (permissions.canRead(candidate)) {
+                    List<PostResponse> mapped = toReadableResponses(List.of(candidate), currentUserId, permissions);
+                    if (!mapped.isEmpty()) result.add(mapped.get(0));
+                }
+                nextCursor = encodeFeedCursor(candidate);
+                cursor = new CursorPoint(candidate.getCreatedAt(), candidate.getId());
+                if (result.size() >= size) {
+                    // The next request starts immediately after the last consumed document.
+                    hasMore = i < loaded.size() - 1 || loaded.size() == batchSize;
+                    stoppedAtPageBoundary = true;
+                    break;
+                }
+            }
+            if (stoppedAtPageBoundary) break;
+            if (loaded.size() < batchSize) {
+                hasMore = false;
+                break;
+            }
+            hasMore = true;
+            batches++;
+        }
+        if (batches >= 20 && result.size() < size) hasMore = true;
+        if (result.isEmpty() && !hasMore) nextCursor = "";
+        repostPresentationService.attachRecentReposters(result);
+        return new FeedCursorPage(result, hasMore ? nextCursor : (result.isEmpty() ? "" : nextCursor), hasMore);
+    }
+
+    public List<PostResponse> getPostsByHashtag(String hashtag, Long currentUserId, int size) {
+        return getCursorFeed(currentUserId, List.of(), "foryou", hashtag, null, size).items();
+    }
+
+    private String normalizeHashtag(String hashtag) {
+        if (hashtag == null || hashtag.isBlank()) return "";
+        String value = hashtag.trim().replaceFirst("^#", "").toLowerCase(java.util.Locale.ROOT);
+        if (!value.matches("[\\p{L}\\p{N}_]{1,50}"))
+            throw new BadRequestException("Hashtag không hợp lệ");
+        return value;
+    }
+
+    private String encodeFeedCursor(Post post) {
+        String value = post.getCreatedAt().toString() + "|" + post.getId();
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CursorPoint decodeFeedCursor(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+            int divider = decoded.indexOf('|');
+            if (divider <= 0 || divider == decoded.length() - 1) throw new IllegalArgumentException();
+            LocalDateTime createdAt = LocalDateTime.parse(decoded.substring(0, divider));
+            String id = decoded.substring(divider + 1);
+            if (id.length() > 100) throw new IllegalArgumentException();
+            return new CursorPoint(createdAt, id);
+        } catch (RuntimeException invalid) {
+            throw new BadRequestException("Cursor feed không hợp lệ");
+        }
+    }
+
+    private record CursorPoint(LocalDateTime createdAt, String id) {}
+
+    /**
+     * Compatibility adapter for the legacy page-number API. All feed traversal now uses the
+     * cursor implementation, so there is no separate 200-post in-memory ranking window.
+     * New clients should use /api/posts/feed/cursor directly.
+     */
     public List<PostResponse> getFeed(
             Long currentUserId, List<Long> followingIds, int page, int size) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, Math.min(20, size));
-        int candidateLimit = (int) Math.min(200L, Math.max(40L, (safePage + 1L) * safeSize * 2));
-        List<Post> candidates;
-        ContentAccessService.AccessBatch permissions;
-        while (true) {
-            List<Post> loaded =
-                    postRepository.findAllForFeed(
-                            PageRequest.of(
-                                    0, candidateLimit, Sort.by(Sort.Direction.DESC, "createdAt")));
-            permissions = access.forPosts(loaded, currentUserId);
-            candidates = new java.util.ArrayList<>(permissions.readable(loaded));
-            if (candidates.size() >= (safePage + 1L) * safeSize
-                    || loaded.size() < candidateLimit
-                    || candidateLimit == 200) break;
-            candidateLimit = Math.min(200, candidateLimit * 2);
-        }
-
-        Set<String> followedAuthors =
-                followingIds == null
-                        ? Set.of()
-                        : followingIds.stream().map(String::valueOf).collect(Collectors.toSet());
-        Map<String, Integer> friendRepostSignals = Map.of();
-        if (!followedAuthors.isEmpty() && !candidates.isEmpty()) {
-            List<Repost> friendReposts =
-                    repostRepository.findByUserIdIn(
-                            new java.util.ArrayList<>(followedAuthors), PageRequest.of(0, 500));
-            friendRepostSignals =
-                    friendReposts.stream()
-                            .map(Repost::getPostId)
-                            .collect(Collectors.toMap(Function.identity(), id -> 1, Integer::sum));
-        }
-        Map<String, Integer> repostSignals = friendRepostSignals;
-        candidates.sort(
-                Comparator.comparingDouble(
-                                (Post post) ->
-                                        feedScore(
-                                                post,
-                                                followedAuthors.contains(post.getUserId()),
-                                                repostSignals.getOrDefault(post.getId(), 0)))
-                        .reversed()
-                        .thenComparing(
-                                Post::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(
-                                Post::getId, Comparator.nullsLast(Comparator.reverseOrder())));
-
-        int from = (int) Math.min((long) safePage * safeSize, candidates.size());
-        int to = Math.min(from + safeSize, candidates.size());
-        if (from >= to) return Collections.emptyList();
-        List<PostResponse> result =
-                toReadableResponses(candidates.subList(from, to), currentUserId, permissions);
-        attachRecentReposters(result);
-        return result;
+        return readLegacyPageWithCursor(currentUserId, followingIds, "foryou", page, size);
     }
 
     public List<PostResponse> getFeedByFollowing(
             Long currentUserId, List<Long> followingIds, int page, int size) {
-        if (followingIds == null || followingIds.isEmpty()) return Collections.emptyList();
-
-        Pageable pageable =
-                PageRequest.of(
-                        Math.max(0, page),
-                        Math.max(1, Math.min(20, size)),
-                        Sort.by(Sort.Direction.DESC, "createdAt"));
-        List<String> ids = followingIds.stream().map(String::valueOf).collect(Collectors.toList());
-        List<PostResponse> result =
-                toResponses(
-                        postRepository.findByUserIdInOrderByCreatedAtDesc(ids, pageable),
-                        currentUserId);
-        attachRecentReposters(result);
-        return result;
+        return readLegacyPageWithCursor(currentUserId, followingIds, "following", page, size);
     }
 
-    double feedScore(Post post, boolean followedAuthor, int friendReposts) {
-        long ageSeconds =
-                post.getCreatedAt() == null
-                        ? 604_800L
-                        : Math.max(
-                                0L,
-                                java.time.Duration.between(
-                                                post.getCreatedAt(), java.time.LocalDateTime.now())
-                                        .getSeconds());
-        double freshness = Math.exp(-ageSeconds / 86_400.0) * 100.0;
-        double engagement =
-                Math.log1p(
-                                Math.max(0, post.getLikeCount())
-                                        + Math.max(0, post.getCommentCount()) * 3.0
-                                        + Math.max(0, post.getRepostCount()) * 4.0)
-                        * 14.0;
-        double relationship = followedAuthor ? 32.0 : 0.0;
-        double socialProof = Math.min(3, Math.max(0, friendReposts)) * 18.0;
-        return freshness + engagement + relationship + socialProof;
+    private List<PostResponse> readLegacyPageWithCursor(
+            Long currentUserId, List<Long> followingIds, String tab, int requestedPage, int requestedSize) {
+        int page = Math.max(0, requestedPage);
+        int size = Math.max(1, Math.min(30, requestedSize));
+        // Bound the compatibility endpoint against abusive page-number requests. Deep browsing
+        // uses the cursor endpoint and does not have an artificial page or 200-post ceiling.
+        if (page > 100) throw new BadRequestException(
+                "Hãy dùng phân trang cursor cho các trang sâu hơn; trang số tối đa của API cũ là 100");
+
+        String cursor = null;
+        FeedCursorPage result = null;
+        for (int i = 0; i <= page; i++) {
+            result = getCursorFeed(currentUserId, followingIds, tab, null, cursor, size);
+            if (i < page && !result.hasMore()) return List.of();
+            cursor = result.nextCursor();
+            if (cursor == null || cursor.isBlank()) {
+                if (i < page) return List.of();
+            }
+        }
+        return result == null ? List.of() : result.items();
     }
 
     public List<PostResponse> getFeedByCommunity(
@@ -253,13 +384,29 @@ public class PostService {
     }
 
     public List<PostResponse> getPostsByUser(Long userId, Long currentUserId, int page, int size) {
-        Pageable pageable =
-                PageRequest.of(
-                        Math.max(0, page),
-                        Math.max(1, Math.min(20, size)),
-                        Sort.by(Sort.Direction.DESC, "createdAt"));
-        List<Post> posts = mongoTemplate.find(ownTimelineQuery(userId, pageable), Post.class);
-        return toResponses(posts, currentUserId);
+        // Permission checks may reject rows after Mongo reads them. Page over the visible
+        // sequence, not the raw sequence, so invisible rows cannot shorten pages.
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(50, size));
+        if (safePage > 100) throw new BadRequestException("Trang quá sâu, vui lòng dùng cursor");
+        long skipVisible = (long) safePage * safeSize;
+        java.util.ArrayList<PostResponse> output = new java.util.ArrayList<>(safeSize);
+        int rawPage = 0;
+        final int chunk = 100;
+        final int maxScan = 20000;
+        while (rawPage * chunk < maxScan) {
+            Pageable batch = PageRequest.of(rawPage++, chunk,
+                    Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")));
+            List<Post> raw = mongoTemplate.find(ownTimelineQuery(userId, batch), Post.class);
+            if (raw.isEmpty()) return output;
+            for (PostResponse readable : toResponses(raw, currentUserId)) {
+                if (skipVisible > 0) { skipVisible--; continue; }
+                output.add(readable);
+                if (output.size() == safeSize) return output;
+            }
+            if (raw.size() < chunk) return output;
+        }
+        throw new BadRequestException("Quá nhiều bài không hiển thị; hãy dùng phân trang cursor");
     }
 
     public List<PostResponse> getRepostsByUser(
@@ -298,26 +445,18 @@ public class PostService {
         }
 
         String search = keyword.trim();
-        Criteria searchCriteria =
-                Criteria.where("content").regex(java.util.regex.Pattern.quote(search), "i");
+        int boundedLimit = Math.max(1, Math.min(20, limit));
+        Query query;
         if (search.startsWith("#")) {
-            String tag = search.substring(1).toLowerCase(java.util.Locale.ROOT);
-            searchCriteria =
-                    new Criteria()
-                            .orOperator(
-                                    Criteria.where("hashtags").is(tag),
-                                    Criteria.where("content")
-                                            .regex(
-                                                    "(?<![\\p{L}\\p{N}_])#"
-                                                            + java.util.regex.Pattern.quote(tag)
-                                                            + "(?![\\p{L}\\p{N}_])",
-                                                    "i"));
+            String tag = search.substring(1).trim().toLowerCase(java.util.Locale.ROOT);
+            if (tag.isBlank()) return Collections.emptyList();
+            // Hashtags are already materialized and indexed; avoid a full-content regex scan.
+            query = Query.query(Criteria.where("hashtags").is(tag));
+        } else {
+            // Uses the MongoDB text index on Post.content instead of an unanchored regex scan.
+            query = Query.query(TextCriteria.forLanguage("none").matching(search));
         }
-        Query query =
-                Query.query(searchCriteria)
-                        .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                        .limit(Math.max(1, Math.min(30, limit)));
-
+        query.with(Sort.by(Sort.Direction.DESC, "createdAt")).limit(boundedLimit);
         return toResponses(mongoTemplate.find(query, Post.class), currentUserId);
     }
 
@@ -333,10 +472,22 @@ public class PostService {
                         .and("moderationStatus")
                         .ne(ModerationStatus.HIDDEN)
                         .orOperator(Criteria.where("repostOfId").is(null), hasOwnCaption);
-        return mongoTemplate.count(new Query(criteria), Post.class);
+        return mongoTemplate.count(new Query(new Criteria().andOperator(criteria,
+                Criteria.where("visibility").is(com.aloute.model.document.PostVisibility.PUBLIC))), Post.class);
     }
 
     public void deletePost(String postId, Long currentUserId) {
+        if (transactionRetryExecutor == null) {
+            deletePostInTransaction(postId, currentUserId);
+            return;
+        }
+        transactionRetryExecutor.execute(() -> {
+            deletePostInTransaction(postId, currentUserId);
+            return null;
+        });
+    }
+
+    private void deletePostInTransaction(String postId, Long currentUserId) {
         Post post =
                 postRepository
                         .findById(postId)
@@ -347,63 +498,163 @@ public class PostService {
             throw new ForbiddenException("Bạn không có quyền xóa bài viết này");
         }
 
+        // All Mongo collections that make up the post are deleted in one Mongo transaction.
+        // PostgreSQL notifications and Cloudinary cleanup are external side effects, so defer
+        // them until Mongo commits; this avoids deleting external state if the local transaction
+        // rolls back. These stores still require reconciliation/outbox handling for hard failures.
         likeRepository.deleteByPostId(postId);
+        java.util.List<String> commentIds = mongoTemplate.find(
+                Query.query(Criteria.where("postId").is(postId)),
+                com.aloute.model.document.Comment.class).stream()
+                .map(com.aloute.model.document.Comment::getId).toList();
+        if (!commentIds.isEmpty()) {
+            mongoTemplate.remove(Query.query(Criteria.where("commentId").in(commentIds)),
+                    com.aloute.model.document.CommentReaction.class);
+        }
         commentRepository.deleteByPostId(postId);
-        postRepository.delete(post);
-        notificationRepository.deleteByReferenceId(postId);
-
         repostRepository.deleteByPostId(postId);
+        postRepository.delete(post);
         if (post.getRepostOfId() != null) {
             syncRepostCount(post.getRepostOfId());
         }
 
-        try {
-            imageStorageService.deleteAlouteImageByUrl(post.getImageUrl());
-            imageStorageService.deleteAlouteMediaByUrl(post.getVideoUrl());
-        } catch (Exception ignored) {
-        }
+        afterCommitSafely("post notification cleanup", () -> notificationRepository.deleteByReferenceId(postId));
+        // A deleted post can be present in many viewers' cached pages, not only its author's feed.
+        // This is a rare content-removal path, so invalidate globally using the SCAN-based strategy.
+        invalidateAllFeedCache();
+        afterCommitSafely("Cloudinary media cleanup", () -> {
+            if (postMediaAssets == null) {
+                // Compatibility constructors are used only by isolated tests. Production must
+                // have the lifecycle service; do not reintroduce an unsafe direct-delete path.
+                log.warn("Post media cleanup skipped because the lifecycle service is not configured (postId={})",
+                        postId);
+                return;
+            }
+            postMediaAssets.deletePostMedia(post);
+        });
     }
 
     public RepostResponse repost(Long currentUserId, String originalPostId, RepostRequest request) {
+        try {
+            RepostResponse response = executeMongoTransaction(
+                    () -> repostInTransaction(currentUserId, originalPostId, request));
+            invalidateViewerFeedCache(currentUserId);
+            return response;
+        } catch (DuplicateKeyException duplicateRepost) {
+            // A second concurrent insert for the unique (userId, postId) pair is an already
+            // completed repost, not a server error. Resolve it after the failed transaction rolls back.
+            if (request != null && Boolean.FALSE.equals(request.getReposted())) {
+                RepostResponse reconciled = executeMongoTransaction(
+                        () -> repostInTransaction(currentUserId, originalPostId, request));
+                invalidateViewerFeedCache(currentUserId);
+                return reconciled;
+            }
+            Post original = access.requirePost(originalPostId, currentUserId);
+            String finalOriginalId = original.getRepostOfId() != null
+                    ? original.getRepostOfId() : original.getId();
+            var existing = repostRepository.findByUserIdAndPostId(
+                    String.valueOf(currentUserId), finalOriginalId);
+            if (existing.isEmpty()) throw duplicateRepost;
+            int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
+            RepostResponse response = new RepostResponse(
+                    finalOriginalId, true, count, existing.get().getId());
+            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            invalidateViewerFeedCache(currentUserId);
+            return response;
+        }
+    }
+
+    private RepostResponse repostInTransaction(
+            Long currentUserId, String originalPostId, RepostRequest request) {
         Post original = access.requirePost(originalPostId, currentUserId);
-        String finalOriginalId =
-                original.getRepostOfId() != null ? original.getRepostOfId() : original.getId();
+        String finalOriginalId = original.getRepostOfId() != null
+                ? original.getRepostOfId() : original.getId();
         if (!finalOriginalId.equals(original.getId())) original = getPostOrThrow(finalOriginalId);
 
         String userId = String.valueOf(currentUserId);
         var existing = repostRepository.findByUserIdAndPostId(userId, finalOriginalId);
-        if (existing.isPresent()) {
+        boolean hasDesiredState = request != null && request.getReposted() != null;
+        boolean desiredReposted = hasDesiredState && Boolean.TRUE.equals(request.getReposted());
+
+        if (existing.isPresent() && hasDesiredState && desiredReposted) {
+            // Replaying the same repost=true request is a read, not an un-repost toggle.
+            int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
+            RepostResponse response = new RepostResponse(finalOriginalId, true, count, existing.get().getId());
+            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            return response;
+        }
+        if (existing.isEmpty() && hasDesiredState && !desiredReposted) {
+            // Replaying repost=false when already absent is also idempotent.
+            int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
+            RepostResponse response = new RepostResponse(finalOriginalId, false, count, null);
+            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            return response;
+        }
+        if (existing.isPresent() && (!hasDesiredState || !desiredReposted)) {
             repostRepository.delete(existing.get());
             int newCount = syncRepostCount(finalOriginalId);
             RepostResponse response = new RepostResponse(finalOriginalId, false, newCount, null);
-            response.setReposters(loadRepostActors(finalOriginalId));
+            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
             return response;
         }
 
         Repost repost = new Repost();
         repost.setUserId(userId);
         repost.setPostId(finalOriginalId);
-        repost.setContent(
-                request != null && request.getContent() != null && !request.getContent().isBlank()
-                        ? request.getContent().trim()
-                        : null);
+        repost.setContent(request != null && request.getContent() != null && !request.getContent().isBlank()
+                ? request.getContent().trim() : null);
         Repost saved = repostRepository.save(repost);
         int newCount = syncRepostCount(finalOriginalId);
 
-        try {
-            notificationService.notify(
-                    Long.valueOf(original.getUserId()),
-                    currentUserId,
-                    "REPOST",
-                    finalOriginalId,
-                    "đã đăng lại bài viết của bạn");
-        } catch (org.springframework.core.task.TaskRejectedException ignored) {
-
-        }
-        RepostResponse response =
-                new RepostResponse(finalOriginalId, true, newCount, saved.getId());
-        response.setReposters(loadRepostActors(finalOriginalId));
+        final Long originalOwnerId = Long.valueOf(original.getUserId());
+        afterCommitSafely("repost notification", () -> notificationService.notify(
+                originalOwnerId, currentUserId, "REPOST", finalOriginalId, "đã đăng lại bài viết của bạn"));
+        RepostResponse response = new RepostResponse(finalOriginalId, true, newCount, saved.getId());
+        response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
         return response;
+    }
+
+    private <T> T executeMongoTransaction(java.util.function.Supplier<T> work) {
+        return transactionRetryExecutor == null ? work.get() : transactionRetryExecutor.execute(work);
+    }
+
+    /** Invalidate only one viewer on ordinary feed mutations; rare security/moderation events may clear all. */
+    public void invalidateViewerFeedCache(Long viewerId) {
+        com.aloute.common.util.TransactionCommitHooks.afterCommit(() -> {
+            if (feedCacheInvalidator != null) feedCacheInvalidator.invalidateViewer(viewerId);
+        });
+    }
+
+    public void invalidateAllFeedCache() {
+        com.aloute.common.util.TransactionCommitHooks.afterCommit(() -> {
+            if (feedCacheInvalidator != null) feedCacheInvalidator.invalidateAll();
+        });
+    }
+
+    private void markPostMediaAttached(String postId, String uploaderId, String imageUrl, String videoUrl) {
+        if (postMediaAssets == null) return;
+        try {
+            postMediaAssets.attachPostMedia(imageUrl, postId, uploaderId);
+            if (videoUrl == null || !videoUrl.equals(imageUrl)) {
+                postMediaAssets.attachPostMedia(videoUrl, postId, uploaderId);
+            }
+        } catch (RuntimeException trackingFailure) {
+            // The bounded cleaner recognizes referenced UPLOADED assets after a partial tracking failure.
+            log.warn("Post media attachment tracking deferred (postId={}, cause={})",
+                    postId, trackingFailure.getClass().getSimpleName());
+        }
+    }
+
+    private void afterCommitSafely(String operation, Runnable action) {
+        TransactionCommitHooks.afterCommit(
+                () -> {
+                    try {
+                        action.run();
+                    } catch (RuntimeException ex) {
+                        log.error("Post-commit side effect failed (operation={}, cause={})",
+                                operation, ex.getClass().getSimpleName(), ex);
+                    }
+                });
     }
 
     private int syncRepostCount(String postId) {
@@ -434,6 +685,7 @@ public class PostService {
         mongoTemplate.updateFirst(query, new Update().inc("commentCount", delta), Post.class);
     }
 
+
     public PostResponse getPost(String postId, Long currentUserId) {
         Post post = access.requirePost(postId, currentUserId);
         return toResponse(post, currentUserId);
@@ -450,329 +702,16 @@ public class PostService {
     }
 
     private PostResponse toResponse(Post post, Long currentUserId) {
-        PostResponse dto = new PostResponse();
-        dto.setId(post.getId());
-        dto.setVisibility(post.getVisibility());
-        dto.setContent(post.getContent());
-        dto.setCreatedAt(post.getCreatedAt());
-        dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
-
-        Long actorId = Long.valueOf(post.getUserId());
-        dto.setUserId(actorId);
-        userRepository
-                .findById(actorId)
-                .ifPresent(
-                        user -> {
-                            dto.setUsername(user.getUsername());
-                            dto.setUserAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
-                        });
-
-        String interactionPostId =
-                post.getRepostOfId() != null ? post.getRepostOfId() : post.getId();
-        dto.setInteractionPostId(interactionPostId);
-
-        Post interactionPost = post;
-        if (post.getRepostOfId() != null) {
-            interactionPost = postRepository.findById(post.getRepostOfId()).orElse(null);
-        }
-
-        if (interactionPost != null
-                && interactionPost.getModerationStatus() != ModerationStatus.HIDDEN) {
-            dto.setLikeCount(interactionPost.getLikeCount());
-            dto.setCommentCount(interactionPost.getCommentCount());
-            dto.setReactionCounts(
-                    interactionPost.getReactionCounts() != null
-                            ? interactionPost.getReactionCounts()
-                            : new HashMap<>());
-            dto.setRepostCount(interactionPost.getRepostCount());
-            dto.setImageUrl(
-                    post.getRepostOfId() != null
-                                    && (post.getContent() == null || post.getContent().isBlank())
-                            ? com.aloute.common.util.CloudinaryUrlUtil.feedImage(
-                                    interactionPost.getImageUrl())
-                            : com.aloute.common.util.CloudinaryUrlUtil.feedImage(
-                                    post.getImageUrl()));
-            dto.setVideoUrl(
-                    post.getRepostOfId() != null
-                                    && (post.getContent() == null || post.getContent().isBlank())
-                            ? interactionPost.getVideoUrl()
-                            : post.getVideoUrl());
-        } else {
-            dto.setLikeCount(post.getLikeCount());
-            dto.setCommentCount(post.getCommentCount());
-            dto.setReactionCounts(
-                    post.getReactionCounts() != null ? post.getReactionCounts() : new HashMap<>());
-            dto.setRepostCount(post.getRepostCount());
-            dto.setImageUrl(com.aloute.common.util.CloudinaryUrlUtil.feedImage(post.getImageUrl()));
-            dto.setVideoUrl(post.getVideoUrl());
-        }
-
-        if (currentUserId != null) {
-            String userIdStr = String.valueOf(currentUserId);
-            Like current =
-                    likeRepository.findByPostIdAndUserId(interactionPostId, userIdStr).orElse(null);
-            dto.setLikedByCurrentUser(current != null);
-            if (current != null) {
-                dto.setCurrentUserReaction(current.getReactionType());
-            }
-            dto.setRepostedByCurrentUser(
-                    repostRepository
-                            .findByUserIdAndPostId(userIdStr, interactionPostId)
-                            .isPresent());
-        }
-
-        if (post.getRepostOfId() != null) {
-            dto.setRepostOf(buildRepostOrigin(post.getRepostOfId()));
-        }
-        attachRecentReposters(java.util.List.of(dto));
-
-        return dto;
-    }
-
-    private PostResponse.RepostOrigin buildRepostOrigin(String originalPostId) {
-        PostResponse.RepostOrigin origin = new PostResponse.RepostOrigin();
-        origin.setPostId(originalPostId);
-
-        Post original = postRepository.findById(originalPostId).orElse(null);
-        if (original == null || original.getModerationStatus() == ModerationStatus.HIDDEN) {
-            origin.setDeleted(true);
-            return origin;
-        }
-
-        origin.setContent(original.getContent());
-        origin.setImageUrl(
-                com.aloute.common.util.CloudinaryUrlUtil.feedImage(original.getImageUrl()));
-        origin.setVideoUrl(original.getVideoUrl());
-        origin.setTimeAgo(TimeAgoUtil.format(original.getCreatedAt()));
-
-        origin.setRepostCount(original.getRepostCount());
-
-        Long originalUserId = Long.valueOf(original.getUserId());
-        origin.setUserId(originalUserId);
-        userRepository
-                .findById(originalUserId)
-                .ifPresent(
-                        user -> {
-                            origin.setUsername(user.getUsername());
-                            origin.setUserAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
-                        });
-
-        return origin;
+        return postResponseMapper.toResponse(post, currentUserId);
     }
 
     private List<PostResponse> toResponses(List<Post> posts, Long currentUserId) {
-        if (posts == null || posts.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        ContentAccessService.AccessBatch permissions = access.forPosts(posts, currentUserId);
-        return toReadableResponses(permissions.readable(posts), currentUserId, permissions);
+        return postResponseMapper.toResponses(posts, currentUserId);
     }
 
     private List<PostResponse> toReadableResponses(
             List<Post> posts, Long currentUserId, ContentAccessService.AccessBatch permissions) {
-        if (posts.isEmpty()) return List.of();
-        Map<Long, User> usersById = permissions.users();
-        Map<String, Post> originalsById = permissions.originals();
-
-        List<String> interactionPostIds =
-                posts.stream()
-                        .map(p -> p.getRepostOfId() != null ? p.getRepostOfId() : p.getId())
-                        .distinct()
-                        .collect(Collectors.toList());
-
-        Map<String, String> reactionByPostId = new HashMap<>();
-        Set<String> repostedByCurrentUserIds = Collections.emptySet();
-
-        if (currentUserId != null) {
-            String userIdStr = String.valueOf(currentUserId);
-
-            for (Like like :
-                    likeRepository.findByPostIdInAndUserId(interactionPostIds, userIdStr)) {
-                reactionByPostId.put(like.getPostId(), like.getReactionType());
-            }
-
-            repostedByCurrentUserIds =
-                    repostRepository.findByUserIdAndPostIdIn(userIdStr, interactionPostIds).stream()
-                            .map(Repost::getPostId)
-                            .filter(java.util.Objects::nonNull)
-                            .collect(Collectors.toSet());
-        }
-
-        final Map<String, String> finalReactionByPostId = reactionByPostId;
-        final Set<String> finalRepostedIds = repostedByCurrentUserIds;
-
-        return posts.stream()
-                .map(
-                        post -> {
-                            PostResponse dto = new PostResponse();
-
-                            dto.setId(post.getId());
-                            dto.setVisibility(post.getVisibility());
-                            dto.setContent(post.getContent());
-                            dto.setCreatedAt(post.getCreatedAt());
-                            dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
-
-                            Long actorId = Long.valueOf(post.getUserId());
-                            dto.setUserId(actorId);
-                            User actor = usersById.get(actorId);
-                            if (actor != null) {
-                                dto.setUsername(actor.getUsername());
-                                dto.setUserAvatarUrl(AvatarUtil.resolve(actor.getAvatarUrl()));
-                            }
-
-                            String interactionPostId =
-                                    post.getRepostOfId() != null
-                                            ? post.getRepostOfId()
-                                            : post.getId();
-                            dto.setInteractionPostId(interactionPostId);
-
-                            Post interactionPost =
-                                    post.getRepostOfId() != null
-                                            ? originalsById.get(post.getRepostOfId())
-                                            : post;
-
-                            if (interactionPost != null
-                                    && interactionPost.getModerationStatus()
-                                            != ModerationStatus.HIDDEN) {
-                                dto.setLikeCount(interactionPost.getLikeCount());
-                                dto.setCommentCount(interactionPost.getCommentCount());
-                                dto.setReactionCounts(
-                                        interactionPost.getReactionCounts() != null
-                                                ? interactionPost.getReactionCounts()
-                                                : new HashMap<>());
-                                dto.setRepostCount(interactionPost.getRepostCount());
-
-                                if (post.getRepostOfId() != null
-                                        && (post.getContent() == null
-                                                || post.getContent().isBlank())) {
-                                    dto.setImageUrl(
-                                            com.aloute.common.util.CloudinaryUrlUtil.feedImage(
-                                                    interactionPost.getImageUrl()));
-                                    dto.setVideoUrl(interactionPost.getVideoUrl());
-                                } else {
-                                    dto.setImageUrl(
-                                            com.aloute.common.util.CloudinaryUrlUtil.feedImage(
-                                                    post.getImageUrl()));
-                                    dto.setVideoUrl(post.getVideoUrl());
-                                }
-                            } else {
-                                dto.setLikeCount(post.getLikeCount());
-                                dto.setCommentCount(post.getCommentCount());
-                                dto.setReactionCounts(
-                                        post.getReactionCounts() != null
-                                                ? post.getReactionCounts()
-                                                : new HashMap<>());
-                                dto.setRepostCount(post.getRepostCount());
-                                dto.setImageUrl(
-                                        com.aloute.common.util.CloudinaryUrlUtil.feedImage(
-                                                post.getImageUrl()));
-                                dto.setVideoUrl(post.getVideoUrl());
-                            }
-
-                            String currentReaction = finalReactionByPostId.get(interactionPostId);
-                            dto.setCurrentUserReaction(currentReaction);
-                            dto.setLikedByCurrentUser(currentReaction != null);
-                            dto.setRepostedByCurrentUser(
-                                    finalRepostedIds.contains(interactionPostId));
-
-                            if (post.getRepostOfId() != null) {
-                                Post original = originalsById.get(post.getRepostOfId());
-                                PostResponse.RepostOrigin origin = new PostResponse.RepostOrigin();
-                                origin.setPostId(post.getRepostOfId());
-                                if (original == null
-                                        || original.getModerationStatus()
-                                                == ModerationStatus.HIDDEN) {
-                                    origin.setDeleted(true);
-                                } else {
-                                    origin.setContent(original.getContent());
-                                    origin.setImageUrl(
-                                            com.aloute.common.util.CloudinaryUrlUtil.feedImage(
-                                                    original.getImageUrl()));
-                                    origin.setVideoUrl(original.getVideoUrl());
-                                    origin.setTimeAgo(TimeAgoUtil.format(original.getCreatedAt()));
-                                    origin.setRepostCount(original.getRepostCount());
-                                    Long originalAuthorId = Long.valueOf(original.getUserId());
-                                    origin.setUserId(originalAuthorId);
-                                    User originalAuthor = usersById.get(originalAuthorId);
-                                    if (originalAuthor != null) {
-                                        origin.setUsername(originalAuthor.getUsername());
-                                        origin.setUserAvatarUrl(
-                                                AvatarUtil.resolve(originalAuthor.getAvatarUrl()));
-                                    }
-                                }
-                                dto.setRepostOf(origin);
-                            }
-
-                            return dto;
-                        })
-                .collect(Collectors.toList());
+        return postResponseMapper.toReadableResponses(posts, currentUserId, permissions);
     }
 
-    private void attachRecentReposters(List<PostResponse> responses) {
-        if (responses == null || responses.isEmpty()) return;
-        List<String> postIds =
-                responses.stream()
-                        .map(PostResponse::getInteractionPostId)
-                        .filter(java.util.Objects::nonNull)
-                        .distinct()
-                        .toList();
-        if (postIds.isEmpty()) return;
-
-        List<Repost> reposts = repostRepository.findByPostIdIn(postIds);
-        if (reposts.isEmpty()) return;
-        Set<Long> userIds =
-                reposts.stream().map(r -> Long.valueOf(r.getUserId())).collect(Collectors.toSet());
-        Map<Long, User> users =
-                userRepository.findAllById(userIds).stream()
-                        .collect(Collectors.toMap(User::getId, Function.identity()));
-        Map<String, List<Repost>> byPost =
-                reposts.stream().collect(Collectors.groupingBy(Repost::getPostId));
-
-        for (PostResponse response : responses) {
-            List<Repost> rs =
-                    new java.util.ArrayList<>(
-                            byPost.getOrDefault(
-                                    response.getInteractionPostId(), Collections.emptyList()));
-            rs.sort(
-                    java.util.Comparator.comparing(
-                                    Repost::getCreatedAt,
-                                    java.util.Comparator.nullsLast(
-                                            java.util.Comparator.naturalOrder()))
-                            .reversed());
-            List<PostResponse.RepostActor> actors =
-                    rs.stream()
-                            .map(r -> toRepostActor(r, users))
-                            .filter(java.util.Objects::nonNull)
-                            .toList();
-            response.setRecentReposters(actors.stream().limit(3).toList());
-            response.setOtherReposters(actors.stream().skip(3).toList());
-        }
-    }
-
-    private PostResponse.RepostActor toRepostActor(Repost repost, Map<Long, User> users) {
-        Long userId = Long.valueOf(repost.getUserId());
-        User user = users.get(userId);
-        if (user == null) return null;
-        PostResponse.RepostActor actor = new PostResponse.RepostActor();
-        actor.setUserId(userId);
-        actor.setUsername(user.getUsername());
-        actor.setUserAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
-        actor.setCreatedAt(repost.getCreatedAt());
-        return actor;
-    }
-
-    private List<PostResponse.RepostActor> loadRepostActors(String postId) {
-        List<Repost> reposts = repostRepository.findByPostIdOrderByCreatedAtDesc(postId);
-        if (reposts.isEmpty()) return Collections.emptyList();
-        Set<Long> ids =
-                reposts.stream().map(r -> Long.valueOf(r.getUserId())).collect(Collectors.toSet());
-        Map<Long, User> users =
-                userRepository.findAllById(ids).stream()
-                        .collect(Collectors.toMap(User::getId, Function.identity()));
-        return reposts.stream()
-                .map(r -> toRepostActor(r, users))
-                .filter(java.util.Objects::nonNull)
-                .toList();
-    }
 }

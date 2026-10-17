@@ -18,6 +18,9 @@ public class RegisterRequest {
     @Pattern(
             regexp = "^[A-Za-z0-9_](?:[A-Za-z0-9_.-]{1,48}[A-Za-z0-9_])?$",
             message = "Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang")
+    @Pattern(
+            regexp = "^(?!(?i:deleted_)).*$",
+            message = "Tên đăng nhập không được bắt đầu bằng \"deleted_\"")
     private String username;
 
     @NotBlank(message = "Email không được để trống")

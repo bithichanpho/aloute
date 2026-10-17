@@ -92,6 +92,43 @@ public class FirebaseAdminService {
         return auth.verifyIdToken(idToken, true);
     }
 
+    /**
+     * Verifies a recent Google sign-in for a sensitive account action. The Firebase ID token must
+     * belong to the same verified email as the local account and have a recent auth_time.
+     */
+    public boolean verifyRecentGoogleReauthentication(String idToken, String expectedEmail) {
+        if (idToken == null || idToken.isBlank() || expectedEmail == null || expectedEmail.isBlank()) {
+            return false;
+        }
+        try {
+            FirebaseToken token = verifyIdToken(idToken.trim());
+            var claims = token.getClaims();
+            Object providerClaim = claims.get("firebase");
+            String provider = null;
+            if (providerClaim instanceof java.util.Map<?, ?> providerInfo) {
+                Object signInProvider = providerInfo.get("sign_in_provider");
+                if (signInProvider != null) provider = signInProvider.toString();
+            }
+            if (!"google.com".equals(provider)
+                    || !Boolean.TRUE.equals(claims.get("email_verified"))) {
+                return false;
+            }
+            Object emailClaim = claims.get("email");
+            if (emailClaim == null
+                    || !expectedEmail.trim().equalsIgnoreCase(emailClaim.toString())) {
+                return false;
+            }
+            Object authTimeClaim = claims.get("auth_time");
+            if (!(authTimeClaim instanceof Number authTimeNumber)) return false;
+            long authTime = authTimeNumber.longValue();
+            long ageSeconds = java.time.Instant.now().getEpochSecond() - authTime;
+            return ageSeconds >= -60 && ageSeconds <= 600;
+        } catch (FirebaseAuthException | RuntimeException ex) {
+            // Do not expose provider verification details to the client.
+            return false;
+        }
+    }
+
     public ApiFuture<String> sendDataMessage(
             String fid, String title, String body, String relativeUrl) {
         return sendDataMessage(fid, title, body, relativeUrl, "NOTIFICATION");

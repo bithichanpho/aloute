@@ -1,5 +1,8 @@
 package com.aloute.controller;
 
+import com.aloute.common.exception.ResourceNotFoundException;
+import com.aloute.common.exception.UnauthorizedException;
+import com.aloute.common.exception.ForbiddenException;
 import com.aloute.dto.response.ConversationResponse;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.dto.response.UserProfileDto;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
@@ -108,55 +112,58 @@ public class ViewController {
             Authentication authentication,
             Model model,
             @RequestParam(defaultValue = "foryou") @Pattern(regexp = "(?i)foryou|following", message = "Tab feed không hợp lệ") String tab,
-            @RequestParam(required = false) @Size(max = 100, message = "Mã bài viết không hợp lệ") String postId) {
+            @RequestParam(required = false) @Size(max = 100, message = "Mã bài viết không hợp lệ") String postId,
+            @RequestParam(required = false) @Size(max = 50, message = "Hashtag không hợp lệ") String hashtag) {
+        return renderFeed(authentication, model, tab, postId, hashtag);
+    }
 
+    @GetMapping("/hashtag/{tag}")
+    public String hashtag(
+            Authentication authentication,
+            Model model,
+            @PathVariable @Pattern(regexp = "[\\p{L}\\p{N}_]{1,50}", message = "Hashtag không hợp lệ") String tag) {
+        return renderFeed(authentication, model, "foryou", null, tag);
+    }
+
+    private String renderFeed(
+            Authentication authentication, Model model, String tab, String postId, String hashtag) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
         List<Long> followingIds = friendService.getFollowingIds(userId);
         List<PostResponse> posts;
+        String nextCursor = "";
+        boolean hasMore = false;
         if (postId != null && !postId.isBlank()) {
-            // Shared post links open the requested post directly while preserving normal
-            // ContentAccessService visibility checks performed by PostService.getPost.
             posts = List.of(postService.getPost(postId.trim(), userId));
         } else {
-            posts = "following".equalsIgnoreCase(tab)
-                    ? postService.getFeedByFollowing(userId, followingIds, 0, 20)
-                    : postService.getFeed(userId, followingIds, 0, 20);
+            var feedPage = postService.getCursorFeed(
+                    userId, followingIds, tab, hashtag, null, 20);
+            posts = feedPage.items();
+            nextCursor = feedPage.nextCursor();
+            hasMore = feedPage.hasMore();
         }
 
         model.addAttribute("posts", posts);
-        model.addAttribute("stories", socialFeatureService.stories(userId));
-        model.addAttribute("activeTab", tab);
+        model.addAttribute("activeTab", hashtag != null && !hashtag.isBlank() ? "hashtag" : tab);
+        model.addAttribute("hashtagName", hashtag == null ? "" : hashtag.replaceFirst("^#", ""));
+        model.addAttribute("nextFeedCursor", nextCursor);
+        model.addAttribute("feedHasMore", hasMore);
 
         List<ChatGroup> feedGroups = groupService.getMyGroups(userId);
-
-        List<User> mutualFriends =
-                new java.util.ArrayList<>(
-                        userService.findUsersByIds(friendService.getMutualFriendIds(userId)));
-        java.util.Set<Long> onlineFriendIds =
-                mutualFriends.stream()
-                        .filter(friend -> presenceService.isOnlineUsername(friend.getUsername()))
-                        .map(User::getId)
-                        .collect(java.util.stream.Collectors.toSet());
-        // Match the familiar friends panel pattern: online friends first, then offline friends.
-        mutualFriends.sort(
-                java.util.Comparator
-                        .comparing((User friend) -> !onlineFriendIds.contains(friend.getId()))
-                        .thenComparing(
-                                friend -> friend.getFullName() != null && !friend.getFullName().isBlank()
-                                        ? friend.getFullName()
-                                        : friend.getUsername(),
-                                String.CASE_INSENSITIVE_ORDER));
-
-        model.addAttribute(
-                "feedGroups",
-                feedGroups.stream().limit(8).collect(java.util.stream.Collectors.toList()));
+        List<User> mutualFriends = new java.util.ArrayList<>(
+                userService.findUsersByIds(friendService.getMutualFriendIds(userId)));
+        java.util.Set<Long> onlineFriendIds = mutualFriends.stream()
+                .filter(friend -> presenceService.isOnlineUsername(friend.getUsername()))
+                .map(User::getId).collect(java.util.stream.Collectors.toSet());
+        mutualFriends.sort(java.util.Comparator
+                .comparing((User friend) -> !onlineFriendIds.contains(friend.getId()))
+                .thenComparing(friend -> friend.getFullName() != null && !friend.getFullName().isBlank()
+                        ? friend.getFullName() : friend.getUsername(), String.CASE_INSENSITIVE_ORDER));
+        model.addAttribute("feedGroups", feedGroups.stream().limit(8).toList());
         model.addAttribute("friends", mutualFriends);
         model.addAttribute("onlineFriendIds", onlineFriendIds);
-        model.addAttribute(
-                "suggestedUsers", discoveryService.getSuggestedUsers(userId, 6, feedGroups));
-
+        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, 6, feedGroups));
         addCommonAttributes(model, userId, "feed");
         return "feed/index";
     }
@@ -201,7 +208,7 @@ public class ViewController {
                 .map(u -> "redirect:/profile/" + u.getId())
                 .orElseThrow(
                         () ->
-                                new com.aloute.common.exception.ResourceNotFoundException(
+                                new ResourceNotFoundException(
                                         "Không tìm thấy tài khoản"));
     }
 
@@ -245,20 +252,20 @@ public class ViewController {
     public String feedFragment(
             Authentication authentication,
             Model model,
+            jakarta.servlet.http.HttpServletResponse response,
             @RequestParam(defaultValue = "foryou") @Pattern(regexp = "(?i)foryou|following", message = "Tab feed không hợp lệ") String tab,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+            @RequestParam(required = false) @Size(max = 256, message = "Cursor không hợp lệ") String cursor,
+            @RequestParam(required = false) @Size(max = 50, message = "Hashtag không hợp lệ") String tag) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
-        model.addAttribute(
-                "posts",
-                "following".equalsIgnoreCase(tab)
-                        ? postService.getFeedByFollowing(
-                                userId, friendService.getFollowingIds(userId), page, 20)
-                        : postService.getFeed(
-                                userId, friendService.getFollowingIds(userId), page, 20));
+        var page = postService.getCursorFeed(
+                userId, friendService.getFollowingIds(userId), tab, tag, cursor, 20);
+        model.addAttribute("posts", page.items());
         var currentUser = new UserProfileDto();
         currentUser.setId(userId);
         model.addAttribute("currentUser", currentUser);
+        response.setHeader("X-Next-Cursor", page.nextCursor());
+        response.setHeader("X-Has-More", Boolean.toString(page.hasMore()));
         return "feed/index :: .post";
     }
 
@@ -267,7 +274,7 @@ public class ViewController {
             Authentication authentication,
             Model model,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
         List<PostResponse> userPosts = postService.getPostsByUser(userId, currentUserId, page, 20);
@@ -293,7 +300,7 @@ public class ViewController {
             Authentication authentication,
             Model model,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
 
@@ -352,7 +359,7 @@ public class ViewController {
         model.addAttribute("feedLocked", false);
         try {
             model.addAttribute("posts", communityService.getFeed(communityId, userId, 0, 20));
-        } catch (com.aloute.common.exception.ForbiddenException e) {
+        } catch (ForbiddenException e) {
 
             model.addAttribute("posts", java.util.Collections.emptyList());
             model.addAttribute("feedLocked", true);
@@ -366,7 +373,7 @@ public class ViewController {
             Authentication authentication,
             @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
             Model model,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
         model.addAttribute("posts", communityService.getFeed(communityId, userId, page, 20));
@@ -405,37 +412,30 @@ public class ViewController {
         return "profile/view";
     }
 
-    @GetMapping({"/settings", "/stories", "/admin/moderation"})
+    @GetMapping({"/settings", "/admin/moderation"})
     public String featurePage(
             Authentication authentication,
             Model model,
-            jakarta.servlet.http.HttpServletRequest request) {
+            jakarta.servlet.http.HttpServletRequest request,
+            @RequestParam(name = "page", defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int queuePage) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
         String path = request.getRequestURI();
         if (path.startsWith("/admin")
                 && authentication.getAuthorities().stream()
                         .noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN")))
-            throw new com.aloute.common.exception.UnauthorizedException(
+            throw new UnauthorizedException(
                     "Chỉ quản trị viên hệ thống được truy cập");
-        model.addAttribute(
-                "pageTitle",
-                path.equals("/settings")
-                        ? "Cài đặt và an toàn"
-                        : path.equals("/stories") ? "Tin 24 giờ" : "Kiểm duyệt nội dung");
-        String pageKind =
-                path.equals("/settings")
-                        ? "settings"
-                        : path.equals("/stories") ? "stories" : "moderation";
+        boolean settingsPage = "/settings".equals(path);
+        String pageKind = settingsPage ? "settings" : "moderation";
+        model.addAttribute("pageTitle", settingsPage ? "Cài đặt và an toàn" : "Kiểm duyệt nội dung");
         model.addAttribute("pageKind", pageKind);
-        if ("settings".equals(pageKind)) {
+        if (settingsPage) {
             model.addAttribute("blocks", socialFeatureService.blocks(userId));
             model.addAttribute("followRequests", socialFeatureService.requests(userId));
             model.addAttribute("profileUser", userService.getProfile(userId, userId));
-        } else if ("stories".equals(pageKind)) {
-            model.addAttribute("stories", socialFeatureService.stories(userId));
         } else {
-            model.addAttribute("moderationQueue", socialFeatureService.queue(userId));
+            model.addAttribute("moderationQueue", socialFeatureService.queue(userId, queuePage, 20));
         }
         addCommonAttributes(model, userId, "features");
         return "features/index";

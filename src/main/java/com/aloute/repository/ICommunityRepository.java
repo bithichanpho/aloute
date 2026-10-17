@@ -13,6 +13,10 @@ public interface ICommunityRepository extends JpaRepository<Community, Long> {
 
     List<Community> findByIdIn(List<Long> ids);
 
+    boolean existsByAvatarUrl(String avatarUrl);
+
+    boolean existsByCoverUrl(String coverUrl);
+
     List<Community> findByNameContainingIgnoreCaseAndPrivacy(
             String keyword, String privacy, Pageable pageable);
 }

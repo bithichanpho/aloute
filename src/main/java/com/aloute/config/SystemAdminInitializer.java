@@ -5,11 +5,14 @@ import com.aloute.repository.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 @Order(10)
 public class SystemAdminInitializer implements CommandLineRunner {
+    private static final Logger log = LoggerFactory.getLogger(SystemAdminInitializer.class);
     private final IUserRepository users;
     private final IRoleRepository roles;
     private final String username;
@@ -30,8 +33,9 @@ public class SystemAdminInitializer implements CommandLineRunner {
                 .filter(u -> u.isActive() && u.isEmailVerified())
                 .ifPresent(
                         user -> {
-                            user.setRole(roles.findByName("ROLE_ADMIN").orElseThrow());
-                            users.save(user);
+                            if (!"ROLE_ADMIN".equals(user.getRole().getName())) {
+                                log.error("Refusing automatic admin elevation for configured username; provision administrators via a trusted offline procedure");
+                            }
                         });
     }
 }

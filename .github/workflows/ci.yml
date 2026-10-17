@@ -47,6 +47,10 @@ jobs:
       MONGO_URI: mongodb://localhost:27017/aloute_test
       REDIS_URL: redis://localhost:6379
       REDIS_CACHE_ENABLED: true
+      RATE_LIMIT_REDIS_REQUIRED: true
+      ALOUTE_SCHEMA_VALIDATION_URL: jdbc:postgresql://localhost:5432/aloute_schema_validation
+      ALOUTE_SCHEMA_VALIDATION_USERNAME: aloute
+      ALOUTE_SCHEMA_VALIDATION_PASSWORD: aloute
       ALOUTE_SEED_DEMO_DATA: false
       ALOUTE_DB_RELATIONSHIP_MIGRATION: false
       CLOUDINARY_CLOUD_NAME: test
@@ -59,7 +63,9 @@ jobs:
           distribution: temurin
           java-version: 21
           cache: maven
-      - name: Test and package
+      - name: Create a fresh database for Flyway/Hibernate schema validation
+        run: PGPASSWORD=aloute psql -h 127.0.0.1 -U aloute -d aloute -v ON_ERROR_STOP=1 -c "CREATE DATABASE aloute_schema_validation"
+      - name: Test, validate the fresh schema, and package
         run: ./mvnw --batch-mode -Pcoverage clean verify
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

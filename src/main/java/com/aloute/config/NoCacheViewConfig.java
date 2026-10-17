@@ -43,7 +43,6 @@ public class NoCacheViewConfig implements WebMvcConfigurer {
                         "/activity",
                         "/saved",
                         "/settings",
-                        "/stories",
                         "/admin/moderation");
     }
 }

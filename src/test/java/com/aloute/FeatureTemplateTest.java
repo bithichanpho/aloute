@@ -47,7 +47,6 @@ class FeatureTemplateTest {
         context.setVariable("isSystemAdmin", admin);
         context.setVariable("blocks", java.util.List.of());
         context.setVariable("followRequests", java.util.List.of());
-        context.setVariable("stories", java.util.List.of());
         context.setVariable("savedPosts", java.util.List.of());
         context.setVariable(
                 "moderationQueue",
@@ -73,9 +72,16 @@ class FeatureTemplateTest {
 
     @Test
     void featureVariantsRenderServerSideContent() {
-        assertTrue(render("features/index", false, "stories").contains("id=\"storyComposer\""));
         assertTrue(render("features/index", false, "saved").contains("Chưa có bài viết đã lưu"));
         assertTrue(render("features/index", true, "moderation").contains("Hàng đợi đã sạch"));
+    }
+
+    @Test
+    void removedStoriesModuleDoesNotReturnToFeatureTemplate() {
+        String html = render("features/index", false);
+        assertFalse(html.contains("storyComposer"));
+        assertFalse(html.contains("storyViewer"));
+        assertFalse(html.contains("Tin 24 giờ"));
     }
 
     @Test

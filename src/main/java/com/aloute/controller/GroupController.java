@@ -1,5 +1,7 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import com.aloute.validation.HttpUrl;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.AddGroupMemberRequest;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/chat/groups")
 @Validated
 public class GroupController {
@@ -29,7 +32,7 @@ public class GroupController {
             @jakarta.validation.constraints.NotBlank
                     @jakarta.validation.constraints.Size(max = 100) String name,
             @jakarta.validation.constraints.Size(max = 2048)
-                    @com.aloute.validation.HttpUrl String avatarUrl) {}
+                    @HttpUrl String avatarUrl) {}
 
     private final GroupService groupService;
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
-<head><title>Dành cho bạn - ALOUTE</title></head>
+<head><title th:text="${activeTab == 'hashtag' ? '#' + hashtagName + ' - ALOUTE' : (activeTab == 'following' ? 'Following - ALOUTE' : 'Dành cho bạn - ALOUTE')}">Dành cho bạn - ALOUTE</title></head>
 <body>
 <section class="content-inner feed-page">
   <div class="feed-layout">
@@ -9,31 +9,18 @@
     <main class="feed-main">
       <div class="page-header feed-page__header">
         <div>
-          <h1 th:text="${activeTab == 'following'} ? 'Following' : 'Dành cho bạn'">Dành cho bạn</h1>
-          <p class="feed-page__subtitle">Những bài viết mới từ bạn bè và cộng đồng bạn quan tâm</p>
+          <h1 th:text="${activeTab == 'hashtag' ? '#' + hashtagName : (activeTab == 'following' ? 'Following' : 'Dành cho bạn')}">Dành cho bạn</h1>
+          <p class="feed-page__subtitle" th:text="${activeTab == 'hashtag' ? 'Bài viết gắn với chủ đề #' + hashtagName : 'Những bài viết mới từ bạn bè và cộng đồng bạn quan tâm'}">Những bài viết mới từ bạn bè và cộng đồng bạn quan tâm</p>
         </div>
       </div>
-
-      <section class="story-tray" aria-label="Tin của những người bạn đang theo dõi">
-        <a class="story-tray__item story-tray__create" th:href="@{/stories}">
-          <span class="story-tray__avatar"><img th:src="${currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}" alt=""><i>+</i></span>
-          <span>Tin của bạn</span>
-        </a>
-        <button type="button" class="story-tray__item" th:each="story : ${stories}"
-                th:classappend="${story.viewed} ? ' is-viewed' : ''" data-story-open
-                th:attr="data-story-id=${story.id},data-story-user-id=${story.userId},data-story-username=${story.username},data-story-name=${story.fullName},data-story-avatar=${story.avatarUrl},data-story-content=${story.content},data-story-image=${story.imageUrl},data-story-video=${story.videoUrl},data-story-liked=${story.liked},data-story-owned=${story.owned},data-story-views=${story.viewCount}">
-          <span class="story-tray__avatar"><img th:src="${story.avatarUrl != null ? story.avatarUrl : '/images/avatar_default.png'}" alt=""></span>
-          <span th:text="${story.owned ? 'Tin của bạn' : story.username}">username</span>
-        </button>
-      </section>
-
       <div th:replace="~{fragments/post-composer :: postComposer}"></div>
 
       <div class="feed-panel feed-stream">
 
         <div th:if="${#lists.isEmpty(posts)}" class="empty-state">
           <span th:if="${activeTab == 'following'}">Bạn chưa follow ai, hoặc họ chưa đăng bài nào. Hãy thử tìm kiếm thêm bạn bè!</span>
-          <span th:unless="${activeTab == 'following'}">Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!</span>
+          <span th:if="${activeTab == 'hashtag'}">Chưa có bài viết nào cho hashtag này.</span>
+          <span th:if="${activeTab == 'foryou'}">Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!</span>
         </div>
 
         <div class="post" th:each="post : ${posts}" th:id="|post-${post.id}|" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}"
@@ -166,8 +153,8 @@
         </div>
 
         <button type="button" class="btn-outline" data-load-posts
-                th:if="${#lists.size(posts) == 20}"
-                th:attr="data-url=@{/api/posts/feed-fragment(tab=${activeTab})}">Tải thêm</button>
+                th:if="${feedHasMore}"
+                th:attr="data-url=@{/api/posts/feed-fragment(tab=${activeTab == 'hashtag' ? 'foryou' : activeTab},tag=${hashtagName})},data-cursor=${nextFeedCursor}">Tải thêm</button>
       </div>
     </main>
 

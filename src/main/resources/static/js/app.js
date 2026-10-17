@@ -2,10 +2,59 @@
 
 window.Aloute = (function () {
 
+  function csrfTokenFromCookie() {
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+    if (!match) return '';
+    try { return decodeURIComponent(match[1]); } catch (_) { return match[1]; }
+  }
+
+  function csrfHeaders(headers, method) {
+    const result = Object.assign({}, headers || {});
+    const verb = String(method || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(verb)) {
+      const token = csrfTokenFromCookie();
+      if (token && !Object.keys(result).some(key => key.toLowerCase() === 'x-xsrf-token')) {
+        result['X-XSRF-TOKEN'] = token;
+      }
+    }
+    return result;
+  }
+
+  let sessionRefreshPromise = null;
+
+  function refreshSessionOnce() {
+    if (sessionRefreshPromise) return sessionRefreshPromise;
+    sessionRefreshPromise = fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: csrfHeaders({}, 'POST')
+    }).catch(function () {
+      return null;
+    }).finally(function () {
+      sessionRefreshPromise = null;
+    });
+    return sessionRefreshPromise;
+  }
+
+  async function fetchWithSessionRefresh(path, options) {
+    const opts = Object.assign({ credentials: 'same-origin' }, options || {});
+    let response = await fetch(path, opts);
+    const requestPath = String(path);
+    if (response.status !== 401 || requestPath.startsWith('/api/auth/')) return response;
+
+    // Concurrent API/WS failures share one rotation request, avoiding normal parallel requests
+    // being mistaken for refresh-token replay. Retry each original request once after rotation.
+    const refreshResponse = await refreshSessionOnce();
+    if (refreshResponse && refreshResponse.ok) response = await fetch(path, opts);
+    return response;
+  }
+
   async function api(path, options) {
     options = options || {};
     const opts = Object.assign({}, options);
-    opts.headers = Object.assign({}, opts.headers || {});
+    opts.method = String(opts.method || 'GET').toUpperCase();
+    opts.headers = csrfHeaders(opts.headers, opts.method);
+    if (!opts.credentials) opts.credentials = 'same-origin';
 
     const isFormData = opts.body instanceof FormData;
     if (!isFormData && opts.body && typeof opts.body !== 'string') {
@@ -17,7 +66,7 @@ window.Aloute = (function () {
 
     let res;
     try {
-      res = await fetch(path, opts);
+      res = await fetchWithSessionRefresh(path, opts);
     } catch (error) {
       throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối và thử lại.');
     }
@@ -37,6 +86,9 @@ window.Aloute = (function () {
   }
 
   function toast(message, isError) {
+    const text = message == null ? '' : String(message).trim();
+    if (!text) return;
+
     let host = document.getElementById('toastHost');
     if (!host) {
       host = document.createElement('div');
@@ -44,8 +96,16 @@ window.Aloute = (function () {
       host.className = 'toast-container position-fixed top-0 start-50 translate-middle-x p-3';
       document.body.appendChild(host);
     }
+
+    // Do not stack the same visible error when one request triggers several handlers.
+    const toastKey = (isError ? 'error:' : 'info:') + text;
+    const alreadyVisible = Array.from(host.querySelectorAll('.aloute-toast'))
+      .some(item => item.dataset.toastKey === toastKey);
+    if (alreadyVisible) return;
+
     const el = document.createElement('div');
     el.className = 'toast align-items-center border-0 aloute-toast' + (isError ? ' aloute-toast--error' : '');
+    el.dataset.toastKey = toastKey;
     el.setAttribute('role', isError ? 'alert' : 'status');
     el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
     el.setAttribute('aria-atomic', 'true');
@@ -54,7 +114,7 @@ window.Aloute = (function () {
     row.className = 'd-flex';
     const body = document.createElement('div');
     body.className = 'toast-body';
-    body.textContent = message == null ? '' : String(message);
+    body.textContent = text;
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'btn-close me-2 m-auto';
@@ -235,12 +295,30 @@ window.Aloute = (function () {
 
       readyCallbacks.forEach(cb => cb(stompClient));
       readyCallbacks.length = 0;
-    }, function () {
-
+    }, function (frame) {
       stompConnected = false;
       window.__alouteRealtimeConnected = false;
       stompClient = null;
-      setTimeout(connectRealtime, 3000);
+      const detail = String((frame && frame.headers && frame.headers.message) || (frame && frame.body) || '');
+      const refreshNeeded = /token|phiên|hết hạn|đăng nhập|unauthor|\b401\b|\b403\b|forbidden|handshake/i.test(detail);
+      const retry = function () { setTimeout(connectRealtime, 1200); };
+      if (refreshNeeded) {
+        refreshSessionOnce()
+          .then(function (response) {
+            if (response && response.ok) {
+              setTimeout(connectRealtime, 600);
+              return;
+            }
+            if (response && (response.status === 401 || response.status === 403)) {
+              window.location.assign('/login?reason=session-expired');
+              return;
+            }
+            setTimeout(connectRealtime, 5000);
+          })
+          .catch(function () { setTimeout(connectRealtime, 5000); });
+      } else {
+        setTimeout(connectRealtime, 3000);
+      }
     });
   }
 
@@ -514,7 +592,35 @@ window.Aloute = (function () {
     }
   }
 
+  function linkifyPostTags(root) {
+    const scope = root || document;
+    scope.querySelectorAll('.post__content:not([data-tags-linked])').forEach(node => {
+      node.dataset.tagsLinked = '1';
+      const text = node.textContent || '';
+      const pattern = /(^|[^\p{L}\p{N}_])([#@])([\p{L}\p{N}_]{1,50})/gu;
+      let offset = 0;
+      const fragment = document.createDocumentFragment();
+      for (const match of text.matchAll(pattern)) {
+        const index = match.index;
+        fragment.append(document.createTextNode(text.slice(offset, index)));
+        fragment.append(document.createTextNode(match[1]));
+        const anchor = document.createElement('a');
+        anchor.className = match[2] === '#' ? 'content-tag content-tag--hashtag' : 'content-tag content-tag--mention';
+        anchor.textContent = match[2] + match[3];
+        anchor.href = match[2] === '#'
+          ? '/hashtag/' + encodeURIComponent(match[3].toLocaleLowerCase())
+          : '/people/' + encodeURIComponent(match[3]);
+        fragment.append(anchor);
+        offset = index + match[0].length;
+      }
+      if (offset === 0) return;
+      fragment.append(document.createTextNode(text.slice(offset)));
+      node.replaceChildren(fragment);
+    });
+  }
+
   function initFeedInteractions() {
+    linkifyPostTags(document);
     document.querySelectorAll('[data-post-id]').forEach(postEl => {
 
       const postId = postEl.dataset.actionPostId || postEl.dataset.postId;
@@ -774,7 +880,7 @@ window.Aloute = (function () {
               try {
                 const result = await api('/api/posts/' + originalPostId + '/repost', {
                   method: 'POST',
-                  body: {}
+                  body: { reposted: requested }
                 });
                 rState.serverState = !!result.reposted;
                 rState.serverCount = Number(result.repostCount) || 0;
@@ -827,6 +933,13 @@ window.Aloute = (function () {
     });
   }
 
+  function createCommentRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return 'comment-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  }
+
   function toggleCommentBox(postEl, postId) {
     let box = postEl.querySelector('.comment-box');
     if (box) {
@@ -835,57 +948,234 @@ window.Aloute = (function () {
     }
     box = document.createElement('div');
     box.className = 'comment-box is-open';
+    const currentUserAvatar = escapeHtml(document.body.dataset.currentUserAvatar || '/images/avatar_default.png');
     box.innerHTML =
-      '<div class="comment-list"><span class="comment-list__loading">Dang tai binh luan...</span></div>' +
-      '<form class="comment-form">' +
-      '  <input type="text" maxlength="500" placeholder="Viet binh luan..." required>' +
-      '  <button type="submit">Gui</button>' +
+      '<div class="comment-list"><span class="comment-list__loading">Đang tải bình luận...</span></div>' +
+      '<form class="comment-form comment-form--composer">' +
+      '  <img class="comment-form__avatar" src="' + currentUserAvatar + '" alt="Ảnh đại diện của bạn" loading="lazy">' +
+      '  <input type="text" maxlength="500" placeholder="Viết bình luận..." aria-label="Viết bình luận" required>' +
+      '  <button type="submit">Gửi</button>' +
       '</form>';
     postEl.querySelector('.post__body').appendChild(box);
 
     loadComments(postId, box.querySelector('.comment-list'));
+    let pendingCommentRequestId = createCommentRequestId();
+    box.querySelector('input').addEventListener('input', () => {
+      pendingCommentRequestId = createCommentRequestId();
+    });
 
     box.querySelector('.comment-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const input = box.querySelector('input');
+      const submit = box.querySelector('button[type="submit"]');
       const content = input.value.trim();
-      if (!content) return;
+      if (!content || submit.disabled) return;
+      submit.disabled = true;
       try {
-        await api('/api/posts/' + postId + '/comments', { method: 'POST', body: { content } });
+        const created = await api('/api/posts/' + encodeURIComponent(postId) + '/comments', {
+          method: 'POST', body: { content, clientRequestId: pendingCommentRequestId }
+        });
+        pendingCommentRequestId = createCommentRequestId();
         input.value = '';
-        loadComments(postId, box.querySelector('.comment-list'));
-        const replySpan = postEl.querySelector('.action--reply span');
-        if (replySpan) {
-          const n = (parseInt(replySpan.dataset.raw || replySpan.textContent, 10) || 0) + 1;
-          replySpan.dataset.raw = String(n);
-          replySpan.textContent = formatCount(n);
+        await loadComments(postId, box.querySelector('.comment-list'));
+        if (created && String(created.moderationStatus || '').toUpperCase() === 'PENDING') {
+          toast('Bình luận đã gửi và đang chờ kiểm duyệt.', false);
+        } else {
+          const replySpan = postEl.querySelector('.action--reply span');
+          if (replySpan) {
+            const n = (parseInt(replySpan.dataset.raw || replySpan.textContent, 10) || 0) + 1;
+            replySpan.dataset.raw = String(n);
+            replySpan.textContent = formatCount(n);
+          }
         }
       } catch (err) {
         toast(err.message, true);
+      } finally {
+        submit.disabled = false;
       }
     });
   }
 
+  function commentMarkup(comment, postId) {
+    const commentId = escapeHtml(comment.id || '');
+    const replies = Math.max(0, Number(comment.replyCount) || 0);
+    const safePostId = escapeHtml(postId || comment.postId || '');
+    const moderationStatus = String(comment.moderationStatus || 'APPROVED').toUpperCase();
+    const moderationLabel = moderationStatus === 'PENDING'
+      ? '<span class="comment-item__moderation-status" data-moderation-status="PENDING">Đang kiểm duyệt</span>'
+      : (moderationStatus === 'FLAGGED'
+        ? '<span class="comment-item__moderation-status" data-moderation-status="FLAGGED">Chờ quản trị viên xem xét</span>'
+        : '');
+    return '<div class="comment-item" data-comment-id="' + commentId + '" data-post-id="' + safePostId + '" data-reply-count="' + replies + '" data-moderation-status="' + escapeHtml(moderationStatus) + '">' +
+      '  <img src="' + escapeHtml(comment.userAvatarUrl || '/images/avatar_default.png') + '" alt="avatar" loading="lazy">' +
+      '  <div class="comment-item__body">' +
+      '    <span class="comment-item__username">' + escapeHtml(comment.username || '') + '</span>' + moderationLabel +
+      '    <p>' + escapeHtml(comment.content || '') + '</p>' +
+      '    <span class="comment-item__time">' + timeAgo(comment.createdAt) + '</span>' +
+      '    <div class="comment-item__actions">' +
+      '      <button type="button" class="comment-link" data-comment-reply>Trả lời</button>' +
+      (replies > 0 ? '      <button type="button" class="comment-link" data-show-replies>Xem ' + replies + ' phản hồi</button>' : '') +
+      '    </div>' +
+      '    <div class="comment-replies" data-replies-container hidden>' +
+      '      <div class="comment-replies__list" data-replies-list></div>' +
+      '      <button type="button" class="comment-link comment-replies__more" data-more-replies hidden>Tải thêm phản hồi</button>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>';
+  }
+
+  function wireCommentItem(postId, item) {
+    if (!item || item.dataset.actionsBound === '1') return;
+    item.dataset.actionsBound = '1';
+    const commentId = item.dataset.commentId;
+    const body = item.querySelector('.comment-item__body');
+    const actions = item.querySelector('.comment-item__actions');
+    const repliesContainer = item.querySelector('[data-replies-container]');
+    const repliesList = item.querySelector('[data-replies-list]');
+    const replyButton = item.querySelector('[data-comment-reply]');
+    const showRepliesButton = item.querySelector('[data-show-replies]');
+    const moreRepliesButton = item.querySelector('[data-more-replies]');
+
+    if (replyButton) {
+      replyButton.addEventListener('click', () => {
+        let form = body.querySelector('.comment-reply-form');
+        if (form) {
+          form.hidden = !form.hidden;
+          if (!form.hidden) form.querySelector('input')?.focus();
+          return;
+        }
+        form = document.createElement('form');
+        form.className = 'comment-form comment-form--composer comment-reply-form';
+        const currentUserAvatar = escapeHtml(document.body.dataset.currentUserAvatar || '/images/avatar_default.png');
+        form.innerHTML = '<img class="comment-form__avatar" src="' + currentUserAvatar + '" alt="Ảnh đại diện của bạn" loading="lazy">' +
+          '<input type="text" maxlength="500" placeholder="Viết câu trả lời..." aria-label="Viết câu trả lời" required>' +
+          '<button type="submit">Gửi</button>';
+        actions.insertAdjacentElement('afterend', form);
+        form.querySelector('input')?.focus();
+        let pendingReplyRequestId = createCommentRequestId();
+        form.querySelector('input')?.addEventListener('input', () => {
+          pendingReplyRequestId = createCommentRequestId();
+        });
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const input = form.querySelector('input');
+          const content = input.value.trim();
+          if (!content) return;
+          const submit = form.querySelector('button');
+          submit.disabled = true;
+          try {
+            const created = await api('/api/posts/' + encodeURIComponent(postId) + '/comments', {
+              method: 'POST', body: {
+                content,
+                parentCommentId: commentId,
+                clientRequestId: pendingReplyRequestId
+              }
+            });
+            pendingReplyRequestId = createCommentRequestId();
+            input.value = '';
+            form.hidden = true;
+            const isPending = created && String(created.moderationStatus || '').toUpperCase() === 'PENDING';
+            if (!isPending) {
+              const count = (Number(item.dataset.replyCount) || 0) + 1;
+              item.dataset.replyCount = String(count);
+              const postEl = item.closest('.post');
+              const totalCommentCount = postEl && postEl.querySelector('.action--reply span');
+              if (totalCommentCount) {
+                const total = (parseInt(totalCommentCount.dataset.raw || totalCommentCount.textContent, 10) || 0) + 1;
+                totalCommentCount.dataset.raw = String(total);
+                totalCommentCount.textContent = formatCount(total);
+              }
+              let countButton = item.querySelector('[data-show-replies]');
+              if (!countButton) {
+                countButton = document.createElement('button');
+                countButton.type = 'button';
+                countButton.className = 'comment-link';
+                countButton.dataset.showReplies = '1';
+                actions.appendChild(countButton);
+                bindShowReplies(countButton, commentId, repliesContainer, repliesList, moreRepliesButton);
+              }
+              countButton.textContent = 'Xem ' + count + ' phản hồi';
+            } else {
+              toast('Câu trả lời đã gửi và đang chờ kiểm duyệt.', false);
+            }
+            repliesContainer.hidden = false;
+            await loadReplies(commentId, repliesContainer, null, true);
+          } catch (error) {
+            toast(error.message || 'Không gửi được câu trả lời', true);
+          } finally {
+            submit.disabled = false;
+          }
+        });
+      });
+    }
+
+    if (showRepliesButton) {
+      bindShowReplies(showRepliesButton, commentId, repliesContainer, repliesList, moreRepliesButton);
+    }
+    if (moreRepliesButton) {
+      moreRepliesButton.addEventListener('click', async () => {
+        const next = repliesContainer.dataset.nextCursor || '';
+        if (!next || moreRepliesButton.disabled) return;
+        moreRepliesButton.disabled = true;
+        try { await loadReplies(commentId, repliesContainer, next, false); }
+        catch (error) { toast(error.message || 'Không tải thêm phản hồi', true); }
+        finally { moreRepliesButton.disabled = false; }
+      });
+    }
+  }
+
+  function bindShowReplies(button, commentId, container, listEl, moreButton) {
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', async () => {
+      const opening = container.hidden;
+      container.hidden = !opening;
+      if (!opening) return;
+      if (container.dataset.loaded !== '1') {
+        button.disabled = true;
+        try { await loadReplies(commentId, container, null, true); }
+        catch (error) { toast(error.message || 'Không tải được phản hồi', true); }
+        finally { button.disabled = false; }
+      }
+    });
+  }
+
+  async function loadReplies(commentId, container, cursor, reset) {
+    const listEl = container.querySelector('[data-replies-list]');
+    const moreButton = container.querySelector('[data-more-replies]');
+    if (reset) {
+      listEl.innerHTML = '<span class="comment-list__loading">Đang tải phản hồi...</span>';
+      container.dataset.nextCursor = '';
+      container.dataset.loaded = '0';
+    }
+    const params = new URLSearchParams({ size: '20' });
+    if (cursor) params.set('cursor', cursor);
+    const page = await api('/api/comments/' + encodeURIComponent(commentId) + '/replies?' + params.toString());
+    const items = Array.isArray(page && page.items) ? page.items : [];
+    if (reset) listEl.innerHTML = '';
+    if (!items.length && reset && !page.hasMore) {
+      listEl.innerHTML = '<span class="comment-list__empty">Chưa có phản hồi nào.</span>';
+    } else if (items.length) {
+      listEl.insertAdjacentHTML('beforeend', items.map(comment => commentMarkup(comment, comment.postId)).join(''));
+      listEl.querySelectorAll('.comment-item:not([data-actions-bound="1"])').forEach(item => wireCommentItem(item.dataset.postId, item));
+    }
+    container.dataset.loaded = '1';
+    container.dataset.nextCursor = page.nextCursor || '';
+    moreButton.hidden = !page.hasMore || !page.nextCursor;
+  }
+
   async function loadComments(postId, listEl, page = 0) {
-    if (page === 0) listEl.innerHTML = '<span class="comment-list__loading">Dang tai binh luan...</span>';
+    if (page === 0) listEl.innerHTML = '<span class="comment-list__loading">Đang tải bình luận...</span>';
     try {
-      const comments = await api('/api/posts/' + postId + '/comments?page=' + page + '&size=50');
+      const comments = await api('/api/posts/' + encodeURIComponent(postId) + '/comments?page=' + page + '&size=50');
       listEl.querySelector('[data-more-comments]')?.remove();
       if (!comments.length && page === 0) {
-        listEl.innerHTML = '<span class="comment-list__empty">Chua co binh luan nao.</span>';
+        listEl.innerHTML = '<span class="comment-list__empty">Chưa có bình luận nào.</span>';
         return;
       }
       if (page === 0) listEl.innerHTML = '';
-      listEl.insertAdjacentHTML('beforeend', comments.map(c => (
-        '<div class="comment-item" data-comment-id="' + escapeHtml(c.id) + '">' +
-        '  <img src="' + escapeHtml(c.userAvatarUrl || '/images/avatar_default.png') + '" alt="avatar">' +
-        '  <div class="comment-item__body">' +
-        '    <span class="comment-item__username">' + escapeHtml(c.username || '') + '</span>' +
-        '    <p>' + escapeHtml(c.content) + '</p>' +
-        '    <span class="comment-item__time">' + timeAgo(c.createdAt) + '</span>' +
-        '  </div>' +
-        '</div>'
-      )).join(''));
+      listEl.insertAdjacentHTML('beforeend', comments.map(comment => commentMarkup(comment, postId)).join(''));
+      listEl.querySelectorAll('.comment-item:not([data-actions-bound="1"])').forEach(item => wireCommentItem(postId, item));
       if (comments.length === 50) {
         const more = document.createElement('button');
         more.type = 'button'; more.className = 'btn-outline';
@@ -898,7 +1188,7 @@ window.Aloute = (function () {
         listEl.appendChild(more);
       }
     } catch (err) {
-      if (page === 0) listEl.innerHTML = '<span class="comment-list__empty">Khong tai duoc binh luan.</span>';
+      if (page === 0) listEl.innerHTML = '<span class="comment-list__empty">Không tải được bình luận.</span>';
       else toast(err.message, true);
     }
   }
@@ -973,12 +1263,14 @@ window.Aloute = (function () {
         if (fileInput.files[0]) {
           const fd = new FormData();
           fd.append('file', fileInput.files[0]);
+          fd.append('purpose', 'post');
           const res = await api('/api/upload/image', { method: 'POST', body: fd });
           imageUrl = res.url;
         }
         if (videoInput.files[0]) {
           const fd = new FormData();
           fd.append('file', videoInput.files[0]);
+          fd.append('purpose', 'post');
           const res = await api('/api/upload/media', { method: 'POST', body: fd });
           if (res.type !== 'video') throw new Error('Tệp đã chọn không phải video hợp lệ.');
           videoUrl = res.url;
@@ -1798,26 +2090,34 @@ window.Aloute = (function () {
 
   function initPostPagination() {
     document.querySelectorAll('[data-load-posts]').forEach(button => {
-      let page = 1;
+      if (button.dataset.cursorBound === '1') return;
+      button.dataset.cursorBound = '1';
       button.addEventListener('click', async () => {
+        if (button.dataset.exhausted === '1') return;
         button.disabled = true;
         try {
           const url = new URL(button.dataset.url, window.location.origin);
-          url.searchParams.set('page', page);
-          const response = await fetch(url, { credentials: 'same-origin' });
-          if (!response.ok || response.redirected) throw new Error('Khong tai duoc bai viet');
+          if (button.dataset.cursor) url.searchParams.set('cursor', button.dataset.cursor);
+          else url.searchParams.delete('cursor');
+          const response = await fetchWithSessionRefresh(url, { credentials: 'same-origin' });
+          if (!response.ok || response.redirected) throw new Error('Không tải được bài viết');
           const fragment = document.createElement('template');
           fragment.innerHTML = await response.text();
           const posts = fragment.content.querySelectorAll('.post');
           const count = posts.length;
-
           posts.forEach(post => button.before(post));
           appendGridTiles(posts);
-          page++;
-          if (count < 20) button.dataset.exhausted = '1';
-          button.hidden = count < 20;
+          button.dataset.cursor = response.headers.get('X-Next-Cursor') || '';
+          const hasMore = response.headers.get('X-Has-More') === 'true';
+          button.hidden = !hasMore;
+          if (!hasMore) button.dataset.exhausted = '1';
           initFeedInteractions();
           formatInitialCounts();
+          if (!count && hasMore) {
+            // The current keyset window may contain only invisible posts; the advanced cursor
+            // is still valid, so the next explicit click continues instead of looping on page=0.
+            button.hidden = false;
+          }
         } catch (err) {
           toast(err.message, true);
         } finally {
@@ -2020,6 +2320,7 @@ window.Aloute = (function () {
         if (!file) return null;
         const fd = new FormData();
         fd.append('file', file);
+        fd.append('purpose', 'community');
         const res = await api('/api/upload/image', { method: 'POST', body: fd });
         return res.url;
       }
@@ -2144,7 +2445,7 @@ window.Aloute = (function () {
   async function showNewCommunityPost(communityId, postId) {
     const panel = document.getElementById('communityFeedPanel');
     try {
-      const res = await fetch('/api/communities/' + communityId + '/posts/fragment?page=0', { credentials: 'same-origin' });
+      const res = await fetchWithSessionRefresh('/api/communities/' + communityId + '/posts/fragment?page=0', { credentials: 'same-origin' });
       if (!res.ok || res.redirected) throw new Error('fragment');
       const tpl = document.createElement('template');
       tpl.innerHTML = await res.text();
@@ -2217,7 +2518,7 @@ window.Aloute = (function () {
     });
   }
 
-  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/saved', '/profile/me', '/communities', '/settings', '/stories', '/admin/moderation'];
+  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation'];
   let restoringHistory = false;
   let softNavigationBusy = false;
 
@@ -2245,7 +2546,7 @@ window.Aloute = (function () {
 
   async function fetchPageHtml(url) {
     const key = url.href;
-    const res = await fetch(key, { credentials: 'same-origin', headers: { 'X-ALOUTE-Navigation': 'soft' }, cache: 'no-store' });
+    const res = await fetchWithSessionRefresh(key, { credentials: 'same-origin', headers: { 'X-ALOUTE-Navigation': 'soft' }, cache: 'no-store' });
     if (!res.ok || !res.headers.get('content-type')?.includes('text/html')) throw new Error('navigation');
     const html = await res.text();
     return html;
@@ -2341,7 +2642,7 @@ window.Aloute = (function () {
   });
 
   return {
-    api, toast, timeAgo, escapeHtml, formatCount,
+    api, toast, timeAgo, escapeHtml, formatCount, csrfHeaders, fetchWithSessionRefresh,
     onRealtimeReady, connectRealtime, refreshNavBadges,
     initFeedInteractions, initFollowButtons, initCloseFriendButtons
   };

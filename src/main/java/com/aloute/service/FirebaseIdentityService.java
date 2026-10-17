@@ -21,7 +21,7 @@ public class FirebaseIdentityService {
         this.authService = authService;
     }
 
-    public AuthResponse loginWithGoogle(String idToken) {
+    public AuthResponse loginWithGoogle(String idToken, String twoFactorCode) {
         if (!firebaseAdminService.isAuthEnabled()) {
             throw new BadRequestException(
                     "Firebase chưa được cấu hình ở backend. Hãy làm theo FIREBASE_SETUP.md.");
@@ -51,7 +51,8 @@ public class FirebaseIdentityService {
                     email,
                     emailVerified,
                     claimString(claims, "name"),
-                    claimString(claims, "picture"));
+                    claimString(claims, "picture"),
+                    twoFactorCode);
         } catch (FirebaseAuthException ex) {
             throw new UnauthorizedException("Phiên đăng nhập Google không hợp lệ hoặc đã hết hạn");
         }

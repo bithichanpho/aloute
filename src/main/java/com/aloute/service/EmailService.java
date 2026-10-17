@@ -36,7 +36,9 @@ public class EmailService {
                 """
 <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
   <h2>Chào %s,</h2>
-  <p>Cảm ơn bạn đã đăng ký tài khoản ALOUTE. Bấm nút bên dưới để xác thực email:</p>
+  <p><strong>Bạn vừa nhận được yêu cầu đăng ký tài khoản ALOUTE bằng địa chỉ email này.</strong></p>
+  <p>Thông tin tên đăng nhập được cung cấp khi đăng ký là yêu cầu ban đầu. Chỉ nhấn xác thực nếu chính bạn đã bắt đầu đăng ký tài khoản này.</p>
+  <p style="color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;padding:10px;border-radius:6px;font-size:14px;"><strong>Nếu bạn không tự đăng ký:</strong> đừng nhấn nút xác thực và hãy bỏ qua email này. Tài khoản sẽ không được kích hoạt chỉ bằng cách bỏ qua email.</p>
   <p style="color:#666;font-size:14px;">Nếu bạn từng yêu cầu gửi lại email, chỉ liên kết trong email mới nhất còn hiệu lực.</p>
   <p style="margin: 24px 0;">
     <a href="%s" style="background:#101010;color:#fff;padding:12px 24px;
@@ -50,7 +52,7 @@ public class EmailService {
 """
                         .formatted(safeFullName, verifyLink, verifyLink);
 
-        sendHtml(toEmail, "Xác thực tài khoản ALOUTE - liên kết mới nhất", html);
+        sendHtml(toEmail, "Bạn vừa nhận được yêu cầu đăng ký ALOUTE - xác thực email", html);
     }
 
     public void sendResetPasswordEmail(String toEmail, String fullName, String resetToken) {
@@ -77,6 +79,36 @@ public class EmailService {
                         .formatted(safeFullName, resetLink, resetLink);
 
         sendHtml(toEmail, "Yêu cầu đặt lại mật khẩu ALOUTE", html);
+    }
+
+    /**
+     * Sent when someone tries to register an email that already has an account. The registration
+     * response is identical either way, so this mail is how the owner finds out.
+     */
+    public void sendAccountAlreadyExistsEmail(String toEmail, String fullName) {
+        String loginLink = frontendBaseUrl + "/login";
+        String forgotLink = frontendBaseUrl + "/forgot-password";
+        String safeFullName = escapeHtml(fullName);
+
+        String html =
+                """
+<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+  <h2>Chào %s,</h2>
+  <p>Có người vừa dùng địa chỉ email này để đăng ký tài khoản ALOUTE, nhưng email này <strong>đã có tài khoản</strong> nên không có tài khoản mới nào được tạo.</p>
+  <p>Nếu là bạn (ví dụ bạn quên mình đã đăng ký), hãy đăng nhập hoặc đặt lại mật khẩu:</p>
+  <p style="margin: 24px 0;">
+    <a href="%s" style="background:#101010;color:#fff;padding:12px 24px;
+       border-radius:8px;text-decoration:none;font-weight:600;">
+       Đăng nhập
+    </a>
+    &nbsp; <a href="%s">Quên mật khẩu?</a>
+  </p>
+  <p style="color:#888;font-size:13px;">Nếu không phải bạn, hãy bỏ qua email này. Tài khoản và mật khẩu của bạn không bị thay đổi.</p>
+</div>
+"""
+                        .formatted(safeFullName, loginLink, forgotLink);
+
+        sendHtml(toEmail, "Email này đã có tài khoản ALOUTE", html);
     }
 
     private static String escapeHtml(String value) {

@@ -24,7 +24,12 @@ import java.util.Set;
             def = "{'receiverId': 1, 'sentAt': -1}"),
     @org.springframework.data.mongodb.core.index.CompoundIndex(
             name = "chat_group_sent",
-            def = "{'groupId': 1, 'sentAt': -1}")
+            def = "{'groupId': 1, 'sentAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "chat_sender_client_id_unique",
+            def = "{'senderId': 1, 'clientId': 1}",
+            unique = true,
+            partialFilter = "{'clientId': {'$type': 'string'}}")
 })
 public class ChatMessage {
 
@@ -34,6 +39,8 @@ public class ChatMessage {
 
     private String senderId;
     private String receiverId;
+    /** Client-generated idempotency key, persisted for retry-safe WebSocket sends. */
+    private String clientId;
     private Long groupId;
     private String content;
     private String mediaUrl;
@@ -45,10 +52,6 @@ public class ChatMessage {
     private String callId;
     private String callType;
     private String callStatus;
-    private String storyId;
-    private String storyContent;
-    private String storyImageUrl;
-    private String storyVideoUrl;
 
     private boolean read = false;
     private boolean delivered = false;
@@ -103,6 +106,14 @@ public class ChatMessage {
 
     public void setReceiverId(String receiverId) {
         this.receiverId = receiverId;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
     }
 
     public Long getGroupId() {
@@ -184,15 +195,6 @@ public class ChatMessage {
     public void setCallStatus(String callStatus) {
         this.callStatus = callStatus;
     }
-
-    public String getStoryId() { return storyId; }
-    public void setStoryId(String storyId) { this.storyId = storyId; }
-    public String getStoryContent() { return storyContent; }
-    public void setStoryContent(String storyContent) { this.storyContent = storyContent; }
-    public String getStoryImageUrl() { return storyImageUrl; }
-    public void setStoryImageUrl(String storyImageUrl) { this.storyImageUrl = storyImageUrl; }
-    public String getStoryVideoUrl() { return storyVideoUrl; }
-    public void setStoryVideoUrl(String storyVideoUrl) { this.storyVideoUrl = storyVideoUrl; }
 
     public boolean isRead() {
         return read;

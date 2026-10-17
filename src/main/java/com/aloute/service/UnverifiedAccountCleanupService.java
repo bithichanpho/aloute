@@ -2,6 +2,7 @@ package com.aloute.service;
 
 import com.aloute.repository.IPendingUserRepository;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,6 +26,7 @@ public class UnverifiedAccountCleanupService {
     @Scheduled(
             initialDelayString = "${app.verification-cleanup.initial-delay-ms:600000}",
             fixedDelayString = "${app.verification-cleanup.fixed-delay-ms:3600000}")
+    @SchedulerLock(name = "unverifiedAccountCleanup", lockAtMostFor = "PT10M", lockAtLeastFor = "PT1M")
     @Transactional
     public void deleteExpiredAccounts() {
         long deleted = pendingUserRepository.deleteByExpiresAtLessThanEqual(LocalDateTime.now());

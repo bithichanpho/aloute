@@ -1,5 +1,6 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
@@ -9,6 +10,11 @@ import com.aloute.dto.response.UserProfileDto;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.AuthService;
 import com.aloute.service.ImageStorageService;
+import com.aloute.service.MediaUploadModerationService;
+import com.aloute.service.MediaAssetLifecycleService;
+import com.aloute.service.MediaUploadRateLimitService;
+import com.aloute.service.UploadContentValidator;
+import com.aloute.service.UploadPurpose;
 import com.aloute.service.UserService;
 
 import jakarta.validation.Valid;
@@ -27,22 +33,35 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Map;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/users")
 @Validated
 public class UserController {
 
     private final UserService userService;
     private final ImageStorageService imageStorageService;
+    private final MediaUploadModerationService uploadModeration;
+    private final MediaAssetLifecycleService mediaAssets;
+    private final MediaUploadRateLimitService uploadLimits;
     private final AuthService authService;
+    private final UploadContentValidator contentValidator = new UploadContentValidator();
+    private static final long MAX_AVATAR_SIZE_BYTES = 15L * 1024 * 1024;
 
     public UserController(
             UserService userService,
             ImageStorageService imageStorageService,
+            MediaUploadModerationService uploadModeration,
+            MediaAssetLifecycleService mediaAssets,
+            MediaUploadRateLimitService uploadLimits,
             AuthService authService) {
         this.userService = userService;
         this.imageStorageService = imageStorageService;
+        this.uploadModeration = uploadModeration;
+        this.mediaAssets = mediaAssets;
+        this.uploadLimits = uploadLimits;
         this.authService = authService;
     }
 
@@ -70,19 +89,57 @@ public class UserController {
     @PostMapping("/me/avatar")
     public ApiResponse<UserProfileDto> updateAvatar(
             Authentication authentication, @RequestParam("avatar") MultipartFile avatar) {
-
         Long userId = requireUserId(authentication);
+        uploadLimits.assertAllowed(userId);
         if (avatar == null || avatar.isEmpty()) {
             throw new BadRequestException("Vui lòng chọn ảnh đại diện");
         }
-        try {
-            String url = imageStorageService.uploadImage(avatar);
-            userService.updateAvatar(userId, url);
-            return ApiResponse.success(
-                    "Đã cập nhật ảnh đại diện", userService.getProfile(userId, userId));
-        } catch (IOException e) {
-            throw new BadRequestException("Tải ảnh lên thất bại: " + e.getMessage());
+        if (avatar.getSize() > MAX_AVATAR_SIZE_BYTES) {
+            throw new BadRequestException("Ảnh đại diện vượt quá dung lượng cho phép (15MB)");
         }
+        contentValidator.validateImage(avatar);
+        // Use the raw database URL, not the transformed display URL, for lifecycle/reference checks.
+        String previousAvatar = userService.findUserBasicInfo(userId)
+                .map(com.aloute.model.entity.User::getAvatarUrl)
+                .orElse(null);
+
+        final Map<String, String> uploaded;
+        try {
+            uploaded = imageStorageService.uploadImageDetails(avatar, UploadPurpose.AVATAR);
+        } catch (IOException e) {
+            throw new BadRequestException("Tải ảnh lên thất bại. Vui lòng thử lại.");
+        }
+        try {
+            mediaAssets.registerUpload(uploaded, UploadPurpose.AVATAR, userId);
+        } catch (RuntimeException trackingFailure) {
+            uploadModeration.deleteQuietly(uploaded);
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Không thể lưu thông tin quản lý ảnh. Vui lòng thử lại.");
+        }
+
+        // The same per-user Redis upload budget applies even though this endpoint bypasses /api/upload.
+        uploadModeration.requireApproved(uploaded, "image", "avatar");
+        try {
+            userService.updateAvatar(userId, uploaded.get("url"));
+        } catch (RuntimeException persistenceFailure) {
+            uploadModeration.deleteQuietly(uploaded);
+            throw persistenceFailure;
+        }
+        try {
+            mediaAssets.attachManagedReference(uploaded.get("url"), UploadPurpose.AVATAR,
+                    String.valueOf(userId), "USER_AVATAR", String.valueOf(userId));
+            if (previousAvatar != null && !previousAvatar.equals(uploaded.get("url"))) {
+                mediaAssets.deleteIfUnreferenced(previousAvatar);
+            }
+        } catch (RuntimeException cleanupFailure) {
+            // The scheduled orphan cleaner will reconcile a still-UPLOADED asset; don't fail the saved avatar update.
+            org.slf4j.LoggerFactory.getLogger(UserController.class).warn(
+                    "Avatar lifecycle reconciliation deferred (userId={}, cause={})",
+                    userId, cleanupFailure.getClass().getSimpleName());
+        }
+        return ApiResponse.success(
+                "Đã cập nhật ảnh đại diện", userService.getProfile(userId, userId));
     }
 
     @PostMapping("/me/change-password")

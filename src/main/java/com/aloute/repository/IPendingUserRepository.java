@@ -11,11 +11,15 @@ public interface IPendingUserRepository extends JpaRepository<PendingUser, Long>
 
     Optional<PendingUser> findByUsername(String username);
 
+    Optional<PendingUser> findByUsernameIgnoreCase(String username);
+
     Optional<PendingUser> findByEmailIgnoreCase(String email);
 
     Optional<PendingUser> findByVerificationToken(String verificationToken);
 
     boolean existsByUsername(String username);
+
+    boolean existsByUsernameIgnoreCase(String username);
 
     boolean existsByEmailIgnoreCase(String email);
 

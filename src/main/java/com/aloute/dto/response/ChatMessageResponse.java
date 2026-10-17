@@ -28,10 +28,6 @@ public class ChatMessageResponse {
     private String callId;
     private String callType;
     private String callStatus;
-    private String storyId;
-    private String storyContent;
-    private String storyImageUrl;
-    private String storyVideoUrl;
 
     public ChatMessageResponse() {}
 
@@ -98,15 +94,6 @@ public class ChatMessageResponse {
     public void setCallStatus(String callStatus) {
         this.callStatus = callStatus;
     }
-
-    public String getStoryId() { return storyId; }
-    public void setStoryId(String storyId) { this.storyId = storyId; }
-    public String getStoryContent() { return storyContent; }
-    public void setStoryContent(String storyContent) { this.storyContent = storyContent; }
-    public String getStoryImageUrl() { return storyImageUrl; }
-    public void setStoryImageUrl(String storyImageUrl) { this.storyImageUrl = storyImageUrl; }
-    public String getStoryVideoUrl() { return storyVideoUrl; }
-    public void setStoryVideoUrl(String storyVideoUrl) { this.storyVideoUrl = storyVideoUrl; }
 
     public boolean isRead() {
         return read;

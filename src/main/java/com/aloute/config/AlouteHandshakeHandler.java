@@ -9,7 +9,7 @@ import java.security.Principal;
 import java.util.Map;
 import java.util.UUID;
 
-public class AloutueHandshakeHandler extends DefaultHandshakeHandler {
+public class AlouteHandshakeHandler extends DefaultHandshakeHandler {
 
     @Override
     protected Principal determineUser(

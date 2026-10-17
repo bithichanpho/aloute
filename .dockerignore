@@ -13,3 +13,7 @@ target
 credentials/
 **/*firebase-adminsdk*.json
 **/*service-account*.json
+.classpath
+.factorypath
+.project
+.settings/

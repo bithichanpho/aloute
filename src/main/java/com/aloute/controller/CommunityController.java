@@ -1,5 +1,6 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.util.List;
 
 import org.springframework.security.core.Authentication;
@@ -30,6 +31,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/communities")
 @Validated
 public class CommunityController {
@@ -162,7 +164,7 @@ public class CommunityController {
     public ApiResponse<List<PostResponse>> getPosts(
             Authentication authentication,
             @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page,
             @RequestParam(defaultValue = "20") @Min(value = 1, message = "Kích thước trang phải từ 1 trở lên") @Max(value = 50, message = "Kích thước trang tối đa 50") int size) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(communityService.getFeed(communityId, userId, page, size));

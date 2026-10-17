@@ -14,8 +14,12 @@ import java.util.List;
 @Component
 @ConditionalOnProperty(
         name = "app.db.relationship-migration.enabled",
-        havingValue = "true",
-        matchIfMissing = true)
+        havingValue = "true")
+/**
+ * Legacy compatibility bridge for one-time local schema bootstrap only.
+ * Production schema changes are tracked by Flyway; enable this explicitly with
+ * ALOUTE_DB_RELATIONSHIP_MIGRATION=true only when bootstrapping an old local database.
+ */
 public class DatabaseRelationshipMigrator implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseRelationshipMigrator.class);

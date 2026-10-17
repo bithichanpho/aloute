@@ -14,10 +14,10 @@
     })();
   </script>
   <title>Đăng nhập / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css?v=20261016-chat-receipts-width-v7}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261017-moderation-toast-v2}">
   <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
-  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261016-chat-receipts-width-v7}">
-  <script th:src="@{/js/ui.js?v=20261016-chat-receipts-width-v7}" defer></script>
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261017-moderation-toast-v2}">
+  <script th:src="@{/js/ui.js?v=20261017-moderation-toast-v2}" defer></script>
 </head>
 <body class="auth-body">
   <button type="button" class="auth-theme-toggle" data-theme-toggle aria-label="Chuyển giao diện sáng/tối" title="Chuyển giao diện sáng/tối">
@@ -79,8 +79,8 @@
     </div>
   </div>
 
-  <script th:src="@{/js/app.js?v=20261016-chat-receipts-width-v7}"></script>
-  <script th:src="@{/js/firebase-client.js?v=20261016-chat-receipts-width-v7}"></script>
+  <script th:src="@{/js/app.js?v=20261017-moderation-toast-v2}"></script>
+  <script th:src="@{/js/firebase-client.js?v=20261017-firebase-csp-fix-v1}"></script>
   <script th:inline="javascript">
     const loginForm = document.getElementById('loginForm');
     const credentialsStep = document.getElementById('credentialsStep');
@@ -111,7 +111,7 @@
     if (new URLSearchParams(window.location.search).get('registered')) {
       const notice = document.createElement('div');
       notice.className = 'form-success';
-      notice.textContent = 'Tài khoản đã được tạo. Hãy xác thực email rồi đăng nhập.';
+      notice.textContent = 'Đã ghi nhận đăng ký. Hãy kiểm tra email (cả thư rác) để xác thực rồi đăng nhập.';
       loginForm.prepend(notice);
       document.getElementById('resendVerificationBox').style.display = 'block';
     }

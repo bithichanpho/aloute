@@ -32,7 +32,6 @@ class SocialFeatureServiceTest {
                     mock(PostService.class),
                     mock(ModerationService.class),
                     mock(AuthRateLimitService.class),
-                    mock(ChatService.class),
                     mock(NotificationService.class));
 
     @Test
@@ -58,6 +57,23 @@ class SocialFeatureServiceTest {
     }
 
     @Test
+    void hiddenPostCannotBeEditedByAuthor() {
+        Post hidden = new Post();
+        hidden.setId("post-1");
+        hidden.setUserId("1");
+        hidden.setContent("violating");
+        hidden.setModerationStatus(ModerationStatus.HIDDEN);
+        when(access.requirePost("post-1", 1L)).thenReturn(hidden);
+        CreatePostRequest request = new CreatePostRequest();
+        request.setContent("clean now");
+
+        assertThrows(ForbiddenException.class, () -> service.edit(1L, "post-1", request));
+
+        verify(mongo, never()).updateFirst(any(), any(), eq(Post.class));
+        assertEquals(ModerationStatus.HIDDEN, hidden.getModerationStatus());
+    }
+
+    @Test
     void cannotBlockSelf() {
         assertThrows(BadRequestException.class, () -> service.block(1L, 1L, true));
     }
@@ -72,6 +88,23 @@ class SocialFeatureServiceTest {
                 ResourceNotFoundException.class, () -> service.decideFollow(3L, "request", true));
         verifyNoInteractions(friends);
     }
+
+
+    @Test
+    void declineFollowRequestRemovesMongoRequestWithoutWritingFriendEdge() {
+        FollowRequest request = new FollowRequest();
+        request.setId("request-1");
+        request.setTargetId(2L);
+        request.setFollowerId(1L);
+        when(mongo.findById("request-1", FollowRequest.class)).thenReturn(request);
+
+        service.decideFollow(2L, "request-1", false);
+
+        verify(mongo).remove(any(org.springframework.data.mongodb.core.query.Query.class),
+                eq(FollowRequest.class));
+        verifyNoInteractions(friends);
+    }
+
 
     @Test
     void cannotEditOrReadHistoryOfSomeoneElsesPost() {
@@ -92,6 +125,33 @@ class SocialFeatureServiceTest {
         verifyNoInteractions(mongo);
     }
 
+
+    @Test
+    void adminModerationQueueUsesStablePagedQueriesAndIncludesHasMoreMetadata() {
+        User admin = new User();
+        admin.setId(9L);
+        admin.setActive(true);
+        admin.setRole(new Role("ROLE_ADMIN"));
+        when(users.findById(9L)).thenReturn(Optional.of(admin));
+        when(mongo.find(any(org.springframework.data.mongodb.core.query.Query.class), eq(ContentReport.class)))
+                .thenReturn(List.of());
+        when(mongo.find(any(org.springframework.data.mongodb.core.query.Query.class), eq(Post.class)))
+                .thenReturn(List.of());
+        when(mongo.find(any(org.springframework.data.mongodb.core.query.Query.class), eq(Comment.class)))
+                .thenReturn(List.of());
+
+        Map<String, Object> queue = service.queue(9L, 2, 15);
+
+        assertEquals(2, queue.get("page"));
+        assertEquals(15, queue.get("size"));
+        assertEquals(false, queue.get("hasMore"));
+        assertTrue(((List<?>) queue.get("reports")).isEmpty());
+        var queries = org.mockito.ArgumentCaptor.forClass(org.springframework.data.mongodb.core.query.Query.class);
+        verify(mongo, times(3)).find(queries.capture(), any(Class.class));
+        assertTrue(queries.getAllValues().stream().allMatch(q -> q.getSkip() == 30 && q.getLimit() == 16));
+        assertTrue(queries.getAllValues().stream().allMatch(q -> !q.getSortObject().isEmpty()));
+    }
+
     @Test
     void duplicateReportDoesNotResetReviewDecision() {
         ContentReport reviewed = new ContentReport();
@@ -101,37 +161,4 @@ class SocialFeatureServiceTest {
         verify(mongo, never()).insert(any(ContentReport.class));
     }
 
-    @Test
-    void storyIsModeratedAndExpiresAfterTwentyFourHours() {
-        ModerationService moderationService = mock(ModerationService.class);
-        AuthRateLimitService rateLimit = mock(AuthRateLimitService.class);
-        SocialFeatureService storyService =
-                new SocialFeatureService(
-                        mongo,
-                        access,
-                        users,
-                        friends,
-                        closeFriends,
-                        mock(PostService.class),
-                        moderationService,
-                        rateLimit,
-                        mock(ChatService.class),
-                        mock(NotificationService.class));
-        when(moderationService.check("Một ngày đẹp trời"))
-                .thenReturn(new com.aloute.dto.response.ModerationResult("safe", 0.01));
-        when(moderationService.resolveStatus(0.01)).thenReturn(ModerationStatus.APPROVED);
-        when(moderationService.isMediaApproved("https://cdn/story.jpg", "image")).thenReturn(true);
-        when(moderationService.isMediaApproved(null, "video")).thenReturn(true);
-        when(mongo.insert(any(Story.class))).thenAnswer(call -> call.getArgument(0));
-        Instant before = Instant.now();
-
-        Story story = storyService.story(1L, "Một ngày đẹp trời", "https://cdn/story.jpg", null);
-
-        assertEquals(1L, story.getUserId());
-        assertEquals("https://cdn/story.jpg", story.getImageUrl());
-        assertTrue(story.getExpiresAt().isAfter(before.plusSeconds(86_390)));
-        verify(rateLimit)
-                .checkAndRecord(eq("STORY"), eq("1"), anyInt(), any(), any(), any(), any());
-        verify(mongo).insert(story);
-    }
 }

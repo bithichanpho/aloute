@@ -1,0 +1,22 @@
+# Privacy and content moderation disclosure draft
+
+This is an engineering draft, not legal advice. Have the project owner/legal reviewer adapt it to the actual data flows, retention settings, region, and applicable law before a public release.
+
+## Data sent to moderation providers
+
+When moderation is enabled, ALOUTE may send user-submitted text to the configured moderation service. The service can forward text to OpenAI's moderation endpoint. Images may be analyzed by a model; video may be sampled into frames, and audio may be sent to speech-to-text when that feature is invoked. Requests should include only the media/text needed for the moderation decision.
+
+## Queue and visibility
+
+New posts/comments remain `PENDING` until background moderation records a decision. Pending content must not be distributed to other users as approved content. If the upstream service is unavailable, the system retries under a bounded policy and eventually flags the item for admin review instead of treating the failure as approval. Uploads use one centralized `UploadPurpose` policy and separate Cloudinary folders (`aloute/post`, `aloute/chat`, `aloute/community`, `aloute/avatar`, `aloute/general`). Uploads with `purpose=post` validate file format/size and register the asset; the post worker performs remote text/media moderation after submission, avoiding a duplicate upload-time call. When moderation is enabled, uploads for chat/community/user avatar (and requests omitting purpose) are moderated before the upload endpoint returns the URL. New chat message media and community avatar/cover URLs must also belong to the corresponding managed Cloudinary purpose folder, preventing callers from bypassing the upload moderation endpoint with an arbitrary URL. If that check is unsafe or the moderation service fails, the endpoint rejects the upload and attempts to remove the just-uploaded asset. Post-purpose media is scoped to posts and cannot be reused through chat/community even after post approval; upload it again with the appropriate purpose so it goes through that flow's own moderation. When a post is hidden by automatic or administrative moderation, its image/video assets are deleted with CDN invalidation; failed deletes remain in a lifecycle ledger and are retried. A scheduled cleanup removes unreferenced post-purpose uploads older than the configured grace period. When `MODERATION_ENABLED=false`, post-content/background moderation is disabled for local/demo only. Non-post media upload endpoints fail closed and do not return a public URL while moderation is off. This configuration is not suitable for a public deployment.
+The upload pipeline currently accepts image/video only. PDF, Office, standalone audio, CSV, JSON and other raw/document uploads are rejected in both the controller and storage service until a dedicated scanner is implemented. `ImageStorageService` does not have a raw upload path enabled. Every managed media URL is checked against the configured Cloudinary cloud name, HTTPS, purpose folder, exact original URL in the lifecycle ledger, and the authenticated uploader. Upload endpoints and the direct avatar endpoint share a Redis-backed per-user upload rate limit; when Redis is required but unavailable, the request is rejected rather than bypassing the limit. The lifecycle ledger reconciles abandoned uploads, profile/community changes, chat message deletion, account deletion and hidden/deleted posts; Cloudinary destroy requests invalidate CDN cache where supported. A deployment policy that needs document/raw scanning must add a dedicated scanner and explicit allowlist before enabling those formats.
+
+
+## User-facing notice checklist
+
+- Explain that user-generated text/media may be processed by an external moderation/transcription provider.
+- Identify purposes, broad categories of processed content, retention/handling, and relevant provider links.
+- Explain what happens when content is flagged, rejected, or moderation is unavailable, plus the appeal/contact process.
+- State whether video frames or audio transcription are used in any feature that is actually enabled.
+- Verify provider settings/data controls and avoid claiming zero retention or no training unless independently confirmed for the exact account/product configuration.
+- Publish a final privacy notice and obtain appropriate consent/notice before public launch.

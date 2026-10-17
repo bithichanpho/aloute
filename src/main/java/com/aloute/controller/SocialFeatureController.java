@@ -1,28 +1,31 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.CreatePostRequest;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.SocialFeatureService;
-import com.aloute.validation.HttpUrl;
-import com.aloute.validation.AtLeastOneNotBlank;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
-import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api")
-@RequiredArgsConstructor
 @Validated
 public class SocialFeatureController {
     private final SocialFeatureService service;
+
+    public SocialFeatureController(SocialFeatureService service) {
+        this.service = service;
+    }
 
     public record Report(
             @NotBlank @Pattern(regexp = "POST|COMMENT|USER", message = "Loại báo cáo không hợp lệ") String targetType,
@@ -34,16 +37,6 @@ public class SocialFeatureController {
             @NotBlank @Size(max = 100) String targetId,
             @NotBlank @Pattern(regexp = "APPROVE|HIDE|DISMISS", message = "Quyết định không hợp lệ") String decision,
             @Size(max = 256) String reportId) {}
-
-    public record StoryReplyInput(@NotBlank @Size(max = 1000) String content) {}
-
-    @AtLeastOneNotBlank(
-            fields = {"content", "imageUrl", "videoUrl"},
-            message = "Tin cần có nội dung, hình ảnh hoặc video")
-    public record StoryInput(
-            @Size(max = 2000) String content,
-            @Size(max = 2048) @HttpUrl String imageUrl,
-            @Size(max = 2048) @HttpUrl String videoUrl) {}
 
     private Long user(Authentication auth) {
         Long id = SecurityUtils.currentUserId(auth);
@@ -93,11 +86,16 @@ public class SocialFeatureController {
                 service.report(user(a), r.targetType(), r.targetId(), r.reason()));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/moderation")
-    public ApiResponse<?> queue(Authentication a) {
-        return ApiResponse.success(service.queue(user(a)));
+    public ApiResponse<?> queue(
+            Authentication a,
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "Kích thước trang phải lớn hơn 0") @Max(value = 50, message = "Kích thước trang tối đa là 50") int size) {
+        return ApiResponse.success(service.queue(user(a), page, size));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/content/{type}/{id}")
     public ApiResponse<?> reviewContent(
             Authentication a,
@@ -106,6 +104,7 @@ public class SocialFeatureController {
         return ApiResponse.success(service.reviewContent(user(a), type, id));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/admin/moderation")
     public ApiResponse<?> moderate(Authentication a, @Valid @RequestBody Decision d) {
         service.moderate(user(a), d.targetType(), d.targetId(), d.decision(), d.reportId());
@@ -113,7 +112,7 @@ public class SocialFeatureController {
     }
 
     @GetMapping("/saved")
-    public ApiResponse<?> saved(Authentication a, @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+    public ApiResponse<?> saved(Authentication a, @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page) {
         return ApiResponse.success(service.saved(user(a), page));
     }
 
@@ -146,52 +145,4 @@ public class SocialFeatureController {
         return ApiResponse.success(service.history(user(a), id));
     }
 
-    @GetMapping("/stories")
-    public ApiResponse<?> stories(Authentication a) {
-        return ApiResponse.success(service.stories(user(a)));
-    }
-
-    @PostMapping("/stories")
-    public ApiResponse<?> story(Authentication a, @Valid @RequestBody StoryInput s) {
-        return ApiResponse.success(service.story(user(a), s.content(), s.imageUrl(), s.videoUrl()));
-    }
-
-    @DeleteMapping("/stories/{id}")
-    public ApiResponse<?> deleteStory(
-            Authentication a, @PathVariable @NotBlank(message = "Thiếu mã tin") String id) {
-        service.deleteStory(user(a), id);
-        return ApiResponse.success(null);
-    }
-
-    @PostMapping("/stories/{id}/view")
-    public ApiResponse<?> viewStory(
-            Authentication a, @PathVariable @NotBlank(message = "Thiếu mã tin") String id) {
-        return ApiResponse.success(java.util.Map.of("views", service.viewStory(user(a), id)));
-    }
-
-    @PostMapping("/stories/{id}/replies")
-    public ApiResponse<?> replyStory(
-            Authentication a,
-            @PathVariable @NotBlank(message = "Thiếu mã tin") String id,
-            @Valid @RequestBody StoryReplyInput input) {
-        return ApiResponse.success(service.replyStory(user(a), id, input.content()));
-    }
-
-    @PutMapping("/stories/{id}/reaction")
-    public ApiResponse<?> reactStory(
-            Authentication a, @PathVariable @NotBlank(message = "Thiếu mã tin") String id) {
-        return ApiResponse.success(java.util.Map.of("liked", service.reactStory(user(a), id, true)));
-    }
-
-    @DeleteMapping("/stories/{id}/reaction")
-    public ApiResponse<?> removeStoryReaction(
-            Authentication a, @PathVariable @NotBlank(message = "Thiếu mã tin") String id) {
-        return ApiResponse.success(java.util.Map.of("liked", service.reactStory(user(a), id, false)));
-    }
-
-    @GetMapping("/stories/{id}/viewers")
-    public ApiResponse<?> storyViewers(
-            Authentication a, @PathVariable @NotBlank(message = "Thiếu mã tin") String id) {
-        return ApiResponse.success(service.storyViewers(user(a), id));
-    }
 }

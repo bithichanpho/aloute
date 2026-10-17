@@ -1,5 +1,6 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.response.NotificationResponse;
@@ -21,6 +22,7 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.validation.annotation.Validated;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/notifications")
 @Validated
 public class NotificationController {

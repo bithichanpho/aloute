@@ -11,6 +11,10 @@ public interface ICommentRepository extends MongoRepository<Comment, String> {
     List<Comment> findByPostIdOrderByCreatedAtAsc(
             String postId, org.springframework.data.domain.Pageable pageable);
 
+    /** Top-level comments only; replies are loaded lazily through the cursor endpoint. */
+    List<Comment> findByPostIdAndParentCommentIdIsNullOrderByCreatedAtAsc(
+            String postId, org.springframework.data.domain.Pageable pageable);
+
     default List<Comment> findByPostIdOrderByCreatedAtAsc(String postId) {
         return findByPostIdOrderByCreatedAtAsc(
                 postId, org.springframework.data.domain.PageRequest.of(0, 50));

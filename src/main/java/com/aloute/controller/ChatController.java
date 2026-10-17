@@ -1,19 +1,31 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
+import com.aloute.common.exception.ResourceNotFoundException;
+import com.aloute.common.exception.BadRequestException;
+import com.aloute.common.exception.TooManyRequestsException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.SendMessageRequest;
 import com.aloute.dto.response.ChatMessageResponse;
 import com.aloute.dto.response.ConversationResponse;
-import com.aloute.repository.IUserRepository;
+import com.aloute.service.AuthenticationUserCache;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.ChatService;
 import com.aloute.service.FriendService;
 import com.aloute.service.PresenceService;
+import com.aloute.service.ContentAccessService;
+import com.aloute.service.NotificationService;
+import com.aloute.service.CallTimeoutService;
+import com.aloute.service.CallTimeoutService.CallInfo;
+import com.aloute.service.AuthRateLimitService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,55 +41,60 @@ import java.util.Map;
 
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/chat")
 @Validated
 public class ChatController {
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
     public record TypingSignal(@Positive Long receiverId) {}
     public record DeliverySignal(@NotBlank @Size(max = 100) String messageId) {}
 
     public record CallSignal(
-            @Positive Long targetUserId,
+            @NotNull @Positive Long targetUserId,
             @Positive Long callerUserId,
-            @Size(max = 100) String callId,
+            @NotBlank @Size(max = 100) String callId,
             @Pattern(regexp = "audio|video") String callType,
             Boolean missed,
             Object offer,
             Object answer,
-            Object candidate) {}
-    private final com.aloute.service.ContentAccessService access;
+            Object candidate,
+            Object sdp) {}
+    private final ContentAccessService access;
 
     private final ChatService chatService;
-    private final IUserRepository userRepository;
+    private final AuthenticationUserCache authenticationUserCache;
     private final SimpMessagingTemplate messagingTemplate;
     private final PresenceService presenceService;
     private final FriendService friendService;
-    private final com.aloute.service.NotificationService notificationService;
-    private final com.aloute.service.CallTimeoutService callTimeoutService;
+    private final NotificationService notificationService;
+    private final CallTimeoutService callTimeoutService;
     private final Validator validator;
-    private final com.aloute.service.AuthRateLimitService rateLimitService;
+    private final AuthRateLimitService rateLimitService;
 
     public ChatController(
             ChatService chatService,
-            IUserRepository userRepository,
+            AuthenticationUserCache authenticationUserCache,
             SimpMessagingTemplate messagingTemplate,
             PresenceService presenceService,
             FriendService friendService,
-            com.aloute.service.NotificationService notificationService,
-            com.aloute.service.CallTimeoutService callTimeoutService,
-            com.aloute.service.ContentAccessService access,
+            NotificationService notificationService,
+            CallTimeoutService callTimeoutService,
+            ContentAccessService access,
             Validator validator,
-            com.aloute.service.AuthRateLimitService rateLimitService) {
+            AuthRateLimitService rateLimitService) {
         this.access = access;
 
         this.chatService = chatService;
-        this.userRepository = userRepository;
+        this.authenticationUserCache = authenticationUserCache;
         this.messagingTemplate = messagingTemplate;
         this.presenceService = presenceService;
         this.friendService = friendService;
@@ -97,7 +114,7 @@ public class ChatController {
     public ApiResponse<List<ChatMessageResponse>> getMessages(
             Authentication authentication,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long otherUserId,
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 200, message = "Lịch sử trò chuyện quá sâu (tối đa 200 trang)") int page) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(chatService.getMessages(userId, otherUserId, page));
     }
@@ -114,7 +131,7 @@ public class ChatController {
     public ApiResponse<List<ChatMessageResponse>> getGroupMessages(
             Authentication authentication,
             @PathVariable @Positive(message = "Mã nhóm không hợp lệ") Long groupId,
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") int page) {
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 200, message = "Lịch sử trò chuyện quá sâu (tối đa 200 trang)") int page) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(chatService.getGroupMessages(groupId, userId, page));
     }
@@ -143,26 +160,35 @@ public class ChatController {
     }
 
     @GetMapping("/online/{userId}")
-    public ApiResponse<Boolean> isOnline(@PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
+    public ApiResponse<Boolean> isOnline(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
+        Long requesterId = requireUserId(authentication);
+        // Presence is private information: only the account itself or a mutual friend can query it.
+        if (!requesterId.equals(userId) && !friendService.isFriend(requesterId, userId)) {
+            // Return 404 rather than reveal whether a blocked/non-friend account exists or is online.
+            throw new ResourceNotFoundException("Không tìm thấy tài khoản");
+        }
         return ApiResponse.success(presenceService.isOnline(userId));
     }
 
     @MessageMapping("/chat.send")
     public void sendMessage(@Valid SendMessageRequest request, Principal principal) {
+        if (request == null) return;
         if (principal == null
                 || principal.getName() == null
                 || principal.getName().startsWith("anonymous-")) {
             return;
         }
 
-        userRepository
+        authenticationUserCache
                 .findByUsername(principal.getName())
                 .ifPresent(
                         sender -> {
                             try {
                                 var violations = validator.validate(request);
                                 if (!violations.isEmpty()) {
-                                    throw new com.aloute.common.exception.BadRequestException(
+                                    throw new BadRequestException(
                                             violations.iterator().next().getMessage());
                                 }
                                 rateLimitService.checkAndRecord(
@@ -171,8 +197,11 @@ public class ChatController {
                                         java.time.Duration.ofMinutes(5),
                                         "Bạn gửi tin quá nhanh. Thử lại sau %d phút.",
                                         "Tạm khóa gửi tin do gửi quá nhiều yêu cầu.");
+                                boolean retryOfPersistedMessage =
+                                        chatService.hasMessageForClientId(sender.getId(), request.getClientId());
+                                ChatMessageResponse response;
                                 if (request.getGroupId() != null) {
-                                    chatService.sendGroupMessage(
+                                    response = chatService.sendGroupMessage(
                                             sender.getId(),
                                             request.getGroupId(),
                                             request.getContent(),
@@ -182,7 +211,7 @@ public class ChatController {
                                             request.getMediaName(),
                                             request.getMediaSize());
                                 } else {
-                                    chatService.sendMessage(
+                                    response = chatService.sendMessage(
                                             sender.getId(),
                                             request.getReceiverId(),
                                             request.getContent(),
@@ -192,18 +221,38 @@ public class ChatController {
                                             request.getMediaName(),
                                             request.getMediaSize());
                                 }
+                                // A client retry gets an ACK with the already-persisted message, but
+                                // does not fan it out to every participant a second time.
+                                if (retryOfPersistedMessage) {
+                                    messagingTemplate.convertAndSendToUser(
+                                            principal.getName(), "/queue/messages", response);
+                                }
                             } catch (RuntimeException ex) {
-
+                                if (ex instanceof DuplicateKeyException) {
+                                    try {
+                                        ChatMessageResponse persisted = chatService.findMessageForClientId(
+                                                sender.getId(), request.getClientId());
+                                        if (persisted != null) {
+                                            // Two concurrent tabs raced on the unique (senderId, clientId) index.
+                                            // ACK the canonical message only to the sender; never fan it out twice.
+                                            messagingTemplate.convertAndSendToUser(
+                                                    principal.getName(), "/queue/messages", persisted);
+                                            return;
+                                        }
+                                    } catch (RuntimeException lookupFailure) {
+                                        log.debug("Unable to verify idempotent chat retry (senderId={}, cause={})",
+                                                sender.getId(), lookupFailure.getClass().getSimpleName());
+                                    }
+                                }
+                                log.warn("WebSocket chat send rejected (senderId={}, cause={})",
+                                        sender.getId(), ex.getClass().getSimpleName());
+                                Map<String, Object> errorPayload = new java.util.HashMap<>();
+                                errorPayload.put("message", ex instanceof TooManyRequestsException
+                                        ? "Bạn thao tác quá nhanh. Vui lòng thử lại sau."
+                                        : "Không thể gửi tin nhắn. Hãy kiểm tra nội dung, quyền truy cập và thử lại.");
+                                errorPayload.put("clientId", request.getClientId() == null ? "" : request.getClientId());
                                 messagingTemplate.convertAndSendToUser(
-                                        principal.getName(),
-                                        "/queue/errors",
-                                        Map.of(
-                                                "message",
-                                                ex.getMessage(),
-                                                "clientId",
-                                                request.getClientId() != null
-                                                        ? request.getClientId()
-                                                        : ""));
+                                        principal.getName(), "/queue/errors", errorPayload);
                             }
                         });
     }
@@ -212,11 +261,17 @@ public class ChatController {
     public void acknowledgeDelivered(@Valid DeliverySignal payload, Principal principal) {
         if (principal == null || principal.getName() == null || principal.getName().startsWith("anonymous-")) return;
         if (!validator.validate(payload).isEmpty()) return;
-        userRepository.findByUsername(principal.getName()).ifPresent(user -> {
+        authenticationUserCache.findByUsername(principal.getName()).ifPresent(user -> {
             try {
-                if (user.isActive()) chatService.markAsDelivered(user.getId(), payload.messageId());
+                if (!user.isActive() || !allowSignal("WS_ACK", user.getId().toString(), 300,
+                        java.time.Duration.ofMinutes(5), java.time.Duration.ofMinutes(5))) return;
+                chatService.markAsDelivered(user.getId(), payload.messageId());
             } catch (RuntimeException ex) {
-                // A duplicate ACK or an already-deleted message must not interrupt the chat socket.
+                // A duplicate ACK or an already-deleted message must not interrupt the chat socket,
+                // but retain a diagnostic so unexpected persistence/authorization failures are visible.
+                log.debug(
+                        "Delivery acknowledgement rejected (recipientId={}, messageId={}, cause={})",
+                        user.getId(), payload.messageId(), ex.getClass().getSimpleName());
             }
         });
     }
@@ -229,16 +284,18 @@ public class ChatController {
             return;
         }
         if (!validator.validate(payload).isEmpty()) return;
-        userRepository
+        authenticationUserCache
                 .findByUsername(principal.getName())
                 .ifPresent(
                         sender -> {
                             try {
+                                if (!sender.isActive() || !allowSignal("WS_TYPING", sender.getId().toString(), 60,
+                                        java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1))) return;
                                 Long receiverId = payload.receiverId();
                                 if (!sender.isActive()
                                         || !access.profileVisible(sender.getId(), receiverId))
                                     return;
-                                userRepository
+                                authenticationUserCache
                                         .findById(receiverId)
                                         .ifPresent(
                                                 receiver ->
@@ -248,8 +305,9 @@ public class ChatController {
                                                                 Map.of(
                                                                         "senderId",
                                                                         sender.getId())));
-                            } catch (RuntimeException ignored) {
-
+                            } catch (RuntimeException ex) {
+                                log.debug("Typing signal not delivered (senderId={}, receiverId={}, cause={})",
+                                        sender.getId(), payload.receiverId(), ex.getClass().getSimpleName());
                             }
                         });
     }
@@ -277,84 +335,109 @@ public class ChatController {
     private void forwardCallSignal(CallSignal payload, Principal principal, String type) {
         if (principal == null || principal.getName() == null) return;
         if (!validator.validate(payload).isEmpty()) return;
+
         final Long targetId = payload.targetUserId();
+        final String callId = payload.callId() == null ? "" : payload.callId().trim();
+        final String callType = "audio".equalsIgnoreCase(payload.callType()) ? "audio" : "video";
+        if (callId.isBlank()) return;
 
-        userRepository
-                .findByUsername(principal.getName())
-                .ifPresent(
-                        sender -> {
-                            if (sender.getId().equals(targetId)
-                                    || !sender.isActive()
-                                    || !access.profileVisible(sender.getId(), targetId)) return;
-                            if (!friendService.isFriend(sender.getId(), targetId)) return;
+        authenticationUserCache.findByUsername(principal.getName()).ifPresent(sender -> {
+            if (sender.getId().equals(targetId) || !sender.isActive()
+                    || !access.profileVisible(sender.getId(), targetId)
+                    || !friendService.isFriend(sender.getId(), targetId)) return;
+            if (!allowSignal("WS_CALL_SIGNAL", sender.getId().toString(), 120,
+                    java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1))) return;
 
-                            userRepository
-                                    .findById(targetId)
-                                    .ifPresent(
-                                            target -> {
-                                                Map<String, Object> signal = new java.util.HashMap<>();
-                                                if (payload.offer() != null) signal.put("offer", payload.offer());
-                                                if (payload.answer() != null) signal.put("answer", payload.answer());
-                                                if (payload.candidate() != null) signal.put("candidate", payload.candidate());
-                                                signal.put("targetUserId", payload.targetUserId());
-                                                if (payload.callerUserId() != null) signal.put("callerUserId", payload.callerUserId());
-                                                if (payload.callId() != null) signal.put("callId", payload.callId());
-                                                if (payload.missed() != null) signal.put("missed", payload.missed());
-                                                signal.put("type", type);
-                                                signal.put("fromUserId", sender.getId());
-                                                signal.put("fromUsername", sender.getUsername());
-                                                signal.put("fromFullName", sender.getFullName());
-                                                signal.put("fromAvatarUrl", sender.getAvatarUrl());
-                                                signal.put(
-                                                        "callType",
-                                                        payload.callType() == null ? "video" : payload.callType());
-                                                messagingTemplate.convertAndSendToUser(
-                                                        target.getUsername(),
-                                                        "/queue/call",
-                                                        signal);
+            if ("offer".equals(type)) {
+                java.util.Optional<CallInfo> existing = callTimeoutService.findCall(callId);
+                if (existing.isPresent()) {
+                    CallInfo call = existing.get();
+                    if (!sender.getId().equals(call.callerId()) || !targetId.equals(call.calleeId())) return;
+                } else if (!allowSignal("WS_CALL_OFFER_PAIR", sender.getId() + ":" + targetId, 3,
+                        java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(10))) {
+                    return;
+                }
+            }
 
-                                                String callId =
-                                                        String.valueOf(
-                                                                payload.callId() == null ? "" : payload.callId());
-                                                String callType =
-                                                        String.valueOf(
-                                                                payload.callType() == null
-                                                                        ? "video"
-                                                                        : payload.callType());
-                                                if ("offer".equals(type) && !callId.isBlank()) {
+            java.util.Optional<CallInfo> info;
+            switch (type) {
+                case "offer" -> {
+                    // SDP is sent by the current client as `sdp`; callerUserId is never trusted.
+                    if (payload.sdp() == null && payload.offer() == null) return;
+                    if (!callTimeoutService.registerOffer(callId, sender.getId(), targetId, callType)) return;
+                    info = callTimeoutService.findCall(callId);
+                }
+                case "answer" -> {
+                    if (payload.sdp() == null && payload.answer() == null) return;
+                    if (!callTimeoutService.confirmAnswer(callId, sender.getId(), targetId)) return;
+                    info = callTimeoutService.findCall(callId);
+                }
+                case "ice" -> {
+                    if (!callTimeoutService.authorizePeerSignal(callId, sender.getId(), targetId)) return;
+                    info = callTimeoutService.findCall(callId);
+                }
+                case "hangup" -> info = callTimeoutService.finishCall(callId, sender.getId(), targetId);
+                default -> { return; }
+            }
+            if (info.isEmpty()) return;
+            CallInfo call = info.get();
 
-                                                    callTimeoutService.schedule(
-                                                            callId,
-                                                            sender.getId(),
-                                                            targetId,
-                                                            callType);
-                                                } else if ("answer".equals(type)) {
-                                                    callTimeoutService.cancel(callId);
-                                                } else if ("hangup".equals(type)) {
-                                                    callTimeoutService.cancel(callId);
-                                                    boolean missed =
-                                                            Boolean.TRUE.equals(payload.missed());
-                                                    Long callerId = payload.callerUserId();
+            authenticationUserCache.findById(targetId).ifPresent(target -> {
+                Map<String, Object> signal = new java.util.HashMap<>();
+                if (payload.offer() != null) signal.put("offer", payload.offer());
+                if (payload.answer() != null) signal.put("answer", payload.answer());
+                if (payload.sdp() != null) signal.put("sdp", payload.sdp());
+                if (payload.candidate() != null) signal.put("candidate", payload.candidate());
+                signal.put("targetUserId", targetId);
+                // Server-owned call identity and original caller; ignore spoofed callerUserId from client.
+                signal.put("callerUserId", call.callerId());
+                signal.put("callId", call.callId());
+                signal.put("type", type);
+                signal.put("fromUserId", sender.getId());
+                signal.put("fromUsername", sender.getUsername());
+                signal.put("fromFullName", sender.getFullName());
+                signal.put("fromAvatarUrl", sender.getAvatarUrl());
+                signal.put("callType", call.callType());
+                if ("hangup".equals(type)) {
+                    signal.put("missed", !call.answered() && sender.getId().equals(call.callerId())
+                            && Boolean.TRUE.equals(payload.missed()));
+                }
+                messagingTemplate.convertAndSendToUser(target.getUsername(), "/queue/call", signal);
 
-                                                    if (missed
-                                                            && callerId != null
-                                                            && sender.getId().equals(callerId)) {
-                                                        notificationService.notify(
-                                                                targetId,
-                                                                sender.getId(),
-                                                                "CALL_MISSED",
-                                                                callId,
-                                                                "đã gọi "
-                                                                        + ("audio"
-                                                                                        .equalsIgnoreCase(
-                                                                                                callType)
-                                                                                ? "thoại"
-                                                                                : "video")
-                                                                        + " cho bạn");
-                                                    }
-                                                }
-                                            });
-                        });
+                // A client cannot cancel another call by guessing a callId. The call must have
+                // existed and the actor/target pair must have matched the server registry above.
+                if ("hangup".equals(type) && !call.answered()
+                        && sender.getId().equals(call.callerId())
+                        && Boolean.TRUE.equals(payload.missed())) {
+                    notificationService.notify(
+                            targetId, sender.getId(), "CALL_MISSED", callId,
+                            "đã gọi " + ("audio".equalsIgnoreCase(callType) ? "thoại" : "video") + " cho bạn");
+                }
+            });
+        });
+    }
+
+    private boolean allowSignal(
+            String namespace,
+            String subject,
+            int maxRequests,
+            java.time.Duration window,
+            java.time.Duration blockDuration) {
+        try {
+            rateLimitService.checkAndRecord(
+                    namespace,
+                    subject,
+                    maxRequests,
+                    window,
+                    blockDuration,
+                    "Bạn thao tác quá nhanh. Thử lại sau %d phút.",
+                    "Tạm khóa thao tác do gửi quá nhiều tín hiệu.");
+            return true;
+        } catch (RuntimeException rejected) {
+            log.debug("WebSocket signal throttled or limiter unavailable (namespace={}, cause={})",
+                    namespace, rejected.getClass().getSimpleName());
+            return false;
+        }
     }
 
     private Long requireUserId(Authentication authentication) {

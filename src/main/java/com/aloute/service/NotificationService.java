@@ -1,5 +1,6 @@
 package com.aloute.service;
 
+import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.dto.response.NotificationResponse;
 import com.aloute.model.document.Post;
 import com.aloute.model.entity.Notification;
@@ -130,7 +131,7 @@ public class NotificationService {
     public void markAsRead(Long userId, Long notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .filter(item -> userId.equals(item.getReceiverId()))
-                .orElseThrow(() -> new com.aloute.common.exception.ResourceNotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy thông báo"));
         notification.setRead(true);
         notificationRepository.save(notification);
@@ -139,7 +140,7 @@ public class NotificationService {
     public void delete(Long userId, Long notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .filter(item -> userId.equals(item.getReceiverId()))
-                .orElseThrow(() -> new com.aloute.common.exception.ResourceNotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy thông báo"));
         notificationRepository.delete(notification);
     }

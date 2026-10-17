@@ -1,14 +1,19 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.CreateCommentRequest;
 import com.aloute.dto.response.CommentResponse;
+import com.aloute.dto.response.CommentCursorPage;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.CommentService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
@@ -24,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api")
 @Validated
 public class CommentController {
@@ -41,9 +47,19 @@ public class CommentController {
     @GetMapping("/posts/{postId}/comments")
     public ApiResponse<List<CommentResponse>> getComments(
             @PathVariable @NotBlank(message = "Thiếu mã bài viết") String postId,
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang bình luận quá sâu") int page,
             @org.springframework.web.bind.annotation.RequestParam(defaultValue = "50") int size) {
         return ApiResponse.success(commentService.getComments(postId, page, size));
+    }
+
+    @GetMapping("/comments/{commentId}/replies")
+    public ApiResponse<CommentCursorPage> getReplies(
+            Authentication authentication,
+            @PathVariable @NotBlank(message = "Thiếu mã bình luận") String commentId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) @Size(max = 256) String cursor,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        return ApiResponse.success(
+                commentService.getReplies(commentId, requireUserId(authentication), cursor, size));
     }
 
     @PostMapping("/posts/{postId}/comments")

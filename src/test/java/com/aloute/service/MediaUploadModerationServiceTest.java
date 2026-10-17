@@ -1,0 +1,75 @@
+package com.aloute.service;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.*;
+
+import com.aloute.common.exception.BadRequestException;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.util.Map;
+
+class MediaUploadModerationServiceTest {
+    private final ModerationService moderation = mock(ModerationService.class);
+    private final ImageStorageService storage = mock(ImageStorageService.class);
+    private final MediaAssetLifecycleService mediaAssets = mock(MediaAssetLifecycleService.class);
+    private final MediaUploadModerationService service =
+            new MediaUploadModerationService(moderation, storage, mediaAssets);
+    private final Map<String, String> uploaded = Map.of(
+            "url", "https://res.cloudinary.com/aloute/image/upload/v1/aloute/avatar/example.png",
+            "publicId", "aloute/avatar/example", "resourceType", "image", "type", "image");
+
+    @Test
+    void purposeValidationDelegatesToTheSingleLifecycleOwner() {
+        service.requirePurposeUrl(uploaded.get("url"), UploadPurpose.AVATAR, "9", "image");
+        verify(mediaAssets).requirePurposeUrl(uploaded.get("url"), UploadPurpose.AVATAR, "9", "image");
+    }
+
+    @Test
+    void rejectedImageIsSentToManagedCleanupBeforeReturningFailure() throws Exception {
+        when(moderation.isEnabled()).thenReturn(true);
+        when(moderation.isMediaApprovedForUpload(uploaded.get("url"), "image")).thenReturn(false);
+
+        assertThrows(BadRequestException.class, () -> service.requireApproved(uploaded, "image", "avatar"));
+
+        verify(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+        verify(storage, never()).deleteMedia(anyString(), anyString());
+    }
+
+    @Test
+    void disabledModerationFailsClosedAndCleansTheUploadedAsset() {
+        when(moderation.isEnabled()).thenReturn(false);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.requireApproved(uploaded, "image", "community"));
+
+        org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatusCode());
+        verify(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+    }
+
+    @Test
+    void moderationUnavailableFailsClosedAndQueuesCleanup() {
+        when(moderation.isEnabled()).thenReturn(true);
+        when(moderation.isMediaApprovedForUpload(uploaded.get("url"), "image"))
+                .thenThrow(new IllegalStateException("moderation unavailable"));
+
+        assertThrows(IllegalStateException.class,
+                () -> service.requireApproved(uploaded, "image", "community"));
+
+        verify(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+    }
+
+    @Test
+    void fallsBackToDirectDeleteOnlyWhenTheLifecycleStoreCannotBeUsed() throws Exception {
+        doThrow(new IllegalStateException("Mongo unavailable"))
+                .when(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+        doThrow(new IOException("Cloudinary unavailable"))
+                .when(storage).deleteMedia(uploaded.get("publicId"), uploaded.get("resourceType"));
+
+        service.deleteQuietly(uploaded);
+
+        verify(storage).deleteMedia(uploaded.get("publicId"), uploaded.get("resourceType"));
+    }
+}

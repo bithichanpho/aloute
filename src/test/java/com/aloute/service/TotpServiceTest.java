@@ -34,7 +34,7 @@ class TotpServiceTest {
 
     @Test
     void encryptionUsesUniqueNonceAndDetectsTampering() {
-        var encryption = new SecretEncryptionService("test-key-which-is-not-a-production-secret");
+        var encryption = new SecretEncryptionService("unit-test-aes-encryption-key-at-least-32-bytes", "");
         String secret = totp.newSecret();
         String encoded = encryption.encrypt(secret);
         assertEquals(secret, encryption.decrypt(encoded));
@@ -45,4 +45,11 @@ class TotpServiceTest {
                 IllegalStateException.class,
                 () -> encryption.decrypt(java.util.Base64.getEncoder().encodeToString(bytes)));
     }
+    @Test
+    void encryptionKeyCannotBeTheSameAsJwtSigningKey() {
+        String shared = "same-random-key-longer-than-32-bytes-for-test";
+        assertThrows(IllegalStateException.class,
+                () -> new SecretEncryptionService(shared, "", shared));
+    }
+
 }

@@ -8,17 +8,22 @@ import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IRepostRepository;
 
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 @Component
 @Order(3)
+@ConditionalOnProperty(name = "app.migrations.legacy-repost.enabled", havingValue = "true")
 public class LegacyRepostMigration implements CommandLineRunner {
+    private static final Logger log = LoggerFactory.getLogger(LegacyRepostMigration.class);
     private final MongoTemplate mongoTemplate;
     private final IPostRepository postRepository;
     private final IRepostRepository repostRepository;
@@ -67,10 +72,8 @@ public class LegacyRepostMigration implements CommandLineRunner {
             likeRepository.deleteByPostId(post.getId());
             postRepository.delete(post);
         }
-        if (!legacy.isEmpty())
-            System.out.println(
-                    "[ALOUTE] Migrated "
-                            + legacy.size()
-                            + " legacy plain repost post(s) to reposts.");
+        if (!legacy.isEmpty()) {
+            log.info("Migrated {} legacy plain repost post(s) to repost records.", legacy.size());
+        }
     }
 }

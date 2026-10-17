@@ -2,9 +2,13 @@ package com.aloute.service;
 
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.model.entity.Friend;
+import com.aloute.model.document.FollowRequest;
 import com.aloute.repository.IFriendRepository;
+import com.aloute.repository.IUserRepository;
 
 import org.springframework.stereotype.Service;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -14,23 +18,36 @@ public class FriendService {
 
     private final ContentAccessService access;
 
-    private final org.springframework.data.mongodb.core.MongoTemplate mongo;
-    private final com.aloute.repository.IUserRepository users;
+    private final MongoTemplate mongo;
+    private final IUserRepository users;
     private final IFriendRepository friendRepository;
     private final NotificationService notificationService;
+    private final FeedCacheInvalidator feedCacheInvalidator;
 
+    @Autowired
     public FriendService(
             IFriendRepository friendRepository,
             NotificationService notificationService,
             ContentAccessService access,
-            org.springframework.data.mongodb.core.MongoTemplate mongo,
-            com.aloute.repository.IUserRepository users) {
+            MongoTemplate mongo,
+            IUserRepository users,
+            FeedCacheInvalidator feedCacheInvalidator) {
         this.access = access;
         this.mongo = mongo;
         this.users = users;
-
         this.friendRepository = friendRepository;
         this.notificationService = notificationService;
+        this.feedCacheInvalidator = feedCacheInvalidator;
+    }
+
+    /** Compatibility constructor for isolated service tests. */
+    public FriendService(
+            IFriendRepository friendRepository,
+            NotificationService notificationService,
+            ContentAccessService access,
+            MongoTemplate mongo,
+            IUserRepository users) {
+        this(friendRepository, notificationService, access, mongo, users, null);
     }
 
     public boolean toggleFollow(Long currentUserId, Long targetUserId) {
@@ -39,10 +56,10 @@ public class FriendService {
                 && users.findById(targetUserId).orElseThrow().isPrivateAccount()
                 && !friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId)) {
             String id = currentUserId + ":" + targetUserId;
-            var pending = mongo.findById(id, com.aloute.model.document.FollowRequest.class);
+            var pending = mongo.findById(id, FollowRequest.class);
             if (pending != null) mongo.remove(pending);
             else {
-                var request = new com.aloute.model.document.FollowRequest();
+                var request = new FollowRequest();
                 request.setId(id);
                 request.setFollowerId(currentUserId);
                 request.setTargetId(targetUserId);
@@ -54,20 +71,20 @@ public class FriendService {
             throw new BadRequestException("Không thể tự follow chính mình");
         }
 
-        return friendRepository
+        boolean following = friendRepository
                 .findByFollowerIdAndFollowedId(currentUserId, targetUserId)
-                .map(
-                        existing -> {
-                            friendRepository.delete(existing);
-                            return false;
-                        })
-                .orElseGet(
-                        () -> {
-                            friendRepository.save(new Friend(currentUserId, targetUserId));
-                            notificationService.notify(
-                                    targetUserId, currentUserId, "FOLLOW", null, "đã theo dõi bạn");
-                            return true;
-                        });
+                .map(existing -> {
+                    friendRepository.delete(existing);
+                    return false;
+                })
+                .orElseGet(() -> {
+                    friendRepository.save(new Friend(currentUserId, targetUserId));
+                    notificationService.notify(
+                            targetUserId, currentUserId, "FOLLOW", null, "đã theo dõi bạn");
+                    return true;
+                });
+        if (feedCacheInvalidator != null) feedCacheInvalidator.invalidateViewer(currentUserId);
+        return following;
     }
 
     public List<Long> getFollowingIds(Long userId) {
@@ -84,7 +101,7 @@ public class FriendService {
                         org.springframework.data.mongodb.core.query.Query.query(
                                 org.springframework.data.mongodb.core.query.Criteria.where("_id")
                                         .is(currentUserId + ":" + targetUserId)),
-                        com.aloute.model.document.FollowRequest.class)
+                        FollowRequest.class)
                 ? "PENDING"
                 : "NONE";
     }

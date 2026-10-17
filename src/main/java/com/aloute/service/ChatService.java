@@ -4,30 +4,26 @@ import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.exception.ForbiddenException;
-import com.aloute.common.util.AvatarUtil;
-import com.aloute.common.util.TimeAgoUtil;
+import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.response.ChatMessageResponse;
 import com.aloute.dto.response.ConversationResponse;
 import com.aloute.model.document.ChatMessage;
-import com.aloute.model.document.Story;
-import com.aloute.model.document.StoryReply;
-import com.aloute.model.entity.ChatGroup;
+import com.aloute.model.document.UserBlock;
 import com.aloute.model.entity.GroupReadStatus;
 import com.aloute.model.entity.User;
 import com.aloute.repository.IChatMessageRepository;
 import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.repository.IUserRepository;
 
-import org.bson.Document;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +48,13 @@ public class ChatService {
     private final PresenceService presenceService;
     private final MongoTemplate mongoTemplate;
     private final PushNotificationService pushNotificationService;
+    private final ConversationService conversationService;
+    private final ChatMessageMapper chatMessageMapper;
+    private final ChatHistoryService chatHistoryService;
+    private final MediaUploadModerationService mediaUploadModeration;
+    private final MediaAssetLifecycleService mediaAssets;
 
+    @Autowired
     public ChatService(
             IChatMessageRepository chatMessageRepository,
             IUserRepository userRepository,
@@ -63,7 +65,12 @@ public class ChatService {
             PresenceService presenceService,
             MongoTemplate mongoTemplate,
             ContentAccessService access,
-            PushNotificationService pushNotificationService) {
+            PushNotificationService pushNotificationService,
+            ConversationService conversationService,
+            ChatMessageMapper chatMessageMapper,
+            ChatHistoryService chatHistoryService,
+            MediaUploadModerationService mediaUploadModeration,
+            MediaAssetLifecycleService mediaAssets) {
         this.access = access;
 
         this.chatMessageRepository = chatMessageRepository;
@@ -75,13 +82,43 @@ public class ChatService {
         this.presenceService = presenceService;
         this.mongoTemplate = mongoTemplate;
         this.pushNotificationService = pushNotificationService;
+        this.conversationService = conversationService;
+        this.chatMessageMapper = chatMessageMapper;
+        this.chatHistoryService = chatHistoryService;
+        this.mediaUploadModeration = mediaUploadModeration;
+        this.mediaAssets = mediaAssets;
     }
 
+    /** Backward-compatible constructor for focused unit tests. Spring uses the @Autowired constructor above. */
+    public ChatService(
+            IChatMessageRepository chatMessageRepository,
+            IUserRepository userRepository,
+            IGroupReadStatusRepository groupReadStatusRepository,
+            GroupService groupService,
+            SimpMessagingTemplate messagingTemplate,
+            FriendService friendService,
+            PresenceService presenceService,
+            MongoTemplate mongoTemplate,
+            ContentAccessService access,
+            PushNotificationService pushNotificationService) {
+        this(chatMessageRepository, userRepository, groupReadStatusRepository, groupService,
+                messagingTemplate, friendService, presenceService, mongoTemplate, access,
+                pushNotificationService,
+                new ConversationService(userRepository, groupReadStatusRepository, groupService,
+                        friendService, presenceService, mongoTemplate, access),
+                new ChatMessageMapper(userRepository),
+                new ChatHistoryService(chatMessageRepository, userRepository, new ChatMessageMapper(userRepository)),
+                null,
+                null);
+    }
+
+    @Transactional(transactionManager = "mongoTransactionManager")
     public ChatMessageResponse sendMessage(
             Long senderId, Long receiverId, String content, String clientId) {
         return sendMessage(senderId, receiverId, content, clientId, null, null, null, null);
     }
 
+    @Transactional(transactionManager = "mongoTransactionManager")
     public ChatMessageResponse sendMessage(
             Long senderId,
             Long receiverId,
@@ -91,35 +128,40 @@ public class ChatService {
             String mediaType,
             String mediaName,
             Long mediaSize) {
+        String normalizedClientId = normalizeClientId(clientId);
+        ChatMessageResponse previous = findExistingMessage(senderId, normalizedClientId);
+        if (previous != null) return previous;
         return sendMessageInternal(
-                senderId, receiverId, content, clientId, mediaUrl, mediaType, mediaName, mediaSize, false);
+                senderId, receiverId, content, normalizedClientId, mediaUrl, mediaType, mediaName, mediaSize);
     }
 
-    public ChatMessageResponse sendStoryReply(
-            Long senderId, Long receiverId, String content, String storyId,
-            String storyContent, String storyImageUrl, String storyVideoUrl) {
-        ChatMessageResponse response = sendMessageInternal(
-                senderId, receiverId, content, "story:" + storyId, null, null, null, null, true);
-        ChatMessage message = chatMessageRepository.findById(response.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tin nhắn"));
-        message.setMessageType("STORY_REPLY");
-        message.setStoryId(storyId);
-        message.setStoryContent(storyContent);
-        message.setStoryImageUrl(storyImageUrl);
-        message.setStoryVideoUrl(storyVideoUrl);
-        ChatMessage saved = chatMessageRepository.save(message);
-        ChatMessageResponse enriched = toResponse(saved);
-        enriched.setClientId("story:" + storyId);
-        User sender = userRepository.findById(senderId).orElseThrow();
-        User receiver = userRepository.findById(receiverId).orElseThrow();
-        messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", enriched);
-        messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/messages", enriched);
-        sendChatPushSafely(
-                receiver.getId(),
-                displayName(sender),
-                notificationPreview(enriched.getContent(), enriched.getMediaUrl()),
-                "/chat?userId=" + sender.getId());
-        return enriched;
+    /** True when a previous WebSocket retry already persisted this sender/clientId pair. */
+    public boolean hasMessageForClientId(Long senderId, String clientId) {
+        String normalized = normalizeClientId(clientId);
+        return normalized != null && chatMessageRepository.existsBySenderIdAndClientId(
+                String.valueOf(senderId), normalized);
+    }
+
+    /** Returns the canonical persisted message so a concurrent duplicate can receive an ACK. */
+    public ChatMessageResponse findMessageForClientId(Long senderId, String clientId) {
+        return findExistingMessage(senderId, normalizeClientId(clientId));
+    }
+
+    private ChatMessageResponse findExistingMessage(Long senderId, String clientId) {
+        if (senderId == null || clientId == null) return null;
+        return chatMessageRepository.findBySenderIdAndClientId(String.valueOf(senderId), clientId)
+                .map(this::toResponse)
+                .map(response -> {
+                    response.setClientId(clientId);
+                    return response;
+                })
+                .orElse(null);
+    }
+
+    private String normalizeClientId(String clientId) {
+        if (clientId == null || clientId.isBlank()) return null;
+        String normalized = clientId.trim();
+        return normalized.length() <= 100 ? normalized : normalized.substring(0, 100);
     }
 
     private ChatMessageResponse sendMessageInternal(
@@ -130,14 +172,14 @@ public class ChatService {
             String mediaUrl,
             String mediaType,
             String mediaName,
-            Long mediaSize,
-            boolean storyReply) {
+            Long mediaSize) {
         if ((content == null || content.isBlank()) && (mediaUrl == null || mediaUrl.isBlank())) {
             throw new BadRequestException("Tin nhắn phải có nội dung hoặc tệp đính kèm");
         }
         if (senderId.equals(receiverId)) {
             throw new BadRequestException("Không thể tự nhắn tin cho chính mình");
         }
+        assertMediaAllowedForChat(mediaUrl, String.valueOf(senderId));
 
         access.requireProfile(senderId, receiverId);
         User sender =
@@ -152,7 +194,7 @@ public class ChatService {
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người nhận"));
 
-        if (!storyReply && receiver.isPrivateAccount() && !friendService.isFriend(senderId, receiverId)) {
+        if (receiver.isPrivateAccount() && !friendService.isFriend(senderId, receiverId)) {
             throw new BadRequestException(
                     "Tài khoản này ở chế độ riêng tư — hai bạn cần theo dõi lẫn nhau mới nhắn tin"
                             + " được");
@@ -164,6 +206,7 @@ public class ChatService {
                         String.valueOf(senderId), String.valueOf(receiverId)));
         message.setSenderId(String.valueOf(senderId));
         message.setReceiverId(String.valueOf(receiverId));
+        message.setClientId(normalizeClientId(clientId));
         message.setContent(content == null ? "" : content.trim());
         message.setMediaUrl(mediaUrl);
         message.setMediaType(mediaType);
@@ -171,10 +214,11 @@ public class ChatService {
         message.setMediaSize(mediaSize);
 
         ChatMessage saved = chatMessageRepository.save(message);
+        attachChatMedia(saved, senderId);
         ChatMessageResponse dto = toResponse(saved, sender);
         dto.setClientId(clientId);
 
-        if (!storyReply) {
+        afterCommitSafely("direct chat delivery", () -> {
             messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
             messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/messages", dto);
             sendChatPushSafely(
@@ -182,7 +226,7 @@ public class ChatService {
                     displayName(sender),
                     notificationPreview(dto.getContent(), dto.getMediaUrl()),
                     "/chat?userId=" + sender.getId());
-        }
+        });
 
         return dto;
     }
@@ -196,17 +240,21 @@ public class ChatService {
         String conversationId =
                 ChatMessage.buildConversationId(
                         String.valueOf(currentUserId), String.valueOf(otherUserId));
-        return history(conversationId, page, currentUserId);
+        return chatHistoryService.history(conversationId, page, currentUserId);
     }
 
+    @Transactional(transactionManager = "mongoTransactionManager")
     public void markAsRead(Long currentUserId, Long otherUserId) {
-        access.requireProfile(currentUserId, otherUserId);
+        if (currentUserId == null || otherUserId == null || currentUserId.equals(otherUserId)) return;
+        // Reading an existing conversation must remain possible after either side blocks the other
+        // or one account is deactivated; otherwise its unread badge can never be cleared.
         String currentId = String.valueOf(currentUserId);
         String otherId = String.valueOf(otherUserId);
         Criteria unreadCriteria = new Criteria().andOperator(
                 Criteria.where("receiverId").is(currentId),
                 Criteria.where("senderId").is(otherId),
                 Criteria.where("groupId").is(null),
+                Criteria.where("hiddenForUserIds").nin(currentId),
                 new Criteria().orOperator(
                         Criteria.where("read").is(false), Criteria.where("read").exists(false)));
         List<ChatMessage> recentUnread = mongoTemplate.find(
@@ -218,18 +266,22 @@ public class ChatService {
 
         List<String> messageIds = recentUnread.stream().map(ChatMessage::getId)
                 .filter(java.util.Objects::nonNull).toList();
-        userRepository.findById(otherUserId).ifPresent(otherUser -> {
+        if (!access.profileVisible(currentUserId, otherUserId)) return;
+        userRepository.findById(otherUserId).filter(User::isActive).ifPresent(otherUser -> {
             Map<String, Object> receipt = new java.util.HashMap<>();
             receipt.put("readerId", currentUserId);
             receipt.put("otherUserId", otherUserId);
             receipt.put("readAt", LocalDateTime.now().toString());
             receipt.put("status", "READ");
             receipt.put("messageIds", messageIds);
-            messagingTemplate.convertAndSendToUser(otherUser.getUsername(), "/queue/read-receipts", receipt);
+            afterCommitSafely("direct read receipt", () ->
+                    messagingTemplate.convertAndSendToUser(
+                            otherUser.getUsername(), "/queue/read-receipts", receipt));
         });
     }
 
     /** Called only after an authenticated recipient client receives a persisted WebSocket message. */
+    @Transactional(transactionManager = "mongoTransactionManager")
     public void markAsDelivered(Long recipientId, String messageId) {
         if (messageId == null || messageId.isBlank()) return;
         ChatMessage message = chatMessageRepository.findById(messageId)
@@ -262,7 +314,9 @@ public class ChatService {
                 receipt.put("deliveredCount", updated.getDeliveredToUserIds().size());
                 receipt.put("status", "DELIVERED");
                 receipt.put("deliveredAt", now.toString());
-                messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/delivery-receipts", receipt);
+                afterCommitSafely("group delivery receipt", () ->
+                        messagingTemplate.convertAndSendToUser(
+                                sender.getUsername(), "/queue/delivery-receipts", receipt));
             });
             return;
         }
@@ -284,10 +338,13 @@ public class ChatService {
             receipt.put("deliveredCount", 1);
             receipt.put("status", "DELIVERED");
             receipt.put("deliveredAt", now.toString());
-            messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/delivery-receipts", receipt);
+            afterCommitSafely("direct delivery receipt", () ->
+                    messagingTemplate.convertAndSendToUser(
+                            sender.getUsername(), "/queue/delivery-receipts", receipt));
         });
     }
 
+    @Transactional(transactionManager = "mongoTransactionManager")
     public ChatMessageResponse createMissedCallMessage(
             Long callerId, Long receiverId, String callId, String callType) {
         if (callerId == null || receiverId == null || callId == null || callId.isBlank()) {
@@ -327,31 +384,52 @@ public class ChatService {
         ChatMessage saved = chatMessageRepository.save(message);
         ChatMessageResponse dto = toResponse(saved, caller);
 
-        messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
-        messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
+        afterCommitSafely("missed-call message delivery", () -> {
+            messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
+            messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
+        });
         return dto;
     }
 
     public long countUnreadTotal(Long userId) {
         String recipientId = String.valueOf(userId);
+        java.util.Set<Long> excludedSenderIds = new java.util.HashSet<>();
+        mongoTemplate.find(
+                        Query.query(new Criteria().orOperator(
+                                Criteria.where("ownerId").is(userId),
+                                Criteria.where("targetId").is(userId))),
+                        UserBlock.class)
+                .forEach(block -> {
+                    Long otherId = userId.equals(block.getOwnerId()) ? block.getTargetId() : block.getOwnerId();
+                    if (otherId != null && !userId.equals(otherId)) excludedSenderIds.add(otherId);
+                });
+        userRepository.findByActiveFalse().stream()
+                .map(User::getId)
+                .filter(java.util.Objects::nonNull)
+                .forEach(excludedSenderIds::add);
+
         Criteria directUnreadCriteria = new Criteria().andOperator(
                 Criteria.where("receiverId").is(recipientId),
                 Criteria.where("groupId").is(null),
+                Criteria.where("hiddenForUserIds").nin(recipientId),
                 new Criteria().orOperator(
                         Criteria.where("read").is(false), Criteria.where("read").exists(false)));
+        if (!excludedSenderIds.isEmpty()) {
+            directUnreadCriteria.and("senderId").nin(
+                    excludedSenderIds.stream().map(String::valueOf).toList());
+        }
         long directUnread = mongoTemplate.count(Query.query(directUnreadCriteria), ChatMessage.class);
-        long groupUnread =
-                groupUnreadCounts(groupService.getMyGroups(userId), userId).values().stream()
-                        .mapToLong(Long::longValue)
-                        .sum();
+        long groupUnread = conversationService.countUnreadGroups(groupService.getMyGroups(userId), userId);
         return directUnread + groupUnread;
     }
 
+    @Transactional(transactionManager = "mongoTransactionManager")
     public ChatMessageResponse sendGroupMessage(
             Long senderId, Long groupId, String content, String clientId) {
         return sendGroupMessage(senderId, groupId, content, clientId, null, null, null, null);
     }
 
+    @Transactional(transactionManager = "mongoTransactionManager")
     public ChatMessageResponse sendGroupMessage(
             Long senderId,
             Long groupId,
@@ -363,6 +441,7 @@ public class ChatService {
                 senderId, groupId, content, clientId, mediaUrl, mediaType, null, null);
     }
 
+    @Transactional(transactionManager = "mongoTransactionManager")
     public ChatMessageResponse sendGroupMessage(
             Long senderId,
             Long groupId,
@@ -372,9 +451,13 @@ public class ChatService {
             String mediaType,
             String mediaName,
             Long mediaSize) {
+        String normalizedClientId = normalizeClientId(clientId);
+        ChatMessageResponse previous = findExistingMessage(senderId, normalizedClientId);
+        if (previous != null) return previous;
         if ((content == null || content.isBlank()) && (mediaUrl == null || mediaUrl.isBlank())) {
             throw new BadRequestException("Tin nhắn phải có nội dung hoặc tệp đính kèm");
         }
+        assertMediaAllowedForChat(mediaUrl, String.valueOf(senderId));
         if (!groupService.isMember(groupId, senderId)) {
             throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
@@ -390,6 +473,7 @@ public class ChatService {
         message.setConversationId(ChatMessage.buildGroupConversationId(groupId));
         message.setSenderId(String.valueOf(senderId));
         message.setGroupId(groupId);
+        message.setClientId(normalizedClientId);
         message.setContent(content == null ? "" : content.trim());
         message.setMediaUrl(mediaUrl);
         message.setMediaType(mediaType);
@@ -397,29 +481,39 @@ public class ChatService {
         message.setMediaSize(mediaSize);
 
         ChatMessage saved = chatMessageRepository.save(message);
+        attachChatMedia(saved, senderId);
         ChatMessageResponse dto = toResponse(saved, sender);
-        dto.setClientId(clientId);
+        dto.setClientId(normalizedClientId);
 
-        String groupName = "nhóm";
+        String resolvedGroupName = "nhóm";
         try {
             var group = groupService.getGroupDetail(groupId, senderId);
-            if (group != null && group.getName() != null && !group.getName().isBlank()) groupName = group.getName();
-        } catch (RuntimeException ignored) {
+            if (group != null && group.getName() != null && !group.getName().isBlank()) {
+                resolvedGroupName = group.getName();
+            }
+        } catch (RuntimeException ex) {
             // The persisted message and WebSocket delivery must not depend on push metadata.
+            log.warn("Unable to load group metadata for chat notification (groupId={}, cause={})",
+                    groupId, ex.getClass().getSimpleName());
         }
-        for (User member : userRepository.findAllById(groupService.getMemberIds(groupId))) {
-            if (member.isActive()) {
-                messagingTemplate.convertAndSendToUser(
-                        member.getUsername(), "/queue/messages", dto);
-                if (!member.getId().equals(senderId)) {
-                    sendChatPushSafely(
-                            member.getId(),
-                            "Tin nhắn trong " + groupName,
-                            displayName(sender) + ": " + notificationPreview(dto.getContent(), dto.getMediaUrl()),
-                            "/chat?groupId=" + groupId);
+        // Capture the resolved value as an effectively-final local for the after-commit callback.
+        final String groupNameForNotification = resolvedGroupName;
+        List<User> recipients = userRepository.findAllById(groupService.getMemberIds(groupId));
+        afterCommitSafely("group chat delivery", () -> {
+            for (User member : recipients) {
+                if (member.isActive()) {
+                    messagingTemplate.convertAndSendToUser(
+                            member.getUsername(), "/queue/messages", dto);
+                    if (!member.getId().equals(senderId)) {
+                        sendChatPushSafely(
+                                member.getId(),
+                                "Tin nhắn trong " + groupNameForNotification,
+                                displayName(sender) + ": " + notificationPreview(dto.getContent(), dto.getMediaUrl()),
+                                "/chat?groupId=" + groupId);
+                    }
                 }
             }
-        }
+        });
 
         return dto;
     }
@@ -433,29 +527,34 @@ public class ChatService {
             throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
         String conversationId = ChatMessage.buildGroupConversationId(groupId);
-        return history(conversationId, page, currentUserId);
+        return chatHistoryService.history(conversationId, page, currentUserId);
     }
 
+    @Transactional
     public void markGroupAsRead(Long groupId, Long userId) {
         if (!groupService.isMember(groupId, userId)) {
             throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
         String readerId = String.valueOf(userId);
+        LocalDateTime readAt = LocalDateTime.now();
         GroupReadStatus status = groupReadStatusRepository.findByGroupIdAndUserId(groupId, userId)
                 .orElseGet(() -> new GroupReadStatus(groupId, userId));
-        LocalDateTime readAt = LocalDateTime.now();
 
-        Criteria unreadForReader = Criteria.where("groupId").is(groupId)
-                .and("senderId").ne(readerId).and("readByUserIds").nin(readerId);
-        Query receiptQuery = Query.query(unreadForReader).with(Sort.by(Sort.Direction.DESC, "sentAt")).limit(250);
+        Criteria unreadForReader = new Criteria().andOperator(
+                Criteria.where("groupId").is(groupId),
+                Criteria.where("senderId").ne(readerId),
+                Criteria.where("sentAt").lte(readAt),
+                Criteria.where("readByUserIds").nin(readerId));
+        Query receiptQuery = Query.query(unreadForReader)
+                .with(Sort.by(Sort.Direction.DESC, "sentAt")).limit(250);
         List<ChatMessage> receiptCandidates = mongoTemplate.find(receiptQuery, ChatMessage.class);
 
-        mongoTemplate.updateMulti(Query.query(unreadForReader),
-                new Update().addToSet("readByUserIds", readerId), ChatMessage.class);
+        // SQL lastReadAt is the authoritative source for the unread group badge. Commit it first;
+        // update Mongo's per-message receipts and notify senders after the SQL transaction commits.
         status.setLastReadAt(readAt);
         groupReadStatusRepository.save(status);
-
         if (receiptCandidates.isEmpty()) return;
+
         Map<String, List<String>> idsBySender = new java.util.HashMap<>();
         for (ChatMessage candidate : receiptCandidates) {
             if (candidate.getSenderId() == null || candidate.getId() == null) continue;
@@ -465,318 +564,43 @@ public class ChatService {
         Set<Long> senderIds = idsBySender.keySet().stream().map(Long::valueOf).collect(Collectors.toSet());
         Map<Long, User> usersById = new java.util.HashMap<>();
         userRepository.findAllById(senderIds).forEach(user -> usersById.put(user.getId(), user));
-        idsBySender.forEach((senderId, messageIds) -> {
-            User sender = usersById.get(Long.valueOf(senderId));
-            if (sender == null || messageIds.isEmpty()) return;
-            Map<String, Object> receipt = new java.util.HashMap<>();
-            receipt.put("readerId", userId);
-            receipt.put("groupId", groupId);
-            receipt.put("readAt", readAt.toString());
-            receipt.put("status", "READ");
-            receipt.put("messageIds", messageIds);
-            messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/read-receipts", receipt);
+
+        afterCommitSafely("group read receipt", () -> {
+            try {
+                mongoTemplate.updateMulti(
+                        Query.query(unreadForReader),
+                        new Update().addToSet("readByUserIds", readerId),
+                        ChatMessage.class);
+            } catch (RuntimeException ex) {
+                // The SQL lastReadAt keeps unread totals correct; message receipts can be repaired
+                // on the next read/reconciliation rather than rolling back a committed SQL update.
+                log.warn("Could not persist group read receipts for group {} ({})",
+                        groupId, ex.getClass().getSimpleName());
+            }
+            idsBySender.forEach((senderId, messageIds) -> {
+                User sender = usersById.get(Long.valueOf(senderId));
+                if (sender == null || messageIds.isEmpty()) return;
+                Map<String, Object> receipt = new java.util.HashMap<>();
+                receipt.put("readerId", userId);
+                receipt.put("groupId", groupId);
+                receipt.put("readAt", readAt.toString());
+                receipt.put("status", "READ");
+                receipt.put("messageIds", messageIds);
+                messagingTemplate.convertAndSendToUser(
+                        sender.getUsername(), "/queue/read-receipts", receipt);
+            });
         });
     }
 
-    private Map<String, Long> groupUnreadCounts(List<ChatGroup> groups, Long userId) {
-        if (groups.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<Long, LocalDateTime> readTimes =
-                groupReadStatusRepository.findByUserId(userId).stream()
-                        .collect(
-                                Collectors.toMap(
-                                        GroupReadStatus::getGroupId,
-                                        GroupReadStatus::getLastReadAt));
-
-        Criteria[] filters =
-                groups.stream()
-                        .map(
-                                g -> {
-                                    Criteria c =
-                                            Criteria.where("conversationId")
-                                                    .is(ChatMessage.buildGroupConversationId(g.getId()))
-                                                    .and("senderId").ne(String.valueOf(userId));
-                                    if (readTimes.containsKey(g.getId())) {
-                                        c = c.and("sentAt").gt(readTimes.get(g.getId()));
-                                    }
-                                    return c;
-                                })
-                        .toArray(Criteria[]::new);
-
-        Map<String, Long> counts = new java.util.HashMap<>();
-        mongoTemplate
-                .aggregate(
-                        Aggregation.newAggregation(
-                                Aggregation.match(new Criteria().orOperator(filters)),
-                                Aggregation.group("conversationId").count().as("count")),
-                        ChatMessage.class,
-                        Document.class)
-                .forEach(
-                        d -> counts.put(d.getString("_id"), ((Number) d.get("count")).longValue()));
-        return counts;
-    }
-
     public List<ConversationResponse> getConversations(Long userId, Long ensureOtherUserId) {
-        List<ConversationResponse> conversations = getConversations(userId);
-        if (ensureOtherUserId == null || ensureOtherUserId.equals(userId)) {
-            return conversations;
-        }
-        access.requireProfile(userId, ensureOtherUserId);
-        boolean already =
-                conversations.stream()
-                        .anyMatch(
-                                c -> !c.isGroup() && ensureOtherUserId.equals(c.getOtherUserId()));
-        if (!already && userRepository.existsById(ensureOtherUserId)) {
-            conversations.add(0, toFriendPreviewResponse(ensureOtherUserId));
-            fillOtherUserInfo(conversations);
-        }
-        return conversations;
+        return conversationService.getConversations(userId, ensureOtherUserId);
     }
 
     public List<ConversationResponse> getConversations(Long userId) {
-        String userIdStr = String.valueOf(userId);
-
-        List<ChatMessage> latestDirect =
-                mongoTemplate
-                        .aggregate(
-                                Aggregation.newAggregation(
-                                        Aggregation.match(
-                                                new Criteria()
-                                                        .andOperator(
-                                                                Criteria.where("groupId").is(null),
-                                                                new Criteria()
-                                                                        .orOperator(
-                                                                                Criteria.where(
-                                                                                                "senderId")
-                                                                                        .is(
-                                                                                                userIdStr),
-                                                                                Criteria.where(
-                                                                                                "receiverId")
-                                                                                        .is(
-                                                                                                userIdStr)))),
-                                        Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
-                                        Aggregation.group("conversationId")
-                                                .first(Aggregation.ROOT)
-                                                .as("latest"),
-                                        Aggregation.replaceRoot("latest"),
-                                        Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
-                                        Aggregation.limit(100)),
-                                ChatMessage.class,
-                                ChatMessage.class)
-                        .getMappedResults();
-
-        Map<String, Long> unreadBySender = new java.util.HashMap<>();
-        mongoTemplate
-                .aggregate(
-                        Aggregation.newAggregation(
-                                Aggregation.match(new Criteria().andOperator(
-                                        Criteria.where("receiverId").is(userIdStr),
-                                        Criteria.where("groupId").is(null),
-                                        new Criteria().orOperator(
-                                                Criteria.where("read").is(false),
-                                                Criteria.where("read").exists(false)))),
-                                Aggregation.group("senderId").count().as("count")),
-                        ChatMessage.class,
-                        Document.class)
-                .forEach(
-                        d ->
-                                unreadBySender.put(
-                                        d.getString("_id"), ((Number) d.get("count")).longValue()));
-
-        List<ConversationResponse> result =
-                latestDirect.stream()
-                        .map(
-                                latest ->
-                                        toDirectConversationResponse(
-                                                userIdStr, latest, unreadBySender))
-                        .collect(Collectors.toList());
-
-        Set<Long> otherIdsWithConversation =
-                result.stream()
-                        .map(ConversationResponse::getOtherUserId)
-                        .collect(Collectors.toSet());
-
-        for (Long friendId : friendService.getMutualFriendIds(userId)) {
-            if (!otherIdsWithConversation.contains(friendId)) {
-                result.add(toFriendPreviewResponse(friendId));
-            }
-        }
-
-        List<ChatGroup> groups = groupService.getMyGroups(userId);
-        Map<String, Long> groupUnread = groupUnreadCounts(groups, userId);
-        Map<Long, Integer> memberCounts =
-                groupService.getMemberCounts(
-                        groups.stream().map(ChatGroup::getId).collect(Collectors.toList()));
-
-        Map<String, ChatMessage> latestGroupMessages = new java.util.HashMap<>();
-        if (!groups.isEmpty()) {
-            mongoTemplate
-                    .aggregate(
-                            Aggregation.newAggregation(
-                                    Aggregation.match(
-                                            Criteria.where("conversationId")
-                                                    .in(
-                                                            groups.stream()
-                                                                    .map(
-                                                                            g ->
-                                                                                    ChatMessage
-                                                                                            .buildGroupConversationId(
-                                                                                                    g
-                                                                                                            .getId()))
-                                                                    .collect(Collectors.toList()))),
-                                    Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
-                                    Aggregation.group("conversationId")
-                                            .first(Aggregation.ROOT)
-                                            .as("latest"),
-                                    Aggregation.replaceRoot("latest")),
-                            ChatMessage.class,
-                            ChatMessage.class)
-                    .forEach(m -> latestGroupMessages.put(m.getConversationId(), m));
-        }
-
-        for (ChatGroup group : groups) {
-            String conversationId = ChatMessage.buildGroupConversationId(group.getId());
-            result.add(
-                    toGroupConversationResponse(
-                            group,
-                            latestGroupMessages.get(conversationId),
-                            memberCounts.getOrDefault(group.getId(), 0),
-                            groupUnread.getOrDefault(conversationId, 0L)));
-        }
-
-        Set<Long> visibleProfiles =
-                access.visibleProfileIds(
-                        userId,
-                        result.stream()
-                                .filter(c -> !c.isGroup())
-                                .map(ConversationResponse::getOtherUserId)
-                                .toList());
-        result.removeIf(c -> !c.isGroup() && !visibleProfiles.contains(c.getOtherUserId()));
-        fillOtherUserInfo(result);
-
-        result.sort(
-                (a, b) -> {
-                    LocalDateTime ta = a.getLastMessageAt();
-                    LocalDateTime tb = b.getLastMessageAt();
-                    if (ta == null && tb == null) {
-                        return nameOf(a).compareToIgnoreCase(nameOf(b));
-                    }
-                    if (ta == null) return 1;
-                    if (tb == null) return -1;
-                    return tb.compareTo(ta);
-                });
-
-        return result;
+        return conversationService.getConversations(userId);
     }
 
-    private String nameOf(ConversationResponse c) {
-        String name = c.isGroup() ? c.getGroupName() : c.getOtherFullName();
-        return name != null ? name : "";
-    }
-
-    private ConversationResponse toDirectConversationResponse(
-            String currentUserIdStr, ChatMessage latest, Map<String, Long> unreadBySender) {
-        boolean iAmSender = latest.getSenderId().equals(currentUserIdStr);
-        String otherIdStr = iAmSender ? latest.getReceiverId() : latest.getSenderId();
-        Long otherId = Long.valueOf(otherIdStr);
-
-        ConversationResponse dto = new ConversationResponse();
-        dto.setGroup(false);
-        dto.setOtherUserId(otherId);
-        dto.setLastMessage(previewText(latest));
-        dto.setLastMessageAt(latest.getSentAt());
-        dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
-        dto.setUnreadCount(unreadBySender.getOrDefault(otherIdStr, 0L));
-
-        return dto;
-    }
-
-    private ConversationResponse toFriendPreviewResponse(Long friendId) {
-        ConversationResponse dto = new ConversationResponse();
-        dto.setGroup(false);
-        dto.setOtherUserId(friendId);
-        dto.setHasConversation(false);
-        dto.setUnreadCount(0);
-
-        return dto;
-    }
-
-    private void fillOtherUserInfo(List<ConversationResponse> conversations) {
-        Set<Long> ids =
-                conversations.stream()
-                        .filter(
-                                c ->
-                                        !c.isGroup()
-                                                && c.getOtherUserId() != null
-                                                && c.getOtherUsername() == null)
-                        .map(ConversationResponse::getOtherUserId)
-                        .collect(Collectors.toSet());
-        if (ids.isEmpty()) return;
-
-        Map<Long, User> byId =
-                userRepository.findAllById(ids).stream()
-                        .collect(Collectors.toMap(User::getId, u -> u));
-
-        for (ConversationResponse c : conversations) {
-            if (c.isGroup() || c.getOtherUserId() == null) continue;
-            User u = byId.get(c.getOtherUserId());
-            if (u == null) continue;
-            c.setOtherUsername(u.getUsername());
-            c.setOtherFullName(u.getFullName());
-            c.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
-            c.setOnline(presenceService.isOnlineUsername(u.getUsername()));
-        }
-    }
-
-    private ConversationResponse toGroupConversationResponse(
-            ChatGroup group, ChatMessage latest, int memberCount, long unreadCount) {
-
-        ConversationResponse dto = new ConversationResponse();
-        dto.setGroup(true);
-        dto.setGroupId(group.getId());
-        dto.setGroupName(group.getName());
-        dto.setOtherAvatarUrl(group.getAvatarUrl());
-        dto.setMemberCount(memberCount);
-        dto.setUnreadCount(unreadCount);
-
-        if (latest != null) {
-            dto.setLastMessage(previewText(latest));
-            dto.setLastMessageAt(latest.getSentAt());
-            dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
-        } else {
-            dto.setLastMessage("Nhóm vừa được tạo");
-            dto.setLastMessageAt(group.getCreatedAt());
-            dto.setLastMessageTimeAgo(TimeAgoUtil.format(group.getCreatedAt()));
-        }
-
-        return dto;
-    }
-
-    private String previewText(ChatMessage message) {
-        if ("CALL".equalsIgnoreCase(message.getMessageType())) {
-            String call =
-                    "audio".equalsIgnoreCase(message.getCallType())
-                            ? "Cuộc gọi thoại"
-                            : "Cuộc gọi video";
-            if ("MISSED".equalsIgnoreCase(message.getCallStatus())) return "☎ " + call + " nhỡ";
-            if ("REJECTED".equalsIgnoreCase(message.getCallStatus()))
-                return "☎ " + call + " bị từ chối";
-            return "☎ " + call;
-        }
-        if (message.getMediaType() != null) {
-            if ("video".equalsIgnoreCase(message.getMediaType())) return "🎥 Video";
-            if ("file".equalsIgnoreCase(message.getMediaType()))
-                return "📎 "
-                        + (message.getMediaName() != null
-                                ? message.getMediaName()
-                                : "Tệp đính kèm");
-            return "📷 Ảnh";
-        }
-        return message.getContent() != null ? message.getContent() : "";
-    }
-
+    @Transactional(transactionManager = "mongoTransactionManager")
     public void deleteMessage(String messageId, Long currentUserId, boolean forEveryone) {
         ChatMessage message = chatMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tin nhắn không tồn tại"));
@@ -793,102 +617,37 @@ public class ChatService {
         if (!userId.equals(message.getSenderId())) {
             throw new ForbiddenException("Chỉ người gửi mới có thể thu hồi tin nhắn với mọi người");
         }
+        String removedMediaUrl = message.getMediaUrl();
         chatMessageRepository.delete(message);
+        if (mediaAssets != null && removedMediaUrl != null && !removedMediaUrl.isBlank()) {
+            afterCommitSafely("deleted chat media cleanup", () -> mediaAssets.deleteIfUnreferenced(removedMediaUrl));
+        }
         Map<String, Object> event = Map.of("messageId", messageId, "forEveryone", true);
+        List<User> recipients;
         if (message.getGroupId() != null) {
-            for (User member : userRepository.findAllById(groupService.getMemberIds(message.getGroupId()))) {
-                messagingTemplate.convertAndSendToUser(member.getUsername(), "/queue/message-deletions", event);
-            }
+            recipients = userRepository.findAllById(groupService.getMemberIds(message.getGroupId()));
         } else {
             Set<Long> ids = Set.of(Long.valueOf(message.getSenderId()), Long.valueOf(message.getReceiverId()));
-            for (User member : userRepository.findAllById(ids)) {
-                messagingTemplate.convertAndSendToUser(member.getUsername(), "/queue/message-deletions", event);
+            recipients = userRepository.findAllById(ids);
+        }
+        afterCommitSafely("message deletion broadcast", () -> {
+            for (User member : recipients) {
+                messagingTemplate.convertAndSendToUser(
+                        member.getUsername(), "/queue/message-deletions", event);
             }
-        }
+        });
     }
 
-    private List<ChatMessageResponse> history(String conversationId, int page, Long currentUserId) {
-        int safePage = Math.max(0, page);
-        var messages =
-                new java.util.ArrayList<>(
-                        chatMessageRepository.findByConversationIdOrderBySentAtDesc(
-                                conversationId,
-                                PageRequest.of(
-                                        safePage,
-                                        50,
-                                        Sort.by(Sort.Direction.DESC, "sentAt", "id"))));
-        java.util.Collections.reverse(messages);
-
-        restoreLegacyStoryReplies(messages);
-        messages.removeIf(message -> message.getHiddenForUserIds().contains(String.valueOf(currentUserId)));
-        var senderIds =
-                messages.stream()
-                        .map(ChatMessage::getSenderId)
-                        .filter(java.util.Objects::nonNull)
-                        .map(Long::valueOf)
-                        .collect(Collectors.toSet());
-        var users =
-                userRepository.findAllById(senderIds).stream()
-                        .collect(
-                                Collectors.toMap(
-                                        User::getId, java.util.function.Function.identity()));
-
-        return messages.stream()
-                .map(
-                        m ->
-                                toResponse(
-                                        m,
-                                        users.get(
-                                                m.getSenderId() != null
-                                                        ? Long.valueOf(m.getSenderId())
-                                                        : null)))
-                .collect(Collectors.toList());
-    }
-
-    private void restoreLegacyStoryReplies(List<ChatMessage> messages) {
-        List<ChatMessage> legacy = messages.stream()
-                .filter(message -> message.getStoryId() == null)
-                .filter(message -> message.getContent() != null && message.getContent().startsWith("Đã trả lời tin “"))
-                .toList();
-        if (legacy.isEmpty()) return;
-
-        Set<Long> participantIds = messages.stream()
-                .flatMap(message -> java.util.stream.Stream.of(message.getSenderId(), message.getReceiverId()))
-                .filter(java.util.Objects::nonNull)
-                .map(Long::valueOf)
-                .collect(Collectors.toSet());
-        List<StoryReply> replies = mongoTemplate.find(
-                Query.query(Criteria.where("senderId").in(participantIds).and("ownerId").in(participantIds)),
-                StoryReply.class);
-        if (replies.isEmpty()) return;
-
-        Map<String, Story> storyCache = new java.util.HashMap<>();
-        List<ChatMessage> changed = new java.util.ArrayList<>();
-        for (ChatMessage message : legacy) {
-            StoryReply match = replies.stream()
-                    .filter(reply -> String.valueOf(reply.getSenderId()).equals(message.getSenderId()))
-                    .filter(reply -> String.valueOf(reply.getOwnerId()).equals(message.getReceiverId()))
-                    .filter(reply -> message.getContent().endsWith(": " + reply.getContent()))
-                    .min(java.util.Comparator.comparingLong(reply -> legacyReplyDistance(message, reply)))
-                    .orElse(null);
-            if (match == null) continue;
-            Story story = storyCache.computeIfAbsent(match.getStoryId(), id -> mongoTemplate.findById(id, Story.class));
-            if (story == null) continue;
-            message.setMessageType("STORY_REPLY");
-            message.setStoryId(story.getId());
-            message.setStoryContent(story.getContent());
-            message.setStoryImageUrl(story.getImageUrl());
-            message.setStoryVideoUrl(story.getVideoUrl());
-            message.setContent(match.getContent());
-            changed.add(message);
-        }
-        if (!changed.isEmpty()) chatMessageRepository.saveAll(changed);
-    }
-
-    private long legacyReplyDistance(ChatMessage message, StoryReply reply) {
-        if (message.getSentAt() == null || reply.getCreatedAt() == null) return Long.MAX_VALUE;
-        java.time.Instant sent = message.getSentAt().atZone(java.time.ZoneId.systemDefault()).toInstant();
-        return Math.abs(java.time.Duration.between(sent, reply.getCreatedAt()).toMillis());
+    private void afterCommitSafely(String operation, Runnable action) {
+        TransactionCommitHooks.afterCommit(() -> {
+            try {
+                action.run();
+            } catch (RuntimeException ex) {
+                // A WebSocket/push failure must not imply the already committed message rolled back.
+                log.error("Post-commit chat side effect failed (operation={}, cause={})",
+                        operation, ex.getClass().getSimpleName(), ex);
+            }
+        });
     }
 
     private void sendChatPushSafely(Long receiverId, String title, String body, String relativeUrl) {
@@ -906,6 +665,24 @@ public class ChatService {
         return user.getUsername() == null ? "Bạn bè" : user.getUsername();
     }
 
+    private void attachChatMedia(ChatMessage message, Long uploaderId) {
+        if (mediaAssets == null || message == null || message.getMediaUrl() == null
+                || message.getMediaUrl().isBlank() || message.getId() == null || uploaderId == null) {
+            return;
+        }
+        mediaAssets.attachManagedReference(
+                message.getMediaUrl(), UploadPurpose.CHAT, String.valueOf(uploaderId),
+                "CHAT_MESSAGE", message.getId());
+    }
+
+    private void assertMediaAllowedForChat(String mediaUrl, String senderId) {
+        if (mediaUrl == null || mediaUrl.isBlank()) return;
+        if (mediaUploadModeration == null) {
+            throw new BadRequestException("Không thể xác minh media chat; vui lòng tải lên lại");
+        }
+        mediaUploadModeration.requirePurposeUrl(mediaUrl, UploadPurpose.CHAT, senderId, "image", "video");
+    }
+
     private String notificationPreview(String content, String mediaUrl) {
         String preview = content == null ? "" : content.trim();
         if (preview.isBlank() && mediaUrl != null && !mediaUrl.isBlank()) preview = "Đã gửi tệp đính kèm";
@@ -913,46 +690,12 @@ public class ChatService {
         return preview.length() > 140 ? preview.substring(0, 137) + "…" : preview;
     }
 
-    private ChatMessageResponse toResponse(ChatMessage m) {
-        User sender =
-                m.getSenderId() == null
-                        ? null
-                        : userRepository.findById(Long.valueOf(m.getSenderId())).orElse(null);
-        return toResponse(m, sender);
+    private ChatMessageResponse toResponse(ChatMessage message) {
+        return chatMessageMapper.toResponse(message);
     }
 
-    private ChatMessageResponse toResponse(ChatMessage m, User sender) {
-        ChatMessageResponse dto = new ChatMessageResponse();
-        dto.setId(m.getId());
-        dto.setSenderId(Long.valueOf(m.getSenderId()));
-        dto.setReceiverId(m.getReceiverId() != null ? Long.valueOf(m.getReceiverId()) : null);
-        dto.setGroupId(m.getGroupId());
-        dto.setContent(m.getContent());
-        dto.setMediaUrl(m.getMediaUrl());
-        dto.setMediaType(m.getMediaType());
-        dto.setMediaName(m.getMediaName());
-        dto.setMediaSize(m.getMediaSize());
-        dto.setMessageType(m.getMessageType());
-        dto.setCallId(m.getCallId());
-        dto.setCallType(m.getCallType());
-        dto.setCallStatus(m.getCallStatus());
-        dto.setStoryId(m.getStoryId());
-        dto.setStoryContent(m.getStoryContent());
-        dto.setStoryImageUrl(m.getStoryImageUrl());
-        dto.setStoryVideoUrl(m.getStoryVideoUrl());
-        dto.setRead(m.isRead());
-        dto.setDelivered(m.isDelivered() || (m.getGroupId() != null && !m.getDeliveredToUserIds().isEmpty()));
-        dto.setDeliveredAt(m.getDeliveredAt());
-        dto.setDeliveredCount(m.getGroupId() != null ? m.getDeliveredToUserIds().size() : (m.isDelivered() ? 1 : 0));
-        dto.setReadCount(m.getGroupId() != null ? m.getReadByUserIds().size() : (m.isRead() ? 1 : 0));
-        dto.setSentAt(m.getSentAt() != null ? m.getSentAt() : LocalDateTime.now());
-        dto.setTimeAgo(TimeAgoUtil.format(m.getSentAt()));
-
-        if (sender != null) {
-            dto.setSenderUsername(sender.getUsername());
-            dto.setSenderFullName(sender.getFullName());
-            dto.setSenderAvatarUrl(AvatarUtil.resolve(sender.getAvatarUrl()));
-        }
-        return dto;
+    private ChatMessageResponse toResponse(ChatMessage message, User sender) {
+        return chatMessageMapper.toResponse(message, sender);
     }
+
 }

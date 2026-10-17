@@ -2,10 +2,11 @@ package com.aloute.service;
 
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.model.document.*;
+import com.aloute.model.entity.Community;
+import com.aloute.model.entity.CommunityMember;
 import com.aloute.model.entity.User;
 import com.aloute.repository.*;
 
-import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.*;
@@ -15,11 +16,73 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class ContentAccessService {
     private final MongoTemplate mongo;
     private final IUserRepository users;
     private final IFriendRepository friends;
+    private final ICommunityRepository communities;
+    private final ICommunityMemberRepository communityMembers;
+
+    public ContentAccessService(
+            MongoTemplate mongo,
+            IUserRepository users,
+            IFriendRepository friends,
+            ICommunityRepository communities,
+            ICommunityMemberRepository communityMembers) {
+        this.mongo = mongo;
+        this.users = users;
+        this.friends = friends;
+        this.communities = communities;
+        this.communityMembers = communityMembers;
+    }
+
+    private static final String PRIVACY_PRIVATE = "PRIVATE";
+    private static final Set<String> ACTIVE_ROLES = Set.of("ADMIN", "MEMBER");
+
+    private static Long communityKey(String communityId) {
+        if (communityId == null || communityId.isBlank()) return null;
+        try {
+            return Long.valueOf(communityId.trim());
+        } catch (NumberFormatException e) {
+            return -1L; // malformed id: never matches a community, fails closed
+        }
+    }
+
+    /**
+     * Returns the subset of community ids (as stored on Post.communityId) the viewer must NOT read.
+     * A community is denied when it is missing, or PRIVATE and the viewer is not an ADMIN/MEMBER.
+     * Always at most 2 queries (communities + memberships) regardless of how many posts.
+     */
+    private Set<String> deniedCommunityIds(Long viewer, Collection<String> rawIds) {
+        Map<String, Long> keys = new HashMap<>();
+        for (String raw : rawIds) {
+            Long k = communityKey(raw);
+            if (k != null) keys.put(raw, k);
+        }
+        if (keys.isEmpty()) return Set.of();
+        List<Long> ids = keys.values().stream().distinct().toList();
+        Map<Long, Community> found =
+                communities.findByIdIn(ids).stream()
+                        .collect(Collectors.toMap(Community::getId, c -> c, (a, b) -> a));
+        Set<Long> memberOf = Set.of();
+        boolean anyPrivate =
+                found.values().stream().anyMatch(c -> PRIVACY_PRIVATE.equals(c.getPrivacy()));
+        if (viewer != null && anyPrivate) {
+            memberOf =
+                    communityMembers.findByUserIdAndCommunityIdIn(viewer, ids).stream()
+                            .filter(m -> ACTIVE_ROLES.contains(m.getRole()))
+                            .map(CommunityMember::getCommunityId)
+                            .collect(Collectors.toSet());
+        }
+        Set<String> denied = new HashSet<>();
+        for (Map.Entry<String, Long> e : keys.entrySet()) {
+            Community c = found.get(e.getValue());
+            if (c == null
+                    || (PRIVACY_PRIVATE.equals(c.getPrivacy()) && !memberOf.contains(e.getValue())))
+                denied.add(e.getKey());
+        }
+        return denied;
+    }
 
     public AccessBatch forPosts(Collection<Post> posts, Long viewer) {
         Set<String> originalIds =
@@ -60,8 +123,24 @@ public class ContentAccessService {
             friends.findByFollowedIdAndFollowerIdIn(viewer, authorIds)
                     .forEach(f -> incoming.add(f.getFollowerId()));
         }
+        Set<String> communityIds = new HashSet<>();
+        posts.stream()
+                .filter(Objects::nonNull)
+                .map(Post::getCommunityId)
+                .filter(Objects::nonNull)
+                .forEach(communityIds::add);
+        originals.values().stream()
+                .map(Post::getCommunityId)
+                .filter(Objects::nonNull)
+                .forEach(communityIds::add);
         return new AccessBatch(
-                viewer, authorsById, blockedIds(viewer, authorIds), outgoing, incoming, originals);
+                viewer,
+                authorsById,
+                blockedIds(viewer, authorIds),
+                outgoing,
+                incoming,
+                originals,
+                deniedCommunityIds(viewer, communityIds));
     }
 
     public Set<Long> visibleUserIds(Long viewer, Collection<User> authors) {
@@ -106,7 +185,8 @@ public class ContentAccessService {
             Set<Long> blocked,
             Set<Long> following,
             Set<Long> followers,
-            Map<String, Post> originals) {
+            Map<String, Post> originals,
+            Set<String> deniedCommunities) {
         public List<Post> readable(Collection<Post> posts) {
             return posts.stream().filter(this::canRead).toList();
         }
@@ -116,13 +196,17 @@ public class ContentAccessService {
             Long author = Long.valueOf(post.getUserId());
             User user = users.get(author);
             if (user == null || !user.isActive() || blocked.contains(author)) return false;
+            if (post.getCommunityId() != null && deniedCommunities.contains(post.getCommunityId()))
+                return false;
             if (post.getRepostOfId() != null) {
                 Post original = originals.get(post.getRepostOfId());
                 if (original == null || original.getRepostOfId() != null || !canRead(original))
                     return false;
             }
             if (Objects.equals(viewer, author)) return true;
-            if (post.getModerationStatus() == ModerationStatus.HIDDEN) return false;
+            if (post.getModerationStatus() == ModerationStatus.HIDDEN
+                    || post.getModerationStatus() == ModerationStatus.PENDING
+                    || post.getModerationStatus() == ModerationStatus.FLAGGED) return false;
             if (user.isPrivateAccount() && !following.contains(author)) return false;
             if (post.getVisibility() == PostVisibility.ONLY_ME) return false;
             return post.getVisibility() != PostVisibility.FRIENDS
@@ -156,13 +240,18 @@ public class ContentAccessService {
         Long author = Long.valueOf(post.getUserId());
         User user = users.findById(author).orElse(null);
         if (user == null || !user.isActive() || blocked(viewer, author)) return false;
+        if (post.getCommunityId() != null
+                && !deniedCommunityIds(viewer, List.of(post.getCommunityId())).isEmpty())
+            return false;
         if (post.getRepostOfId() != null) {
             Post original = mongo.findById(post.getRepostOfId(), Post.class);
             if (original == null || original.getRepostOfId() != null || !canRead(original, viewer))
                 return false;
         }
         if (Objects.equals(viewer, author)) return true;
-        if (post.getModerationStatus() == ModerationStatus.HIDDEN) return false;
+        if (post.getModerationStatus() == ModerationStatus.HIDDEN
+                || post.getModerationStatus() == ModerationStatus.PENDING
+                || post.getModerationStatus() == ModerationStatus.FLAGGED) return false;
         if (user.isPrivateAccount()
                 && (viewer == null || !friends.existsByFollowerIdAndFollowedId(viewer, author)))
             return false;

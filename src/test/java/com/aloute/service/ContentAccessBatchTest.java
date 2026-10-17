@@ -19,7 +19,10 @@ class ContentAccessBatchTest {
     private final MongoTemplate mongo = mock(MongoTemplate.class);
     private final IUserRepository users = mock(IUserRepository.class);
     private final IFriendRepository friends = mock(IFriendRepository.class);
-    private final ContentAccessService service = new ContentAccessService(mongo, users, friends);
+    private final ICommunityRepository communities = mock(ICommunityRepository.class);
+    private final ICommunityMemberRepository members = mock(ICommunityMemberRepository.class);
+    private final ContentAccessService service =
+            new ContentAccessService(mongo, users, friends, communities, members);
 
     @Test
     void publicBatchUsesTwoQueriesRegardlessOfPostCount() {
@@ -96,6 +99,117 @@ class ContentAccessBatchTest {
                 }
             }
         }
+    }
+
+
+    @Test
+    void anonymousViewerCannotReadPrivateAccountOrFriendsOnlyPosts() {
+        User privateAuthor = author(1, true);
+        User publicAuthor = author(2, false);
+        when(users.findAllById(any())).thenReturn(List.of(privateAuthor, publicAuthor));
+        Post privatePost = post(1, PostVisibility.PUBLIC);
+        Post friendsPost = post(2, PostVisibility.FRIENDS);
+
+        var batch = service.forPosts(List.of(privatePost, friendsPost), null);
+
+        assertTrue(batch.readable(List.of(privatePost, friendsPost)).isEmpty());
+        verifyNoInteractions(friends);
+    }
+
+    @Test
+    void privateCommunityPostsAreHiddenFromNonMembersWithConstantQueries() {
+        var authors = IntStream.rangeClosed(1, 50).mapToObj(i -> author(i, false)).toList();
+        var posts = new ArrayList<Post>();
+        IntStream.rangeClosed(1, 50)
+                .forEach(
+                        i -> {
+                            Post p = post(i, PostVisibility.PUBLIC);
+                            p.setCommunityId(i % 2 == 0 ? "10" : "20"); // 10 private, 20 public
+                            posts.add(p);
+                        });
+        when(users.findAllById(any())).thenReturn(authors);
+        when(communities.findByIdIn(any()))
+                .thenReturn(List.of(community(10L, "PRIVATE"), community(20L, "PUBLIC")));
+        when(members.findByUserIdAndCommunityIdIn(eq(99L), any())).thenReturn(List.of());
+
+        var batch = service.forPosts(posts, 99L);
+
+        assertEquals(25, batch.readable(posts).size());
+        assertTrue(batch.readable(posts).stream().noneMatch(p -> "10".equals(p.getCommunityId())));
+        verify(communities, times(1)).findByIdIn(any());
+        verify(members, times(1)).findByUserIdAndCommunityIdIn(eq(99L), any());
+    }
+
+    @Test
+    void privateCommunityPostsAreReadableByActiveMembersOnly() {
+        Post p = post(1, PostVisibility.PUBLIC);
+        p.setCommunityId("10");
+        when(users.findAllById(any())).thenReturn(List.of(author(1, false)));
+        when(communities.findByIdIn(any())).thenReturn(List.of(community(10L, "PRIVATE")));
+
+        when(members.findByUserIdAndCommunityIdIn(eq(5L), any()))
+                .thenReturn(List.of(new CommunityMember(10L, 5L, "MEMBER")));
+        assertTrue(service.forPosts(List.of(p), 5L).canRead(p));
+
+        when(members.findByUserIdAndCommunityIdIn(eq(6L), any()))
+                .thenReturn(List.of(new CommunityMember(10L, 6L, "PENDING")));
+        assertFalse(service.forPosts(List.of(p), 6L).canRead(p));
+        assertFalse(service.forPosts(List.of(p), null).canRead(p));
+        // even the author loses access once they are no longer an active member
+        assertFalse(service.forPosts(List.of(p), 1L).canRead(p));
+    }
+
+    @Test
+    void repostOfPrivateCommunityPostIsHidden() {
+        Post original = post(1, PostVisibility.PUBLIC);
+        original.setId("original");
+        original.setCommunityId("10");
+        Post repost = post(2, PostVisibility.PUBLIC);
+        repost.setRepostOfId("original");
+        when(users.findAllById(any())).thenReturn(List.of(author(1, false), author(2, false)));
+        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(List.of(original));
+        when(communities.findByIdIn(any())).thenReturn(List.of(community(10L, "PRIVATE")));
+        when(members.findByUserIdAndCommunityIdIn(eq(7L), any())).thenReturn(List.of());
+        assertFalse(service.forPosts(List.of(repost), 7L).canRead(repost));
+    }
+
+    @Test
+    void batchAndSingleAgreeOnCommunityRules() {
+        for (String privacy : List.of("PUBLIC", "PRIVATE")) {
+            for (String role : Arrays.asList(null, "ADMIN", "MEMBER", "PENDING", "BANNED")) {
+                for (Long viewer : Arrays.asList(null, 7L)) {
+                    User a = author(1, false);
+                    Post p = post(1, PostVisibility.PUBLIC);
+                    p.setCommunityId("10");
+                    when(users.findById(1L)).thenReturn(Optional.of(a));
+                    when(users.findAllById(any())).thenReturn(List.of(a));
+                    when(communities.findByIdIn(any())).thenReturn(List.of(community(10L, privacy)));
+                    when(members.findByUserIdAndCommunityIdIn(any(), any()))
+                            .thenReturn(
+                                    role == null
+                                            ? List.of()
+                                            : List.of(new CommunityMember(10L, 7L, role)));
+                    assertEquals(
+                            service.canRead(p, viewer), service.forPosts(List.of(p), viewer).canRead(p));
+                }
+            }
+        }
+    }
+
+    @Test
+    void missingCommunityFailsClosed() {
+        Post p = post(1, PostVisibility.PUBLIC);
+        p.setCommunityId("404");
+        when(users.findAllById(any())).thenReturn(List.of(author(1, false)));
+        when(communities.findByIdIn(any())).thenReturn(List.of());
+        assertFalse(service.forPosts(List.of(p), 5L).canRead(p));
+    }
+
+    private Community community(long id, String privacy) {
+        Community c = new Community();
+        c.setId(id);
+        c.setPrivacy(privacy);
+        return c;
     }
 
     private User author(long id, boolean privateAccount) {

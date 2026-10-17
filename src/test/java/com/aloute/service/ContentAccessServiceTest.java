@@ -18,7 +18,10 @@ class ContentAccessServiceTest {
     MongoTemplate mongo = mock(MongoTemplate.class);
     IUserRepository users = mock(IUserRepository.class);
     IFriendRepository friends = mock(IFriendRepository.class);
-    ContentAccessService access = new ContentAccessService(mongo, users, friends);
+    ICommunityRepository communities = mock(ICommunityRepository.class);
+    ICommunityMemberRepository members = mock(ICommunityMemberRepository.class);
+    ContentAccessService access =
+            new ContentAccessService(mongo, users, friends, communities, members);
     User author;
     Post post;
 
@@ -88,5 +91,31 @@ class ContentAccessServiceTest {
         post.setVisibility(PostVisibility.ONLY_ME);
         when(mongo.findById("post", Post.class)).thenReturn(post);
         assertFalse(access.canRead(repost, 2L));
+    }
+
+    @Test
+    void privateCommunityPostRequiresActiveMembership() {
+        com.aloute.model.entity.Community community = new com.aloute.model.entity.Community();
+        community.setId(10L);
+        community.setPrivacy("PRIVATE");
+        when(communities.findByIdIn(any())).thenReturn(java.util.List.of(community));
+        post.setCommunityId("10");
+
+        when(members.findByUserIdAndCommunityIdIn(eq(2L), any()))
+                .thenReturn(java.util.List.of());
+        assertFalse(access.canRead(post, 2L));
+        assertFalse(access.canRead(post, null));
+        assertThrows(
+                com.aloute.common.exception.ResourceNotFoundException.class,
+                () -> {
+                    when(mongo.findById("post", Post.class)).thenReturn(post);
+                    access.requirePost("post", 2L);
+                });
+
+        when(members.findByUserIdAndCommunityIdIn(eq(3L), any()))
+                .thenReturn(
+                        java.util.List.of(
+                                new com.aloute.model.entity.CommunityMember(10L, 3L, "ADMIN")));
+        assertTrue(access.canRead(post, 3L));
     }
 }

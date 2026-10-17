@@ -1,10 +1,12 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.response.UserProfileDto;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.FriendService;
+import com.aloute.service.AuthRateLimitService;
 import com.aloute.service.UserService;
 
 import org.springframework.security.core.Authentication;
@@ -20,18 +22,19 @@ import java.util.List;
 import jakarta.validation.constraints.Positive;
 
 @RestController
+@SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/users/{userId}")
 @Validated
 public class FriendController {
 
     private final FriendService friendService;
     private final UserService userService;
-    private final com.aloute.service.AuthRateLimitService rateLimitService;
+    private final AuthRateLimitService rateLimitService;
 
     public FriendController(
             FriendService friendService,
             UserService userService,
-            com.aloute.service.AuthRateLimitService rateLimitService) {
+            AuthRateLimitService rateLimitService) {
         this.friendService = friendService;
         this.userService = userService;
         this.rateLimitService = rateLimitService;

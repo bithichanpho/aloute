@@ -1,6 +1,8 @@
 package com.aloute.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.aloute.common.response.ApiResponse;
+import com.aloute.service.FirebaseAdminService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
+@SecurityRequirements
 @RequestMapping("/api/firebase")
 public class FirebaseConfigController {
 
@@ -21,9 +24,9 @@ public class FirebaseConfigController {
     @Value("${app.firebase.web.app-id:}") private String appId;
     @Value("${app.firebase.web.vapid-key:}") private String vapidKey;
 
-    private final com.aloute.service.FirebaseAdminService firebaseAdminService;
+    private final FirebaseAdminService firebaseAdminService;
 
-    public FirebaseConfigController(com.aloute.service.FirebaseAdminService firebaseAdminService) {
+    public FirebaseConfigController(FirebaseAdminService firebaseAdminService) {
         this.firebaseAdminService = firebaseAdminService;
     }
 

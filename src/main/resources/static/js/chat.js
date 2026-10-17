@@ -110,8 +110,30 @@
   let outgoingCallTimer = null;
   let incomingCallTimer = null;
   const CALL_TIMEOUT_MS = 30 * 1000;
-  const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
-  const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+  const fallbackIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  let cachedIceServers = null;
+  let cachedIceServersUntil = 0;
+
+  async function getRtcConfiguration() {
+    if (cachedIceServers && cachedIceServersUntil > Date.now()) {
+      return { iceServers: cachedIceServers };
+    }
+    try {
+      const servers = await Aloute.api('/api/webrtc/ice-servers');
+      if (Array.isArray(servers) && servers.some(server => server && server.urls)) {
+        cachedIceServers = servers;
+        // Credential TTL is server-controlled; refresh locally after five minutes.
+        cachedIceServersUntil = Date.now() + 5 * 60 * 1000;
+        return { iceServers: cachedIceServers };
+      }
+    } catch (error) {
+      console.warn('Could not load ICE server configuration; falling back to STUN only.');
+    }
+    cachedIceServers = fallbackIceServers;
+    cachedIceServersUntil = Date.now() + 30 * 1000;
+    return { iceServers: fallbackIceServers };
+  }
   const pendingIceCandidates = [];
 
   Aloute.onRealtimeReady(function (client) {
@@ -716,11 +738,10 @@
 
     const pendingClass = opts.pending ? ' bubble--pending' : '';
     const isCallMessage = String(msg.messageType || '').toUpperCase() === 'CALL';
-    const isStoryReply = String(msg.messageType || '').toUpperCase() === 'STORY_REPLY';
     const hasText = String(msg.content || '').trim().length > 0;
 
     let contentHtml = '';
-    if (hasText && !isStoryReply) {
+    if (hasText) {
       contentHtml = '<div class="bubble ' + (mine ? 'bubble--mine' : 'bubble--theirs') + pendingClass + ' bubble--cluster-last">' +
         senderNameHtml +
         '<span class="bubble__text">' + linkifyMessageText(msg.content || '') + '</span>' +
@@ -769,14 +790,6 @@
     let visualHtml = '';
     if (isCallMessage) {
       visualHtml = specialCallHtml;
-    } else if (isStoryReply) {
-      const storyMedia = msg.storyVideoUrl
-        ? '<video src="' + Aloute.escapeHtml(msg.storyVideoUrl) + '" muted playsinline preload="metadata"></video>'
-        : (msg.storyImageUrl ? '<img src="' + Aloute.escapeHtml(msg.storyImageUrl) + '" alt="Tin gốc">' : '');
-      visualHtml = '<div class="story-reply-card">' + storyMedia +
-        '<div class="story-reply-card__body"><small>Đã trả lời tin</small>' +
-        (msg.storyContent ? '<span class="story-reply-card__original">' + Aloute.escapeHtml(msg.storyContent) + '</span>' : '') +
-        '<strong>' + Aloute.escapeHtml(msg.content || '') + '</strong></div></div>';
     } else {
       visualHtml = contentHtml + mediaHtml;
     }
@@ -915,8 +928,9 @@
     stompClientRef.send(destination, {}, JSON.stringify(payload));
   }
 
-  function createPeerConnection(targetUserId, callId) {
+  async function createPeerConnection(targetUserId, callId) {
     if (peerConnection) peerConnection.close();
+    const rtcConfig = await getRtcConfiguration();
     peerConnection = new RTCPeerConnection(rtcConfig);
     activeCallId = callId || activeCallId || ('call-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
     peerConnection.onicecandidate = e => {
@@ -987,7 +1001,7 @@
       videoCallModal.hidden = false;
 
       await ensureLocalStream(activeCallType);
-      createPeerConnection(targetUserId, callId);
+      await createPeerConnection(targetUserId, callId);
       const offer = await peerConnection.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: callType !== 'audio' });
       await peerConnection.setLocalDescription(offer);
       signalCall('/app/call.offer', {
@@ -1023,7 +1037,7 @@
       await ensureLocalStream(activeCallType);
       activeCallId = offer.callId;
       callPeerUserId = Number(offer.fromUserId);
-      createPeerConnection(offer.fromUserId, offer.callId);
+      await createPeerConnection(offer.fromUserId, offer.callId);
       await peerConnection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
@@ -1222,6 +1236,7 @@
   async function uploadMediaBlob(blob, fileName, mediaType) {
     const form = new FormData();
     form.append('file', blob, fileName);
+    form.append('purpose', 'chat');
     const result = await Aloute.api('/api/upload/media', { method: 'POST', body: form });
     return { url: result.url, type: mediaType || result.type, name: result.name || fileName, size: Number(result.size || blob.size || 0) };
   }
@@ -1274,7 +1289,7 @@
   async function handleImageSelection(file) {
     if (!file) return;
     if (file.size > MAX_UPLOAD_BYTES) {
-      Aloute.toast('Tệp không được vượt quá 2GB.', true);
+      Aloute.toast('Tệp không được vượt quá 50MB.', true);
       return;
     }
     if (!file.type || (!file.type.startsWith('image/') && !file.type.startsWith('video/'))) {
@@ -1294,7 +1309,7 @@
   async function handleFileSelection(file) {
     if (!file) return;
     if (file.size > MAX_UPLOAD_BYTES) {
-      Aloute.toast('Tệp không được vượt quá 2GB.', true);
+      Aloute.toast('Tệp không được vượt quá 50MB.', true);
       return;
     }
     try {

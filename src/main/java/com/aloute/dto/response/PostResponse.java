@@ -1,15 +1,20 @@
 package com.aloute.dto.response;
 
+import com.aloute.model.document.PostVisibility;
+import com.aloute.model.document.ModerationStatus;
+
 import java.time.LocalDateTime;
 
-public class PostResponse {
-    @lombok.Getter @lombok.Setter private com.aloute.model.document.PostVisibility visibility;
+public class PostResponse implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
+    @lombok.Getter @lombok.Setter private PostVisibility visibility;
 
     private String id;
     private Long userId;
     private String username;
     private String userAvatarUrl;
     private String content;
+    private ModerationStatus moderationStatus;
     private String imageUrl;
     private String videoUrl;
     private int likeCount;
@@ -63,6 +68,14 @@ public class PostResponse {
 
     public void setUserAvatarUrl(String userAvatarUrl) {
         this.userAvatarUrl = userAvatarUrl;
+    }
+
+    public ModerationStatus getModerationStatus() {
+        return moderationStatus;
+    }
+
+    public void setModerationStatus(ModerationStatus moderationStatus) {
+        this.moderationStatus = moderationStatus;
     }
 
     public String getContent() {
@@ -194,7 +207,8 @@ public class PostResponse {
         this.otherReposters = otherReposters != null ? otherReposters : new java.util.ArrayList<>();
     }
 
-    public static class RepostActor {
+    public static class RepostActor implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
         private Long userId;
         private String username;
         private String userAvatarUrl;
@@ -233,7 +247,8 @@ public class PostResponse {
         }
     }
 
-    public static class RepostOrigin {
+    public static class RepostOrigin implements java.io.Serializable {
+        private static final long serialVersionUID = 1L;
         private String postId;
         private boolean deleted;
         private Long userId;

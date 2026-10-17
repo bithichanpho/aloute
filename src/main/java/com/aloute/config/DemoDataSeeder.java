@@ -28,11 +28,12 @@ import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IRoleRepository;
 import com.aloute.repository.IUserRepository;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ import java.util.Set;
 @Order(2)
 public class DemoDataSeeder implements CommandLineRunner {
 
+    private static final Logger log = LoggerFactory.getLogger(DemoDataSeeder.class);
     private static final String PASSWORD = "123456";
     private static final String DEMO_PREFIX = "demo.";
 
@@ -80,7 +82,7 @@ public class DemoDataSeeder implements CommandLineRunner {
             ILikeRepository likeRepository,
             INotificationRepository notificationRepository,
             PasswordEncoder passwordEncoder,
-            @Value("${app.seed.demo-data:false}") boolean enabled) {
+            SeedProperties seedProperties) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.friendRepository = friendRepository;
@@ -95,7 +97,7 @@ public class DemoDataSeeder implements CommandLineRunner {
         this.likeRepository = likeRepository;
         this.notificationRepository = notificationRepository;
         this.passwordEncoder = passwordEncoder;
-        this.enabled = enabled;
+        this.enabled = seedProperties.isDemoData();
     }
 
     @Override
@@ -104,7 +106,7 @@ public class DemoDataSeeder implements CommandLineRunner {
             return;
         }
         if (userRepository.existsByUsername("demo.minh")) {
-            System.out.println("[ALOUTE] Demo seed already exists -> skip.");
+            log.info("Demo seed already exists; skipping demo data initialization.");
             return;
         }
 
@@ -124,18 +126,10 @@ public class DemoDataSeeder implements CommandLineRunner {
         seedNotifications(users, posts);
         seedChats(users, demoGroups);
 
-        System.out.println(
-                "[ALOUTE] Demo seed complete: "
-                        + users.size()
-                        + " users, "
-                        + communities.size()
-                        + " communities, "
-                        + posts.size()
-                        + " posts.");
-        System.out.println("[ALOUTE] Demo login: demo.minh / " + PASSWORD);
-        System.out.println(
-                "[ALOUTE] Other demo accounts: demo.thao, demo.quang, demo.linh, demo.nam ... / "
-                        + PASSWORD);
+        log.info(
+                "Demo seed complete: {} users, {} communities, {} posts. "
+                        + "Demo credentials are development-only and are not logged.",
+                users.size(), communities.size(), posts.size());
     }
 
     private List<User> seedUsers(Role role) {

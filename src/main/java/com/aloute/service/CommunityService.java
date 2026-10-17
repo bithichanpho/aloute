@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.common.util.TransactionCommitHooks;
+
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.exception.ForbiddenException;
@@ -12,6 +14,7 @@ import com.aloute.model.entity.CommunityMember;
 import com.aloute.repository.ICommunityMemberRepository;
 import com.aloute.repository.ICommunityRepository;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -38,18 +41,34 @@ public class CommunityService {
     private final ICommunityRepository communityRepository;
     private final ICommunityMemberRepository memberRepository;
     private final PostService postService;
+    private final MediaUploadModerationService mediaUploadModeration;
+    private final MediaAssetLifecycleService mediaAssets;
 
+    @Autowired
+    public CommunityService(
+            ICommunityRepository communityRepository,
+            ICommunityMemberRepository memberRepository,
+            PostService postService,
+            MediaUploadModerationService mediaUploadModeration,
+            MediaAssetLifecycleService mediaAssets) {
+        this.communityRepository = communityRepository;
+        this.memberRepository = memberRepository;
+        this.postService = postService;
+        this.mediaUploadModeration = mediaUploadModeration;
+        this.mediaAssets = mediaAssets;
+    }
+
+    /** Compatibility constructor for service tests and older callers. */
     public CommunityService(
             ICommunityRepository communityRepository,
             ICommunityMemberRepository memberRepository,
             PostService postService) {
-        this.communityRepository = communityRepository;
-        this.memberRepository = memberRepository;
-        this.postService = postService;
+        this(communityRepository, memberRepository, postService, null, null);
     }
 
     @Transactional
     public CommunityResponse createCommunity(Long creatorId, CreateCommunityRequest request) {
+        validateMediaPurpose(request, null, creatorId);
         Community community = new Community();
         community.setName(request.getName().trim());
         community.setDescription(blankToNull(request.getDescription()));
@@ -62,6 +81,7 @@ public class CommunityService {
 
         Community saved = communityRepository.save(community);
         memberRepository.save(new CommunityMember(saved.getId(), creatorId, ROLE_ADMIN));
+        afterCommitMediaLifecycle(saved, null, null, creatorId);
 
         return toResponse(saved, true, true);
     }
@@ -175,8 +195,14 @@ public class CommunityService {
                         .filter(this::isActiveMember)
                         .toList();
         if (remaining.isEmpty()) {
+            String avatarUrl = community.getAvatarUrl();
+            String coverUrl = community.getCoverUrl();
             memberRepository.deleteByCommunityId(communityId);
             communityRepository.delete(community);
+            TransactionCommitHooks.afterCommit(() -> {
+                deleteIfUnreferencedSafely(avatarUrl, communityId);
+                deleteIfUnreferencedSafely(coverUrl, communityId);
+            });
             return null;
         }
 
@@ -254,21 +280,83 @@ public class CommunityService {
             Long communityId, Long requesterId, CreateCommunityRequest request) {
         requireAdmin(communityId, requesterId);
         Community community = getCommunityOrThrow(communityId);
+        // Existing legacy URLs may remain unchanged, but newly supplied URLs must come through
+        // the community upload endpoint and be owned by the authenticated uploader.
+        String oldAvatarUrl = community.getAvatarUrl();
+        String oldCoverUrl = community.getCoverUrl();
+        validateMediaPurpose(request, community, requesterId);
         community.setName(request.getName().trim());
         community.setDescription(blankToNull(request.getDescription()));
         community.setAvatarUrl(blankToNull(request.getAvatarUrl()));
         community.setCoverUrl(blankToNull(request.getCoverUrl()));
         community.setPrivacy(
                 PRIVACY_PRIVATE.equals(request.getPrivacy()) ? PRIVACY_PRIVATE : PRIVACY_PUBLIC);
-        return toResponse(communityRepository.save(community), true, true);
+        Community saved = communityRepository.save(community);
+        afterCommitMediaLifecycle(saved, oldAvatarUrl, oldCoverUrl, requesterId);
+        return toResponse(saved, true, true);
     }
 
     @Transactional
     public void deleteCommunity(Long communityId, Long requesterId) {
         requireAdmin(communityId, requesterId);
         Community community = getCommunityOrThrow(communityId);
+        String avatarUrl = community.getAvatarUrl();
+        String coverUrl = community.getCoverUrl();
         memberRepository.deleteByCommunityId(communityId);
         communityRepository.delete(community);
+        TransactionCommitHooks.afterCommit(() -> {
+            deleteIfUnreferencedSafely(avatarUrl, communityId);
+            deleteIfUnreferencedSafely(coverUrl, communityId);
+        });
+    }
+
+    private void validateMediaPurpose(CreateCommunityRequest request, Community existing, Long uploaderId) {
+        if (request == null) return;
+        validateCommunityImageUrl(request.getAvatarUrl(), existing == null ? null : existing.getAvatarUrl(), uploaderId);
+        validateCommunityImageUrl(request.getCoverUrl(), existing == null ? null : existing.getCoverUrl(), uploaderId);
+    }
+
+    private void validateCommunityImageUrl(String submittedUrl, String existingUrl, Long uploaderId) {
+        if (submittedUrl == null || submittedUrl.isBlank() || submittedUrl.equals(existingUrl)) return;
+        if (mediaUploadModeration == null) {
+            throw new BadRequestException("Không thể xác minh media hội nhóm; vui lòng tải lên lại");
+        }
+        mediaUploadModeration.requirePurposeUrl(
+                submittedUrl, UploadPurpose.COMMUNITY, String.valueOf(uploaderId), "image");
+    }
+
+    private void afterCommitMediaLifecycle(
+            Community saved, String oldAvatarUrl, String oldCoverUrl, Long uploaderId) {
+        if (mediaAssets == null || saved == null) return;
+        TransactionCommitHooks.afterCommit(() -> {
+            try {
+                mediaAssets.attachManagedReference(saved.getAvatarUrl(), UploadPurpose.COMMUNITY,
+                        String.valueOf(uploaderId), "COMMUNITY_AVATAR", String.valueOf(saved.getId()));
+                mediaAssets.attachManagedReference(saved.getCoverUrl(), UploadPurpose.COMMUNITY,
+                        String.valueOf(uploaderId), "COMMUNITY_COVER", String.valueOf(saved.getId()));
+                if (oldAvatarUrl != null && !oldAvatarUrl.equals(saved.getAvatarUrl())) {
+                    mediaAssets.deleteIfUnreferenced(oldAvatarUrl);
+                }
+                if (oldCoverUrl != null && !oldCoverUrl.equals(saved.getCoverUrl())) {
+                    mediaAssets.deleteIfUnreferenced(oldCoverUrl);
+                }
+            } catch (RuntimeException cleanupFailure) {
+                org.slf4j.LoggerFactory.getLogger(CommunityService.class).warn(
+                        "Community media lifecycle reconciliation deferred (communityId={}, cause={})",
+                        saved.getId(), cleanupFailure.getClass().getSimpleName());
+            }
+        });
+    }
+
+    private void deleteIfUnreferencedSafely(String url, Long communityId) {
+        if (mediaAssets == null || url == null || url.isBlank()) return;
+        try {
+            mediaAssets.deleteIfUnreferenced(url);
+        } catch (RuntimeException cleanupFailure) {
+            org.slf4j.LoggerFactory.getLogger(CommunityService.class).warn(
+                    "Community media cleanup deferred (communityId={}, cause={})",
+                    communityId, cleanupFailure.getClass().getSimpleName());
+        }
     }
 
     private void requireAdmin(Long communityId, Long userId) {

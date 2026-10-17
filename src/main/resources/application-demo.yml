@@ -1,0 +1,11 @@
+# Local classroom/demo profile only. Never activate this profile in production.
+app:
+  moderation:
+    enabled: false
+  cache:
+    redis:
+      enabled: false
+  security:
+    cookie-secure: false
+    rate-limit:
+      redis-required: false

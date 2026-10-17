@@ -50,6 +50,21 @@ class RequestValidationTest {
     }
 
     @Test
+    void usernameCannotUseDeletedAccountPrefix() {
+        for (String reserved : new String[] {"deleted_123", "DELETED_123", "Deleted_x", "deleted_"}) {
+            RegisterRequest request = validRegistration();
+            request.setUsername(reserved);
+            assertFalse(VALIDATOR.validate(request).isEmpty(), reserved + " must be rejected");
+        }
+
+        for (String allowed : new String[] {"deleted", "deletedfan", "deleted.1", "my_deleted_1"}) {
+            RegisterRequest request = validRegistration();
+            request.setUsername(allowed);
+            assertTrue(VALIDATOR.validate(request).isEmpty(), allowed + " must stay allowed");
+        }
+    }
+
+    @Test
     void reactionOnlyAcceptsSupportedTypes() {
         ReactionRequest request = new ReactionRequest();
         request.setType("surprised");

@@ -17,6 +17,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -25,7 +26,8 @@ class AccountSecurityServiceTest {
     private final IUserRepository users = mock(IUserRepository.class);
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final TotpService totp = new TotpService();
-    private final SecretEncryptionService encryption = new SecretEncryptionService("unit-test-key");
+    private final SecretEncryptionService encryption = new SecretEncryptionService("unit-test-aes-encryption-key-at-least-32-bytes", "");
+    private final AuthRateLimitService limits = mock(AuthRateLimitService.class);
     private final AccountSecurityService service =
             new AccountSecurityService(
                     mongo,
@@ -34,12 +36,16 @@ class AccountSecurityServiceTest {
                     totp,
                     encryption,
                     new AuthTokenService(),
-                    mock(AuthRateLimitService.class),
+                    limits,
                     mock(com.aloute.repository.IFriendRepository.class),
                     mock(com.aloute.repository.ICloseFriendRepository.class),
                     mock(com.aloute.repository.ICommunityMemberRepository.class),
                     mock(com.aloute.repository.IGroupMemberRepository.class),
-                    mock(com.aloute.repository.INotificationRepository.class));
+                    mock(com.aloute.repository.INotificationRepository.class),
+                    mock(com.aloute.repository.IUserPushTokenRepository.class),
+                    mock(com.aloute.repository.IGroupReadStatusRepository.class),
+                    mock(RefreshTokenService.class),
+                    mock(AccountDataCleanupService.class));
 
     @Test
     void usedTotpCannotBeReplayed() {
@@ -83,6 +89,57 @@ class AccountSecurityServiceTest {
         String code = totp.code(secret, Instant.now().getEpochSecond() / 30);
         assertThrows(BadRequestException.class, () -> service.enable(1L, "password", code));
         verify(mongo, never()).save(any(AccountSecurity.class));
+    }
+
+    @Test
+    void successfulTotpGivesTheFailureBudgetBack() {
+        String code = enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        assertDoesNotThrow(() -> service.verifyLogin(1L, code));
+        verify(limits).reset("TOTP", "1");
+    }
+
+    @Test
+    void failedTotpKeepsConsumingTheFailureBudget() {
+        enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(0, 0L, null));
+        assertThrows(UnauthorizedException.class, () -> service.verifyLogin(1L, "000000"));
+        verify(limits, never()).reset(anyString(), anyString());
+    }
+
+    @Test
+    void validRecoveryCodeAlsoGivesTheFailureBudgetBack() {
+        enabledTwoFactorWithUpdateResults(
+                UpdateResult.acknowledged(0, 0L, null), UpdateResult.acknowledged(1, 1L, null));
+        assertDoesNotThrow(() -> service.verifyLogin(1L, "recovery-code"));
+        verify(limits).reset("TOTP", "1");
+    }
+
+    @Test
+    void limiterOutageAfterAValidCodeDoesNotFailTheLogin() {
+        String code = enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        doThrow(new IllegalStateException("redis down")).when(limits).reset(anyString(), anyString());
+        assertDoesNotThrow(() -> service.verifyLogin(1L, code));
+    }
+
+    @Test
+    void twoFactorAttemptsAreLimitedToFivePerFifteenMinutes() {
+        String code = enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        service.verifyLogin(1L, code);
+        verify(limits).checkAndRecord(
+                eq("TOTP"), eq("1"), eq(5), eq(Duration.ofMinutes(15)), eq(Duration.ofMinutes(15)),
+                anyString(), anyString());
+    }
+
+    /** Enables 2FA for user 1 and returns a currently valid TOTP code. */
+    private String enabledTwoFactorWithUpdateResults(UpdateResult first, UpdateResult... rest) {
+        String secret = totp.newSecret();
+        AccountSecurity security = new AccountSecurity();
+        security.setId(1L);
+        security.setEnabled(true);
+        security.setSecret(encryption.encrypt(secret));
+        when(mongo.findById(1L, AccountSecurity.class)).thenReturn(security);
+        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
+                .thenReturn(first, rest);
+        return totp.code(secret, Instant.now().getEpochSecond() / 30);
     }
 
     private void validPassword() {

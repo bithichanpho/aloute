@@ -2,10 +2,11 @@ package com.aloute.model.document;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.TextIndexed;
 
 import java.time.LocalDateTime;
 
-@Document(collection = "posts")
+@Document(collection = "posts", language = "none")
 @org.springframework.data.mongodb.core.index.CompoundIndexes({
     @org.springframework.data.mongodb.core.index.CompoundIndex(
             name = "posts_created_desc",
@@ -18,13 +19,20 @@ import java.time.LocalDateTime;
             def = "{'communityId': 1, 'createdAt': -1}"),
     @org.springframework.data.mongodb.core.index.CompoundIndex(
             name = "posts_repost_origin_created",
-            def = "{'repostOfId': 1, 'createdAt': -1}")
+            def = "{'repostOfId': 1, 'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_hashtag_created",
+            def = "{'hashtags': 1, 'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_mention_created",
+            def = "{'mentions': 1, 'createdAt': -1}")
 })
 public class Post {
 
     @Id private String id;
 
     private String userId;
+    @TextIndexed
     private String content;
 
     @lombok.Getter @lombok.Setter
@@ -53,6 +61,30 @@ public class Post {
 
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
     private double toxicityScore = 0.0;
+    // Mongo-backed lease allows retry/recovery after queue rejection or process restart.
+    private LocalDateTime moderationLeaseUntil;
+    private LocalDateTime moderationLastAttemptAt;
+    private int moderationAttempts;
+    /** Safe machine-readable reason when automatic moderation needs administrator review. */
+    private String moderationFailureReason;
+    private boolean notifyMentionsAfterModeration;
+
+    public LocalDateTime getModerationLeaseUntil() { return moderationLeaseUntil; }
+    public void setModerationLeaseUntil(LocalDateTime value) { this.moderationLeaseUntil = value; }
+    public LocalDateTime getModerationLastAttemptAt() { return moderationLastAttemptAt; }
+    public void setModerationLastAttemptAt(LocalDateTime value) { this.moderationLastAttemptAt = value; }
+    public int getModerationAttempts() { return moderationAttempts; }
+    public void setModerationAttempts(int value) { this.moderationAttempts = Math.max(0, value); }
+    public String getModerationFailureReason() { return moderationFailureReason; }
+    public void setModerationFailureReason(String value) { this.moderationFailureReason = value; }
+
+    public boolean isNotifyMentionsAfterModeration() {
+        return notifyMentionsAfterModeration;
+    }
+
+    public void setNotifyMentionsAfterModeration(boolean notifyMentionsAfterModeration) {
+        this.notifyMentionsAfterModeration = notifyMentionsAfterModeration;
+    }
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

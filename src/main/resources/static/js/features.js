@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
   'use strict';
   const api = (url, method = 'GET', body) => Aloute.api(url, { method, body });
   const currentUser = document.body.dataset.currentUserId;
@@ -107,6 +107,41 @@
     trigger?.focus();
   });
 
+  function closeCommentMenus(except) {
+    document.querySelectorAll('.comment-menu.is-open').forEach(menu => {
+      if (menu === except) return;
+      menu.classList.remove('is-open');
+      menu.querySelector('[data-comment-menu-trigger]')?.setAttribute('aria-expanded', 'false');
+    });
+  }
+  document.addEventListener('click', event => {
+    const trigger = event.target.closest('[data-comment-menu-trigger]');
+    if (trigger) {
+      event.preventDefault();
+      event.stopPropagation();
+      const menu = trigger.closest('.comment-menu');
+      if (!menu) return;
+      const shouldOpen = !menu.classList.contains('is-open');
+      closeCommentMenus(menu);
+      menu.classList.toggle('is-open', shouldOpen);
+      trigger.setAttribute('aria-expanded', String(shouldOpen));
+      return;
+    }
+    if (event.target.closest('[data-comment-menu-item]')) {
+      closeCommentMenus();
+      return;
+    }
+    if (!event.target.closest('.comment-menu')) closeCommentMenus();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const openMenu = document.querySelector('.comment-menu.is-open');
+    if (!openMenu) return;
+    const trigger = openMenu.querySelector('[data-comment-menu-trigger]');
+    closeCommentMenus();
+    trigger?.focus();
+  });
+
   function enhance() {
     document.querySelectorAll('.post__content').forEach(linkTags);
     if (!currentUser) return;
@@ -167,7 +202,30 @@
       }
     });
     document.querySelectorAll('[data-comment-id]:not([data-features])').forEach(comment => {
-      comment.dataset.features = 'true'; comment.append(button('Báo cáo', () => report('COMMENT', comment.dataset.commentId)));
+      comment.dataset.features = 'true';
+      if (comment.querySelector('[data-comment-menu]')) return;
+      const menu = element('div', null, 'comment-menu');
+      menu.dataset.commentMenu = 'true';
+      const trigger = element('button', null, 'comment-menu__trigger');
+      trigger.type = 'button';
+      trigger.dataset.commentMenuTrigger = 'true';
+      trigger.setAttribute('aria-label', 'Tùy chọn bình luận');
+      trigger.setAttribute('aria-haspopup', 'menu');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.title = 'Tùy chọn bình luận';
+      trigger.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
+      const list = element('div', null, 'comment-menu__list');
+      list.setAttribute('role', 'menu');
+      const reportButton = button('Báo cáo bình luận', async () => {
+        closeCommentMenus();
+        await report('COMMENT', comment.dataset.commentId);
+      });
+      reportButton.className = 'comment-menu__item';
+      reportButton.dataset.commentMenuItem = 'true';
+      reportButton.setAttribute('role', 'menuitem');
+      list.append(reportButton);
+      menu.append(trigger, list);
+      comment.append(menu);
     });
     const profile = document.querySelector('[data-profile-user-id]:not([data-features])');
     const viewingOwnProfile = profile && (
@@ -184,101 +242,36 @@
     }
     if (profile && viewingOwnProfile) profile.dataset.features = 'true';
   }
-  function credentials() {
-    return {
-      password: document.getElementById('securityPassword')?.value || '',
-      code: document.getElementById('securityCode')?.value || ''
+  let recentGoogleReauthToken = null;
+  async function securityCredentials(passwordId, codeId) {
+    const values = {
+      password: document.getElementById(passwordId)?.value || '',
+      code: document.getElementById(codeId)?.value || ''
     };
-  }
-  function openStory(trigger) {
-    const story = trigger.dataset;
-    const owned = story.storyOwned === 'true';
-    api('/api/stories/' + encodeURIComponent(story.storyId) + '/view', 'POST').then(result => {
-      story.storyViews = String(result.views ?? story.storyViews ?? 0);
-      trigger.classList.add('is-viewed');
-    }).catch(() => {});
-    const modal = element('dialog', null, 'story-viewer');
-    const shell = element('div', null, 'story-viewer__shell');
-    const header = element('header', null, 'story-viewer__header');
-    const avatar = element('img');
-    avatar.src = story.storyAvatar || '/images/avatar_default.png';
-    const identity = element('div');
-    identity.append(element('strong', story.storyName || story.storyUsername || 'Người dùng'));
-    identity.append(element('span', '@' + (story.storyUsername || '')));
-    header.append(avatar, identity);
-    const close = button('×', () => modal.close()); close.className = 'story-viewer__close'; header.append(close);
-    const stage = element('div', null, 'story-viewer__stage');
-    if (story.storyVideo) {
-      const video = element('video'); video.src = story.storyVideo; video.controls = true; video.autoplay = true; stage.append(video);
-    } else if (story.storyImage) {
-      const image = element('img'); image.src = story.storyImage; image.alt = 'Tin của ' + (story.storyUsername || 'người dùng'); stage.append(image);
+    if (values.password.trim()) return values;
+    try {
+      if (recentGoogleReauthToken) values.firebaseIdToken = recentGoogleReauthToken;
+      else {
+        if (!window.AlouteFirebase || typeof window.AlouteFirebase.getGoogleReauthenticationToken !== 'function') {
+          throw new Error('Không thể mở xác minh Google. Hãy nhập mật khẩu hiện tại.');
+        }
+        recentGoogleReauthToken = await window.AlouteFirebase.getGoogleReauthenticationToken();
+        values.firebaseIdToken = recentGoogleReauthToken;
+      }
+      return values;
+    } catch (error) {
+      throw new Error(error?.message || 'Hãy nhập mật khẩu hiện tại hoặc xác minh bằng Google.');
     }
-    if (story.storyContent) stage.append(element('p', story.storyContent, 'story-viewer__caption'));
-    const footer = element('footer', null, 'story-viewer__footer');
-    if (owned) {
-      const viewers = button((story.storyViews || '0') + ' người đã xem', async () => {
-        const list = await api('/api/stories/' + encodeURIComponent(story.storyId) + '/viewers');
-        dialog('Người đã xem tin', content => {
-          const rows = element('div', null, 'story-viewers');
-          if (!list.length) rows.append(element('p', 'Chưa có ai xem tin này.'));
-          list.forEach(viewer => {
-            const row = element('a', null, 'story-viewers__row'); row.href = '/profile/' + viewer.userId;
-            const photo = element('img'); photo.src = viewer.avatarUrl || '/images/avatar_default.png';
-            row.append(photo, element('span', viewer.fullName || viewer.username)); rows.append(row);
-          });
-          content.append(rows);
-        });
-      });
-      footer.append(viewers);
-    } else {
-      const reply = element('form', null, 'story-viewer__reply');
-      const input = element('input'); input.placeholder = 'Trả lời tin…'; input.maxLength = 1000; input.required = true;
-      const send = element('button', 'Gửi'); send.type = 'submit';
-      const sentState = element('span', '', 'story-viewer__sent');
-      reply.append(input, send, sentState);
-      reply.addEventListener('submit', async event => {
-        event.preventDefault(); send.disabled = true;
-        try {
-          await api('/api/stories/' + encodeURIComponent(story.storyId) + '/replies', 'POST', { content: input.value.trim() });
-          input.value = ''; sentState.textContent = 'Đã gửi'; Aloute.toast('Đã gửi phản hồi vào tin nhắn');
-        } catch (error) { Aloute.toast(error.message, true); } finally { send.disabled = false; }
-      });
-      const heart = button(story.storyLiked === 'true' ? '♥' : '♡', async node => {
-        const liked = story.storyLiked !== 'true';
-        await api('/api/stories/' + encodeURIComponent(story.storyId) + '/reaction', liked ? 'PUT' : 'DELETE');
-        story.storyLiked = String(liked); node.textContent = liked ? '♥' : '♡'; node.classList.toggle('is-liked', liked);
-        if (liked) Aloute.toast('Đã thả tim tin');
-      });
-      heart.className = 'story-viewer__heart'; heart.classList.toggle('is-liked', story.storyLiked === 'true');
-      footer.append(reply, heart);
-    }
-    shell.append(header, stage, footer); modal.append(shell);
-    modal.addEventListener('click', event => { if (event.target === modal) modal.close(); });
-    modal.addEventListener('close', () => modal.remove()); document.body.append(modal); modal.showModal();
   }
-
-  function bindStoryViewer() {
-    if (document.body.dataset.storyViewerBound) return;
-    document.body.dataset.storyViewerBound = 'true';
-    document.body.addEventListener('click', event => {
-      if (event.target.closest('[data-action]')) return;
-      const trigger = event.target.closest('[data-story-open]');
-      if (trigger) { event.preventDefault(); openStory(trigger); }
-    });
-  }
-  function accountCredentials() {
-    return {
-      password: document.getElementById('accountPassword')?.value || '',
-      code: document.getElementById('accountCode')?.value || ''
-    };
-  }
+  function credentials() { return securityCredentials('securityPassword', 'securityCode'); }
+  function accountCredentials() { return securityCredentials('accountPassword', 'accountCode'); }
   async function setupTwoFactor() {
-    const setup = await api('/api/account/2fa/setup', 'POST', credentials());
+    const setup = await api('/api/account/2fa/setup', 'POST', await credentials());
     dialog('Thêm vào ứng dụng Authenticator', modal => {
       modal.append(element('p', 'Nhập khóa này vào ứng dụng Authenticator rồi nhập mã 6 chữ số.'), element('p', setup.secret, 'feature-secret'));
       const otp = field(modal, 'Mã xác nhận');
       modal.append(button('Bật 2FA', async () => {
-        const values = credentials(); values.code = otp.value;
+        const values = await credentials(); values.code = otp.value;
         const recovery = await api('/api/account/2fa/enable', 'POST', values);
         modal.replaceChildren(element('h2', 'Lưu mã khôi phục'));
         recovery.forEach(value => modal.append(element('p', value, 'feature-secret')));
@@ -327,44 +320,19 @@
       status.textContent = value.enabled ? '2FA đang bật' : '2FA chưa bật';
       status.classList.toggle('is-enabled', value.enabled);
     }).catch(error => { status.textContent = error.message; });
-    const media = document.getElementById('storyMedia');
-    if (media) media.addEventListener('change', () => {
-      const preview = document.getElementById('storyPreview'); preview.replaceChildren();
-      const file = media.files[0]; if (!file) return;
-      const video = file.type.startsWith('video/');
-      if (!video && !file.type.startsWith('image/')) { media.value = ''; Aloute.toast('Chỉ chấp nhận ảnh hoặc video', true); return; }
-      const node = element(video ? 'video' : 'img'); node.src = URL.createObjectURL(file);
-      if (video) node.controls = true; preview.append(node);
-    });
-    document.getElementById('storyComposer')?.addEventListener('submit', async event => {
-      event.preventDefault();
-      const submit = event.currentTarget.querySelector('[type="submit"]'); submit.disabled = true;
-      try {
-        const content = document.getElementById('storyContent').value.trim();
-        const file = media?.files[0]; let imageUrl = null; let videoUrl = null;
-        if (!content && !file) throw new Error('Tin cần có nội dung, hình ảnh hoặc video');
-        if (file) {
-          const form = new FormData(); form.append('file', file);
-          const uploaded = await api('/api/upload/media', 'POST', form);
-          if (file.type.startsWith('video/')) videoUrl = uploaded.url; else imageUrl = uploaded.url;
-        }
-        await api('/api/stories', 'POST', { content, imageUrl, videoUrl }); location.reload();
-      } catch (error) { Aloute.toast(error.message, true); } finally { submit.disabled = false; }
-    });
     host.addEventListener('click', async event => {
       const target = event.target.closest('[data-action]'); if (!target) return;
       const action = target.dataset.action; target.disabled = true;
       try {
         if (action === 'unsave') { await api('/api/posts/' + target.dataset.postId + '/saved', 'DELETE'); target.closest('[data-saved-post]').remove(); }
-        else if (action === 'delete-story') { await api('/api/stories/' + target.dataset.storyId, 'DELETE'); target.closest('[data-story-id]').remove(); }
         else if (action === 'accept-follow' || action === 'reject-follow') { await api('/api/follow-requests/' + encodeURIComponent(target.dataset.requestId), action === 'accept-follow' ? 'PUT' : 'DELETE'); target.closest('[data-request-id]').remove(); }
         else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); }
         else if (action === 'setup-2fa') await setupTwoFactor();
-        else if (action === 'disable-2fa') { await api('/api/account/2fa/disable', 'POST', credentials()); location.reload(); }
+        else if (action === 'disable-2fa') { await api('/api/account/2fa/disable', 'POST', await credentials()); location.reload(); }
         else if (action === 'deactivate-account' || action === 'delete-account') {
           const deleting = action === 'delete-account';
           if (!(await AlouteUI.confirm({ title: deleting ? 'Xóa tài khoản' : 'Vô hiệu hóa tài khoản', message: deleting ? 'Xóa tài khoản và nội dung? Thao tác này không thể hoàn tác.' : 'Vô hiệu hóa tài khoản?', okText: deleting ? 'Xóa' : 'Vô hiệu hóa' }))) return;
-          await api('/api/account/' + (deleting ? 'delete' : 'deactivate'), 'POST', accountCredentials()); location.href = '/login';
+          await api('/api/account/' + (deleting ? 'delete' : 'deactivate'), 'POST', await accountCredentials()); location.href = '/login';
         } else if (action === 'review-content') {
           const item = target.closest('[data-review-type]');
           const content = await api('/api/admin/content/' + item.dataset.reviewType + '/' + encodeURIComponent(item.dataset.reviewId));
@@ -377,7 +345,7 @@
     });
   }
   function initializePage() {
-    enhance(); bindFeaturePage(); bindStoryViewer();
+    enhance(); bindFeaturePage();
     const search = document.getElementById('searchInput');
     const query = new URLSearchParams(location.search).get('q');
     if (search && query) {

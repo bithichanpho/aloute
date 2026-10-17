@@ -1,7 +1,10 @@
 package com.aloute.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class AuthResponse {
 
+    @JsonIgnore
     private String accessToken;
     private Long userId;
     private String username;
@@ -19,6 +22,7 @@ public class AuthResponse {
         this.avatarUrl = avatarUrl;
     }
 
+    @JsonIgnore
     public String getAccessToken() {
         return accessToken;
     }

@@ -11,17 +11,6 @@
         <p class="post__content" th:text="${post.content}">Nội dung</p><img th:if="${post.imageUrl != null and !post.imageUrl.isBlank()}" th:src="${post.imageUrl}" alt="Ảnh bài viết" loading="lazy"><video class="post__video" th:if="${post.videoUrl != null and !post.videoUrl.isBlank()}" th:src="${post.videoUrl}" controls preload="metadata"></video>
       </article>
     </div>
-    <div class="feature-story-layout" th:if="${pageKind == 'stories'}">
-      <form id="storyComposer" class="feature-card feature-story-composer">
-        <div class="feature-card__title"><span class="feature-icon">＋</span><div><h2>Tạo tin mới</h2><p>Tin tự biến mất sau 24 giờ.</p></div></div>
-        <label>Nội dung<textarea id="storyContent" maxlength="2000" placeholder="Chia sẻ khoảnh khắc của bạn…"></textarea></label>
-        <label class="feature-file">Ảnh hoặc video<input id="storyMedia" type="file" accept="image/*,video/*"></label><div id="storyPreview" class="feature-story-preview"></div>
-        <button class="feature-primary" type="submit">Đăng tin</button>
-      </form>
-      <div class="feature-story-grid"><div class="feature-empty" th:if="${#lists.isEmpty(stories)}"><strong>Chưa có tin mới</strong><span>Hãy là người đầu tiên chia sẻ hôm nay.</span></div>
-        <article class="feature-card feature-story" th:each="story : ${stories}" data-story-open th:attr="data-story-id=${story.id},data-story-user-id=${story.userId},data-story-username=${story.username},data-story-name=${story.fullName},data-story-avatar=${story.avatarUrl},data-story-content=${story.content},data-story-image=${story.imageUrl},data-story-video=${story.videoUrl},data-story-liked=${story.liked},data-story-owned=${story.owned},data-story-views=${story.viewCount}"><video th:if="${story.videoUrl != null}" th:src="${story.videoUrl}" controls preload="metadata"></video><img th:if="${story.videoUrl == null and story.imageUrl != null}" th:src="${story.imageUrl}" alt="Tin" loading="lazy"><div class="feature-story__body"><strong th:text="${story.fullName != null and !story.fullName.isBlank() ? story.fullName : story.username}">Tác giả</strong><p th:text="${story.content}">Nội dung</p><small th:text="${'Hết hạn ' + story.expiresAt}">Hết hạn</small><button th:if="${story.userId == currentUser.id}" type="button" data-action="delete-story" th:attr="data-story-id=${story.id}">Xóa tin</button></div></article>
-      </div>
-    </div>
     <div class="settings-layout" th:if="${pageKind == 'settings'}">
       <aside class="settings-menu" aria-label="Danh mục cài đặt">
         <h1>Cài đặt</h1>
@@ -57,7 +46,8 @@
         <section class="feature-card settings-panel" data-settings-panel="security" hidden>
           <div class="feature-card__title"><span class="feature-icon">⌁</span><div><h2>Mật khẩu và bảo mật</h2><p>Bảo vệ tài khoản bằng ứng dụng Authenticator.</p></div></div>
           <div id="twoFactorStatus" class="feature-status">Đang kiểm tra…</div>
-          <label>Mật khẩu hiện tại<input id="securityPassword" type="password" autocomplete="current-password"></label>
+          <label>Mật khẩu hiện tại (tài khoản Google có thể để trống)<input id="securityPassword" type="password" autocomplete="current-password"></label>
+          <small>Nếu tài khoản chỉ dùng Google, hệ thống sẽ yêu cầu bạn xác minh lại bằng Google.</small>
           <label>Mã xác thực<input id="securityCode" inputmode="numeric" autocomplete="one-time-code"></label>
           <div class="feature-actions"><button type="button" data-action="setup-2fa">Thiết lập 2FA</button><button type="button" data-action="disable-2fa">Tắt 2FA</button></div>
         </section>
@@ -71,7 +61,8 @@
         </section>
         <section class="feature-card feature-danger settings-panel" data-settings-panel="account" hidden>
           <div class="feature-card__title"><span class="feature-icon">!</span><div><h2>Quản lý tài khoản</h2><p>Vô hiệu hóa tạm thời hoặc xóa và ẩn danh dữ liệu.</p></div></div>
-          <label>Mật khẩu hiện tại<input id="accountPassword" type="password" autocomplete="current-password"></label>
+          <label>Mật khẩu hiện tại (tài khoản Google có thể để trống)<input id="accountPassword" type="password" autocomplete="current-password"></label>
+          <small>Nếu tài khoản chỉ dùng Google, hệ thống sẽ yêu cầu bạn xác minh lại bằng Google.</small>
           <label>Mã 2FA hoặc mã khôi phục<input id="accountCode" autocomplete="one-time-code"></label>
           <div class="feature-actions"><button type="button" data-action="deactivate-account">Vô hiệu hóa</button><button type="button" class="danger" data-action="delete-account">Xóa tài khoản</button></div>
         </section>
@@ -80,8 +71,13 @@
     <div class="feature-stack" th:if="${pageKind == 'moderation'}">
       <div class="feature-empty" th:if="${#lists.isEmpty(moderationQueue['reports']) and #lists.isEmpty(moderationQueue['posts']) and #lists.isEmpty(moderationQueue['comments'])}"><strong>Hàng đợi đã sạch</strong><span>Không có nội dung nào cần xem xét.</span></div>
       <article class="feature-card feature-review" th:each="item : ${moderationQueue['reports']}" th:attr="data-review-type=${item.targetType},data-review-id=${item.targetId},data-report-id=${item.id}"><span class="feature-chip">Báo cáo người dùng</span><h2 th:text="${item.targetType + ' · ' + item.targetId}">Nội dung</h2><p th:text="${item.reason}">Lý do</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button><button type="button" data-action="dismiss-review">Bác báo cáo</button></div></article>
-      <article class="feature-card feature-review" th:each="post : ${moderationQueue['posts']}" data-review-type="POST" th:attr="data-review-id=${post.id}"><span class="feature-chip">Tự động phát hiện</span><h2>Bài viết cần duyệt</h2><p th:text="${post.content}">Nội dung</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button></div></article>
-      <article class="feature-card feature-review" th:each="comment : ${moderationQueue['comments']}" data-review-type="COMMENT" th:attr="data-review-id=${comment.id}"><span class="feature-chip">Tự động phát hiện</span><h2>Bình luận cần duyệt</h2><p th:text="${comment.content}">Nội dung</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button></div></article>
+      <article class="feature-card feature-review" th:each="post : ${moderationQueue['posts']}" data-review-type="POST" th:attr="data-review-id=${post.id}"><span class="feature-chip" th:text="${post.moderationFailureReason != null ? 'Lỗi kiểm duyệt · cần xem xét' : 'Tự động phát hiện'}">Tự động phát hiện</span><h2>Bài viết cần duyệt</h2><p th:text="${post.content}">Nội dung</p><small th:if="${post.moderationFailureReason != null}" th:text="${'Mã lỗi: ' + post.moderationFailureReason}">Mã lỗi</small><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button></div></article>
+      <article class="feature-card feature-review" th:each="comment : ${moderationQueue['comments']}" data-review-type="COMMENT" th:attr="data-review-id=${comment.id}"><span class="feature-chip" th:text="${comment.moderationFailureReason != null ? 'Lỗi kiểm duyệt · cần xem xét' : 'Tự động phát hiện'}">Tự động phát hiện</span><h2>Bình luận cần duyệt</h2><p th:text="${comment.content}">Nội dung</p><small th:if="${comment.moderationFailureReason != null}" th:text="${'Mã lỗi: ' + comment.moderationFailureReason}">Mã lỗi</small><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Chấp thuận</button><button type="button" class="danger" data-action="hide-review">Ẩn</button></div></article>
+      <nav class="feature-actions" th:if="${pageKind == 'moderation' and (moderationQueue['page'] > 0 or moderationQueue['hasMore'])}" aria-label="Phân trang hàng đợi kiểm duyệt">
+        <a th:if="${moderationQueue['page'] > 0}" th:href="@{/admin/moderation(page=${moderationQueue['page'] - 1})}">Trang trước</a>
+        <span th:text="${'Trang ' + (moderationQueue['page'] + 1)}">Trang 1</span>
+        <a th:if="${moderationQueue['hasMore']}" th:href="@{/admin/moderation(page=${moderationQueue['page'] + 1})}">Trang sau</a>
+      </nav>
     </div>
   </main>
 </section></body></html>

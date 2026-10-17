@@ -7,75 +7,130 @@ import com.aloute.model.document.Like;
 import com.aloute.model.document.Post;
 import com.aloute.repository.ILikeRepository;
 import com.mongodb.client.result.DeleteResult;
-
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
-
-import java.util.HashMap;
-import java.util.Map;
+import com.aloute.common.util.TransactionCommitHooks;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class LikeService {
+
+    private static final Logger log = LoggerFactory.getLogger(LikeService.class);
 
     private final ILikeRepository likeRepository;
     private final PostService postService;
     private final NotificationService notificationService;
     private final MongoTemplate mongoTemplate;
+    private final FeedCacheInvalidator feedCacheInvalidator;
+    private final MongoTransactionRetryExecutor transactionRetryExecutor;
 
+    @Autowired
+    public LikeService(
+            ILikeRepository likeRepository,
+            PostService postService,
+            NotificationService notificationService,
+            MongoTemplate mongoTemplate,
+            FeedCacheInvalidator feedCacheInvalidator,
+            MongoTransactionRetryExecutor transactionRetryExecutor) {
+        this.likeRepository = likeRepository;
+        this.postService = postService;
+        this.notificationService = notificationService;
+        this.mongoTemplate = mongoTemplate;
+        this.feedCacheInvalidator = feedCacheInvalidator;
+        this.transactionRetryExecutor = transactionRetryExecutor;
+    }
+
+    /** Compatibility constructor retained for tests and callers without cache configuration. */
+    public LikeService(
+            ILikeRepository likeRepository,
+            PostService postService,
+            NotificationService notificationService,
+            MongoTemplate mongoTemplate,
+            FeedCacheInvalidator feedCacheInvalidator) {
+        this(likeRepository, postService, notificationService, mongoTemplate, feedCacheInvalidator, null);
+    }
+
+    /** Compatibility constructor used by focused unit tests. */
     public LikeService(
             ILikeRepository likeRepository,
             PostService postService,
             NotificationService notificationService,
             MongoTemplate mongoTemplate) {
-        this.likeRepository = likeRepository;
-        this.postService = postService;
-        this.notificationService = notificationService;
-        this.mongoTemplate = mongoTemplate;
+        this(likeRepository, postService, notificationService, mongoTemplate, null, null);
     }
 
     public LikeResponse setLike(String postId, Long currentUserId, boolean desiredLiked) {
-        ReactionResponse reaction =
-                setReaction(postId, currentUserId, desiredLiked ? ReactionType.LIKE : null);
-        return new LikeResponse(
-                postId, reaction.getCurrentUserReaction() != null, reaction.getTotalCount());
+        if (!desiredLiked) {
+            ReactionResponse reaction = setReaction(postId, currentUserId, null);
+            return new LikeResponse(postId, false, reaction.getTotalCount());
+        }
+        ReactionResponse reaction;
+        try {
+            // Unlike a toggle endpoint, this endpoint expresses desired state. Repeating liked=true
+            // must remain a like instead of turning it off on a network retry or double-click.
+            reaction = executeTransaction(
+                    () -> setReactionInTransaction(postId, currentUserId, ReactionType.LIKE));
+        } catch (DuplicateKeyException concurrentInsert) {
+            reaction = readCommittedReaction(postId, currentUserId, concurrentInsert);
+        }
+        return new LikeResponse(postId, reaction.getCurrentUserReaction() != null, reaction.getTotalCount());
     }
 
     public boolean toggleLike(String postId, Long currentUserId) {
         String userIdStr = String.valueOf(currentUserId);
-        boolean current = likeRepository.existsByPostIdAndUserId(postId, userIdStr);
-        return setLike(postId, currentUserId, !current).isLiked();
+        try {
+            return executeTransaction(() -> {
+                boolean currentlyLiked = likeRepository.existsByPostIdAndUserId(postId, userIdStr);
+                ReactionResponse result = setReactionInTransaction(
+                        postId, currentUserId, currentlyLiked ? null : ReactionType.LIKE);
+                return result.getCurrentUserReaction() != null;
+            });
+        } catch (DuplicateKeyException concurrentLike) {
+            // Simultaneous requests that both try to create the same like resolve to the persisted row.
+            postService.requireReadablePost(postId, currentUserId);
+            return likeRepository.existsByPostIdAndUserId(postId, userIdStr);
+        }
     }
 
     public ReactionResponse setReaction(String postId, Long currentUserId, String requestedType) {
+        try {
+            return executeTransaction(
+                    () -> setReactionInTransaction(postId, currentUserId, requestedType));
+        } catch (DuplicateKeyException concurrentInsert) {
+            // A concurrent request won the unique (postId,userId) insert. Return committed state.
+            return readCommittedReaction(postId, currentUserId, concurrentInsert);
+        }
+    }
+
+    private ReactionResponse setReactionInTransaction(
+            String postId, Long currentUserId, String requestedType) {
         Post post = postService.requireReadablePost(postId, currentUserId);
         String userIdStr = String.valueOf(currentUserId);
         boolean wantsReaction = requestedType != null && !requestedType.isBlank();
         String normalizedType = wantsReaction ? ReactionType.normalize(requestedType) : null;
 
         Like existing = likeRepository.findByPostIdAndUserId(postId, userIdStr).orElse(null);
+        String previousReactionType = existing == null ? null : existing.getReactionType();
 
         if (!wantsReaction) {
-
-            if (existing != null) {
-                removeReaction(postId, existing);
-            }
+            if (existing != null) removeReaction(postId, existing);
         } else if (existing == null) {
-
-            try {
-                likeRepository.save(new Like(postId, userIdStr, normalizedType));
-                postService.adjustReactionCount(postId, normalizedType, 1);
-                notifyReacted(post, currentUserId);
-            } catch (DuplicateKeyException ignored) {
-
-            }
-        } else if (normalizedType.equals(existing.getReactionType())) {
-
-            removeReaction(postId, existing);
-        } else {
-
+            // A duplicate-key race aborts this attempt and is reconciled after transaction rollback.
+            likeRepository.save(new Like(postId, userIdStr, normalizedType));
+            postService.adjustReactionCount(postId, normalizedType, 1);
+            notifyReacted(post, currentUserId);
+        } else if (!normalizedType.equals(existing.getReactionType())) {
             String oldType = existing.getReactionType();
             existing.setReactionType(normalizedType);
             likeRepository.save(existing);
@@ -85,22 +140,36 @@ public class LikeService {
 
         Post refreshed = postService.getPostOrThrow(postId);
         Like current = likeRepository.findByPostIdAndUserId(postId, userIdStr).orElse(null);
-        Map<String, Integer> counts =
-                refreshed.getReactionCounts() != null
-                        ? refreshed.getReactionCounts()
-                        : new HashMap<>();
+        Map<String, Integer> counts = refreshed.getReactionCounts() != null
+                ? refreshed.getReactionCounts() : new HashMap<>();
+        String resultingReactionType = current != null ? current.getReactionType() : null;
+        if (!Objects.equals(previousReactionType, resultingReactionType) && feedCacheInvalidator != null) {
+            TransactionCommitHooks.afterCommit(() -> feedCacheInvalidator.invalidateViewer(currentUserId));
+        }
+        return new ReactionResponse(postId, resultingReactionType,
+                Math.max(0, refreshed.getLikeCount()), counts);
+    }
 
-        return new ReactionResponse(
-                postId,
-                current != null ? current.getReactionType() : null,
-                Math.max(0, refreshed.getLikeCount()),
-                counts);
+    private ReactionResponse readCommittedReaction(
+            String postId, Long currentUserId, DuplicateKeyException originalFailure) {
+        postService.requireReadablePost(postId, currentUserId);
+        Like existing = likeRepository
+                .findByPostIdAndUserId(postId, String.valueOf(currentUserId))
+                .orElseThrow(() -> originalFailure);
+        Post refreshed = postService.getPostOrThrow(postId);
+        Map<String, Integer> counts = refreshed.getReactionCounts() == null
+                ? new HashMap<>() : refreshed.getReactionCounts();
+        return new ReactionResponse(postId, existing.getReactionType(),
+                Math.max(0, refreshed.getLikeCount()), counts);
+    }
+
+    private <T> T executeTransaction(Supplier<T> operation) {
+        return transactionRetryExecutor == null ? operation.get() : transactionRetryExecutor.execute(operation);
     }
 
     private void removeReaction(String postId, Like existing) {
-        Query query =
-                Query.query(
-                        Criteria.where("postId").is(postId).and("userId").is(existing.getUserId()));
+        Query query = Query.query(
+                Criteria.where("postId").is(postId).and("userId").is(existing.getUserId()));
         DeleteResult result = mongoTemplate.remove(query, Like.class);
         if (result.getDeletedCount() > 0) {
             postService.adjustReactionCount(postId, existing.getReactionType(), -1);
@@ -108,12 +177,24 @@ public class LikeService {
     }
 
     private void notifyReacted(Post post, Long reactorId) {
-        try {
-            Long ownerId = Long.valueOf(post.getUserId());
-            notificationService.notify(
-                    ownerId, reactorId, "LIKE", post.getId(), "đã thích bài viết của bạn");
-        } catch (org.springframework.core.task.TaskRejectedException ignored) {
-
+        Runnable notification = () -> {
+            try {
+                Long ownerId = Long.valueOf(post.getUserId());
+                notificationService.notify(ownerId, reactorId, "LIKE", post.getId(), "đã thích bài viết của bạn");
+            } catch (RuntimeException notificationFailure) {
+                // This runs after Mongo commits. Never let notification failure make the caller
+                // retry an already-committed reaction transaction.
+                log.warn("Like notification enqueue failed (cause={})",
+                        notificationFailure.getClass().getSimpleName());
+            }
+        };
+        // NotificationService writes to PostgreSQL. Publish only after Mongo commits.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { notification.run(); }
+            });
+        } else {
+            notification.run();
         }
     }
 }

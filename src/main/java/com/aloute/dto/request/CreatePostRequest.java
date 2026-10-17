@@ -1,5 +1,7 @@
 package com.aloute.dto.request;
 
+import com.aloute.model.document.PostVisibility;
+
 import com.aloute.validation.HttpUrl;
 import com.aloute.validation.AtLeastOneNotBlank;
 
@@ -14,8 +16,8 @@ public class CreatePostRequest {
     private String content;
 
     @jakarta.validation.constraints.NotNull
-    private com.aloute.model.document.PostVisibility visibility =
-            com.aloute.model.document.PostVisibility.PUBLIC;
+    private PostVisibility visibility =
+            PostVisibility.PUBLIC;
 
     @Size(max = 2048, message = "URL hình ảnh tối đa 2048 ký tự")
     @HttpUrl
@@ -33,11 +35,11 @@ public class CreatePostRequest {
         this.content = content;
     }
 
-    public com.aloute.model.document.PostVisibility getVisibility() {
+    public PostVisibility getVisibility() {
         return visibility;
     }
 
-    public void setVisibility(com.aloute.model.document.PostVisibility visibility) {
+    public void setVisibility(PostVisibility visibility) {
         this.visibility = visibility;
     }
 

@@ -13,15 +13,6 @@
   const pushFidStorageKey = 'aloute-fcm-fid';
   const pushOptOutKey = 'aloute-fcm-disabled';
   const currentUserId = document.body.dataset.currentUserId || '';
-  const hasExistingPushEnrollment = Boolean(
-    currentUserId && storageGet(pushFidStorageKey) && storageGet(pushOptOutKey) !== 'true'
-  );
-
-  // The Push control only exists on /activity, but an enrolled browser can be on
-  // any ALOUTE page. Initialize foreground FCM handling there too, so FCM can
-  // serve as a fallback toast if the WebSocket/STOMP connection is disconnected.
-  if (!googleButton && !pushButton && !hasExistingPushEnrollment) return;
-
   let configPromise;
   let appSdkPromise;
   let authSdkPromise;
@@ -31,6 +22,56 @@
   let messagingInstance;
   let pendingFidRegistration = null;
   let messagingListenersReady = false;
+  const hasExistingPushEnrollment = Boolean(
+    currentUserId && storageGet(pushFidStorageKey) && storageGet(pushOptOutKey) !== 'true'
+  );
+
+  async function getGoogleReauthenticationToken() {
+    const config = await getConfig();
+    if (!config.googleLoginEnabled) {
+      throw new Error('Xác minh Google chưa được cấu hình. Hãy nhập mật khẩu hiện tại.');
+    }
+    const [app, authSdk] = await Promise.all([getFirebaseApp(config), getAuthSdk()]);
+    const auth = authSdk.getAuth(app);
+    const provider = new authSdk.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    // Reauthenticate the existing Firebase user when available so selecting another Google
+    // account cannot silently replace the browser's Firebase identity. If the app's Firebase
+    // session was cleared, allow an interactive sign-in; the server still checks account email.
+    const currentUser = auth.currentUser;
+    const result = currentUser
+      ? await authSdk.reauthenticateWithPopup(currentUser, provider)
+      : await authSdk.signInWithPopup(auth, provider);
+    if (!result.user) throw new Error('Google không trả về tài khoản.');
+    if (currentUser && result.user.uid !== currentUser.uid) {
+      throw new Error('Tài khoản Google xác minh không khớp phiên hiện tại.');
+    }
+    return result.user.getIdToken(true);
+  }
+
+  window.AlouteFirebase = window.AlouteFirebase || {};
+  window.AlouteFirebase.getGoogleReauthenticationToken = getGoogleReauthenticationToken;
+
+  // The Push control only exists on /activity, but an enrolled browser can be on
+  // any ALOUTE page. Initialize foreground FCM handling there too, so FCM can
+  // serve as a fallback toast if the WebSocket/STOMP connection is disconnected.
+  if (!googleButton && !pushButton && !hasExistingPushEnrollment) return;
+
+
+  function csrfHeaders(headers, method) {
+    if (window.Aloute && typeof window.Aloute.csrfHeaders === 'function') {
+      return window.Aloute.csrfHeaders(headers, method);
+    }
+    const result = Object.assign({}, headers || {});
+    if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(String(method || 'GET').toUpperCase())) {
+      const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+      if (match) {
+        try { result['X-XSRF-TOKEN'] = decodeURIComponent(match[1]); }
+        catch (_) { result['X-XSRF-TOKEN'] = match[1]; }
+      }
+    }
+    return result;
+  }
 
   function setStatus(element, message, isError) {
     if (!element) return;
@@ -51,21 +92,47 @@
   }
 
   function importFirebase(file) {
-    return import(FIREBASE_CDN + file);
+    const url = FIREBASE_CDN + file;
+    return import(url).catch((cause) => {
+      // A CSP that allows only 'self' blocks these official browser-module imports.
+      // Keep the underlying error in DevTools without returning internals to the UI.
+      console.error('[ALOUTE] Firebase SDK module could not be loaded:', url, cause);
+      const error = new Error(
+        'Không tải được Firebase SDK từ Google CDN. Hãy kiểm tra mạng/trình chặn nội dung và Content-Security-Policy có cho phép https://www.gstatic.com trong script-src.'
+      );
+      error.code = 'aloute/firebase-sdk-load-failed';
+      error.cause = cause;
+      throw error;
+    });
   }
 
   function getAppSdk() {
-    if (!appSdkPromise) appSdkPromise = importFirebase('firebase-app.js');
+    if (!appSdkPromise) {
+      appSdkPromise = importFirebase('firebase-app.js').catch((error) => {
+        appSdkPromise = null; // Let a later user retry after a transient network failure.
+        throw error;
+      });
+    }
     return appSdkPromise;
   }
 
   function getAuthSdk() {
-    if (!authSdkPromise) authSdkPromise = importFirebase('firebase-auth.js');
+    if (!authSdkPromise) {
+      authSdkPromise = importFirebase('firebase-auth.js').catch((error) => {
+        authSdkPromise = null; // A rejected promise must not permanently poison this page.
+        throw error;
+      });
+    }
     return authSdkPromise;
   }
 
   function getMessagingSdk() {
-    if (!messagingSdkPromise) messagingSdkPromise = importFirebase('firebase-messaging.js');
+    if (!messagingSdkPromise) {
+      messagingSdkPromise = importFirebase('firebase-messaging.js').catch((error) => {
+        messagingSdkPromise = null;
+        throw error;
+      });
+    }
     return messagingSdkPromise;
   }
 
@@ -107,15 +174,32 @@
       const result = await authSdk.signInWithPopup(auth, provider);
       if (!result.user) throw new Error('Google không trả về tài khoản.');
       const idToken = await result.user.getIdToken(true);
-      const response = await fetch('/api/auth/firebase/login', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken })
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload || payload.success === false) {
-        throw new Error((payload && payload.message) || 'Không thể đăng nhập vào ALOUTE bằng Google.');
+      let code = '';
+      let payload = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await fetch('/api/auth/firebase/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: csrfHeaders({ 'Content-Type': 'application/json' }, 'POST'),
+          body: JSON.stringify({ idToken, code })
+        });
+        payload = await response.json().catch(() => null);
+        if (response.ok && payload && payload.success !== false) break;
+        const message = (payload && payload.message) || '';
+        // Account has 2FA enabled: ask for the TOTP / recovery code and retry with the same idToken.
+        if (response.status === 401 && message.includes('xác thực hai lớp') && attempt < 2) {
+          const entered = window.prompt('Tài khoản đã bật xác thực hai lớp. Nhập mã Authenticator hoặc mã khôi phục:');
+          if (!entered || !entered.trim()) throw new Error('Cần mã xác thực hai lớp để đăng nhập bằng Google.');
+          code = entered.trim();
+          continue;
+        }
+        if (response.status === 401 && message.includes('2FA') && attempt < 2) {
+          const entered = window.prompt('Mã không hợp lệ. Nhập lại mã Authenticator hoặc mã khôi phục:');
+          if (!entered || !entered.trim()) throw new Error(message);
+          code = entered.trim();
+          continue;
+        }
+        throw new Error(message || 'Không thể đăng nhập vào ALOUTE bằng Google.');
       }
       window.location.assign('/feed');
     } catch (error) {
@@ -134,7 +218,7 @@
     const response = await fetch(path, {
       method,
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }, method),
       body: JSON.stringify({ fid })
     });
     const payload = await response.json().catch(() => null);

@@ -7,7 +7,6 @@ import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IRepostRepository;
 import com.aloute.repository.IUserRepository;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.domain.Sort;
@@ -15,6 +14,8 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.List;
 @Component
 @Order(5)
 public class DemoFeedExpansionSeeder implements CommandLineRunner {
+    private static final Logger log = LoggerFactory.getLogger(DemoFeedExpansionSeeder.class);
     private static final String MARKER = "[DEMO-EXPANSION]";
 
     private final boolean enabled;
@@ -33,12 +35,12 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
     private final MongoTemplate mongoTemplate;
 
     public DemoFeedExpansionSeeder(
-            @Value("${app.seed.demo-data:false}") boolean enabled,
+            SeedProperties seedProperties,
             IUserRepository userRepository,
             IPostRepository postRepository,
             IRepostRepository repostRepository,
             MongoTemplate mongoTemplate) {
-        this.enabled = enabled;
+        this.enabled = seedProperties.isDemoData();
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.repostRepository = repostRepository;
@@ -72,8 +74,7 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
         if (demoPosts.size() < 60) {
             demoPosts = new ArrayList<>(demoPosts);
             demoPosts.addAll(createMorePosts(users, 60 - demoPosts.size()));
-            System.out.println(
-                    "[ALOUTE] Demo feed expansion added " + (demoPosts.size()) + " marked posts.");
+            log.info("Demo feed expansion now has {} marked posts.", demoPosts.size());
         }
 
         seedReposts(users, demoPosts);
@@ -169,10 +170,7 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
             postRepository.save(post);
         }
 
-        System.out.println(
-                "[ALOUTE] Demo feed repost relations ensured; new relations=" + created + ".");
-        System.out.println(
-                "[ALOUTE] Repost UI test: first demo posts intentionally have 4-5 distinct"
-                        + " reposters.");
+        log.info("Demo feed repost relations ensured; new relations={}", created);
+        log.debug("Demo repost distribution initialized for feed UI testing.");
     }
 }
