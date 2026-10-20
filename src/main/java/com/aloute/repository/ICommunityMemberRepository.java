@@ -13,6 +13,11 @@ public interface ICommunityMemberRepository extends JpaRepository<CommunityMembe
 
     List<CommunityMember> findByUserId(Long userId);
 
+    List<CommunityMember> findByUserIdAndRoleInOrderByJoinedAtDesc(
+            Long userId,
+            java.util.Collection<String> roles,
+            org.springframework.data.domain.Pageable pageable);
+
     Optional<CommunityMember> findByCommunityIdAndUserId(Long communityId, Long userId);
 
     boolean existsByCommunityIdAndUserId(Long communityId, Long userId);
@@ -20,7 +25,20 @@ public interface ICommunityMemberRepository extends JpaRepository<CommunityMembe
     boolean existsByCommunityIdAndUserIdAndRoleIn(
             Long communityId, Long userId, java.util.Collection<String> roles);
 
+    boolean existsByCommunityIdAndRole(Long communityId, String role);
+
+    Optional<CommunityMember> findFirstByCommunityIdAndRoleInOrderByJoinedAtAsc(
+            Long communityId, java.util.Collection<String> roles);
+
     List<CommunityMember> findByCommunityIdAndRole(Long communityId, String role);
+
+    List<CommunityMember> findByCommunityIdAndRole(
+            Long communityId, String role, org.springframework.data.domain.Pageable pageable);
+
+    List<CommunityMember> findByCommunityIdAndRoleInOrderByJoinedAtAsc(
+            Long communityId,
+            java.util.Collection<String> roles,
+            org.springframework.data.domain.Pageable pageable);
 
     void deleteByCommunityIdAndUserId(Long communityId, Long userId);
 
@@ -31,8 +49,6 @@ public interface ICommunityMemberRepository extends JpaRepository<CommunityMembe
     void deleteByCommunityId(Long communityId);
 
     void deleteByUserId(Long userId);
-
-    List<CommunityMember> findByCommunityIdOrderByJoinedAtAsc(Long communityId);
 
     List<CommunityMember> findByUserIdAndCommunityIdIn(Long userId, List<Long> communityIds);
 }

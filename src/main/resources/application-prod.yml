@@ -9,9 +9,12 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
 
-      maximum-pool-size: ${DB_POOL_MAX_SIZE:5}
+      # Keep this below the connection allowance of the PostgreSQL/Supabase pooler.
+      # Ten connections per replica is a safer production starting point than five;
+      # tune DB_POOL_MAX together with APP_REPLICAS and database max_connections.
+      maximum-pool-size: ${DB_POOL_MAX:10}
 
-      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      minimum-idle: ${DB_POOL_MIN:2}
 
       connection-timeout: ${DB_CONNECTION_TIMEOUT:10000}
       idle-timeout: ${DB_IDLE_TIMEOUT:300000}
@@ -39,6 +42,8 @@ spring:
           auth: true
           starttls:
             enable: true
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
 server:
   address: 0.0.0.0
@@ -46,6 +51,7 @@ server:
   # Keep the socket peer address intact; ClientIpResolver trusts X-Forwarded-For
   # only when the immediate peer is in APP_TRUSTED_PROXY_CIDRS.
   forward-headers-strategy: none
+  shutdown: graceful
 
 jwt:
   secret: ${JWT_SECRET}
@@ -63,6 +69,12 @@ app:
       enabled: ${REDIS_CACHE_ENABLED:true}
     ttl: ${APP_CACHE_TTL:2m}
     feed-ttl: ${APP_FEED_CACHE_TTL:30s}
+  websocket:
+    broker-relay:
+      # Production replicas must share subscriptions and /user destinations.
+      enabled: ${APP_WEBSOCKET_BROKER_RELAY_ENABLED:true}
+  calls:
+    distributed-state-enabled: ${APP_CALLS_DISTRIBUTED_STATE_ENABLED:true}
   seed:
     demo-data: false
   db:

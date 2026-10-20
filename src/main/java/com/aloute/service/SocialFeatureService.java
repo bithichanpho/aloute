@@ -6,6 +6,7 @@ import com.aloute.common.exception.ForbiddenException;
 import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.request.CreatePostRequest;
 import com.aloute.dto.response.PostResponse;
+import com.aloute.dto.response.SocialCursorPage;
 import com.aloute.model.document.Comment;
 import com.aloute.model.document.ContentReport;
 import com.aloute.model.document.FollowRequest;
@@ -45,10 +46,8 @@ public class SocialFeatureService {
     private final IFriendRepository friends;
     private final ICloseFriendRepository closeFriends;
     private final PostService posts;
-    private final ModerationService moderation;
     private final AuthRateLimitService limits;
     private final NotificationService notificationService;
-    private final PostModerationCoordinator moderationCoordinator;
     private final RefreshTokenService refreshTokens;
     private final AuthenticationUserCache authenticationUserCache;
     private final MediaAssetLifecycleService postMediaAssets;
@@ -74,10 +73,8 @@ public class SocialFeatureService {
         this.friends = friends;
         this.closeFriends = closeFriends;
         this.posts = posts;
-        this.moderation = moderation;
         this.limits = limits;
         this.notificationService = notificationService;
-        this.moderationCoordinator = moderationCoordinator;
         this.refreshTokens = refreshTokens;
         this.authenticationUserCache = authenticationUserCache;
         this.postMediaAssets = postMediaAssets;
@@ -134,10 +131,78 @@ public class SocialFeatureService {
                 Query.query(Criteria.where("ownerId").is(user)).limit(200), UserBlock.class);
     }
 
+    public SocialCursorPage<UserBlock> blocks(Long user, String cursor, int requestedSize) {
+        int size = Math.max(1, Math.min(100, requestedSize));
+        SocialCursor point = decodeSocialCursor(cursor);
+        Query query = Query.query(Criteria.where("ownerId").is(user));
+        if (point != null) query.addCriteria(new Criteria().orOperator(
+                Criteria.where("createdAt").lt(point.createdAt()),
+                new Criteria().andOperator(
+                        Criteria.where("createdAt").is(point.createdAt()),
+                        Criteria.where("_id").lt(point.id()))));
+        query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
+                .limit(size + 1);
+        List<UserBlock> items = new java.util.ArrayList<>(mongo.find(query, UserBlock.class));
+        boolean hasMore = items.size() > size;
+        if (hasMore) items.subList(size, items.size()).clear();
+        String next = hasMore && !items.isEmpty()
+                ? encodeSocialCursor(items.get(items.size() - 1).getCreatedAt(),
+                        items.get(items.size() - 1).getId())
+                : "";
+        return new SocialCursorPage<>(items, next, hasMore);
+    }
+
     public List<FollowRequest> requests(Long user) {
         return mongo.find(
                 Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class);
     }
+
+    public SocialCursorPage<FollowRequest> requests(
+            Long user, String cursor, int requestedSize) {
+        int size = Math.max(1, Math.min(100, requestedSize));
+        SocialCursor point = decodeSocialCursor(cursor);
+        Query query = Query.query(Criteria.where("targetId").is(user));
+        if (point != null) query.addCriteria(new Criteria().orOperator(
+                Criteria.where("createdAt").lt(point.createdAt()),
+                new Criteria().andOperator(
+                        Criteria.where("createdAt").is(point.createdAt()),
+                        Criteria.where("_id").lt(point.id()))));
+        query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
+                .limit(size + 1);
+        List<FollowRequest> items = new java.util.ArrayList<>(mongo.find(query, FollowRequest.class));
+        boolean hasMore = items.size() > size;
+        if (hasMore) items.subList(size, items.size()).clear();
+        String next = hasMore && !items.isEmpty()
+                ? encodeSocialCursor(items.get(items.size() - 1).getCreatedAt(),
+                        items.get(items.size() - 1).getId())
+                : "";
+        return new SocialCursorPage<>(items, next, hasMore);
+    }
+
+    private String encodeSocialCursor(java.time.Instant createdAt, String id) {
+        String value = createdAt + "|" + id;
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private SocialCursor decodeSocialCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) return null;
+        if (cursor.length() > 512) throw new BadRequestException("Cursor không hợp lệ");
+        try {
+            String value = new String(java.util.Base64.getUrlDecoder().decode(cursor),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            int separator = value.indexOf('|');
+            if (separator <= 0 || separator == value.length() - 1) throw new IllegalArgumentException();
+            java.time.Instant createdAt = java.time.Instant.parse(value.substring(0, separator));
+            String id = value.substring(separator + 1);
+            if (id.length() > 150) throw new IllegalArgumentException();
+            return new SocialCursor(createdAt, id);
+        } catch (RuntimeException invalid) {
+            throw new BadRequestException("Cursor không hợp lệ");
+        }
+    }
+
+    private record SocialCursor(java.time.Instant createdAt, String id) {}
 
     @Transactional
     public void decideFollow(Long user, String id, boolean accept) {
@@ -203,7 +268,7 @@ public class SocialFeatureService {
                                         && u.getRole() != null
                                         && "ROLE_ADMIN".equals(u.getRole().getName()))
                 .isEmpty())
-            throw new ForbiddenException("Chỉ quản trị viên hệ thống được truy cập");
+            throw new ForbiddenException("Chỉ quản trị viên xử lý báo cáo được truy cập");
     }
 
     public Map<String, Object> queue(Long user) {
@@ -223,19 +288,13 @@ public class SocialFeatureService {
         QueueSlice<ContentReport> reports = queueSlice(
                 Query.query(Criteria.where("status").is("OPEN")), ContentReport.class,
                 descendingCreated, offset, size);
-        QueueSlice<Post> posts = queueSlice(
-                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.FLAGGED)), Post.class,
-                descendingCreated, offset, size);
-        QueueSlice<Comment> comments = queueSlice(
-                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.FLAGGED)), Comment.class,
-                descendingCreated, offset, size);
         return Map.of(
                 "reports", reports.items(),
-                "posts", posts.items(),
-                "comments", comments.items(),
+                "posts", List.of(),
+                "comments", List.of(),
                 "page", page,
                 "size", size,
-                "hasMore", reports.hasMore() || posts.hasMore() || comments.hasMore());
+                "hasMore", reports.hasMore());
     }
 
     private <T> QueueSlice<T> queueSlice(Query base, Class<T> type, Sort sort, long offset, int size) {
@@ -289,15 +348,19 @@ public class SocialFeatureService {
                         postMediaAssets.assertCanApprove(current);
                     }
                     var updated = mongo.updateFirst(
-                            Query.query(Criteria.where("_id").is(id)),
+                            Query.query(new Criteria().andOperator(
+                                    Criteria.where("_id").is(id),
+                                    Criteria.where("moderationStatus")
+                                            .is(current.getModerationStatus()))),
                             new Update().set("moderationStatus", status), Post.class);
                     if (updated.getMatchedCount() == 0) {
-                        throw new ResourceNotFoundException("Không tìm thấy nội dung");
+                        throw new BadRequestException(
+                                "Trạng thái bài viết vừa thay đổi; vui lòng tải lại trước khi duyệt");
                     }
                     if (status == ModerationStatus.HIDDEN && postMediaAssets != null) {
                         TransactionCommitHooks.afterCommit(() -> {
                             try {
-                                postMediaAssets.deletePostMedia(current);
+                                postMediaAssets.queueHiddenPostMedia(current);
                             } catch (RuntimeException cleanupFailure) {
                                 log.warn("Admin-hidden post media cleanup deferred (postId={}, cause={})",
                                         id, cleanupFailure.getClass().getSimpleName());
@@ -314,8 +377,9 @@ public class SocialFeatureService {
                                                     new ResourceNotFoundException(
                                                             "Không tìm thấy tài khoản"));
                     if (target.getId().equals(user)
-                            || "ROLE_ADMIN".equals(target.getRole().getName())) {
-                        throw new BadRequestException("Không thể khóa quản trị viên");
+                            || Set.of("ROLE_ADMIN", "ROLE_HOST")
+                                    .contains(target.getRole().getName())) {
+                        throw new BadRequestException("Không thể khóa tài khoản quản trị được bảo vệ");
                     }
                     target.setActive(!decision.equals("HIDE"));
                     target.setSelfDeactivated(false);
@@ -371,16 +435,18 @@ public class SocialFeatureService {
                         new Update().inc("replyCount", 1), Comment.class);
                 Comment parent = mongo.findById(current.getParentCommentId(), Comment.class);
                 if (notifyOwner && parent != null && !parent.getUserId().equals(current.getUserId())) {
-                    notificationService.notify(Long.valueOf(parent.getUserId()),
-                            Long.valueOf(current.getUserId()), "COMMENT", current.getPostId(),
-                            "đã trả lời bình luận của bạn");
+                    com.aloute.common.util.TransactionCommitHooks.afterCommit(() ->
+                            notificationService.notify(Long.valueOf(parent.getUserId()),
+                                    Long.valueOf(current.getUserId()), "COMMENT", current.getPostId(),
+                                    "đã trả lời bình luận của bạn"));
                 }
             } else if (notifyOwner) {
                 Post post = mongo.findById(current.getPostId(), Post.class);
                 if (post != null) {
-                    notificationService.notify(Long.valueOf(post.getUserId()),
-                            Long.valueOf(current.getUserId()), "COMMENT", current.getPostId(),
-                            "đã bình luận về bài viết của bạn");
+                    com.aloute.common.util.TransactionCommitHooks.afterCommit(() ->
+                            notificationService.notify(Long.valueOf(post.getUserId()),
+                                    Long.valueOf(current.getUserId()), "COMMENT", current.getPostId(),
+                                    "đã bình luận về bài viết của bạn"));
                 }
             }
             return;
@@ -444,15 +510,7 @@ public class SocialFeatureService {
             postMediaAssets.validatePostMediaUrl(request.getImageUrl(), post.getImageUrl(), post.getUserId());
             postMediaAssets.validatePostMediaUrl(request.getVideoUrl(), post.getVideoUrl(), post.getUserId());
         }
-        var result = moderation.isEnabled() ? null : moderation.check(request.getContent());
-        if (!moderation.isEnabled()) {
-            if (!moderation.isMediaApproved(request.getImageUrl(), "image"))
-                throw new BadRequestException("Ảnh không vượt qua kiểm duyệt an toàn");
-            if (!moderation.isMediaApproved(request.getVideoUrl(), "video"))
-                throw new BadRequestException("Video không vượt qua kiểm duyệt an toàn");
-        }
-        ModerationStatus targetStatus = moderation.isEnabled()
-                ? ModerationStatus.PENDING : moderation.resolveStatus(result);
+        ModerationStatus targetStatus = ModerationStatus.APPROVED;
         var update = new Update()
                 .set("content", request.getContent())
                 .set("imageUrl", request.getImageUrl())
@@ -461,7 +519,7 @@ public class SocialFeatureService {
                 .set("hashtags", ContentTagService.extract(request.getContent(), '#'))
                 .set("mentions", ContentTagService.extract(request.getContent(), '@'))
                 .set("moderationStatus", targetStatus)
-                .set("toxicityScore", result == null ? 0.0 : result.getScore())
+                .set("toxicityScore", 0.0)
                 .set("moderationAttempts", 0)
                 .unset("moderationLastAttemptAt")
                 .unset("moderationFailureReason")
@@ -488,9 +546,6 @@ public class SocialFeatureService {
                 log.warn("Post edit media attachment tracking deferred (postId={}, cause={})",
                         id, trackingFailure.getClass().getSimpleName());
             }
-        }
-        if (targetStatus == ModerationStatus.PENDING && moderationCoordinator != null) {
-            moderationCoordinator.submit(id);
         }
         posts.invalidateViewerFeedCache(user);
     }

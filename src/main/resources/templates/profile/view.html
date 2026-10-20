@@ -221,8 +221,8 @@
     </div>
 
     <button type="button" class="btn-outline" data-load-posts
-            th:if="${#lists.size(userPosts) == 20}"
-            th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'}">Tải thêm</button>
+            th:if="${profilePostsHasMore}"
+            th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'},data-cursor=${profilePostsNextCursor}">Tải thêm</button>
   </div>
 
   <div class="profile-grid-wrap" id="profileGridWrap" th:if="${profileUser != null}" hidden>
@@ -250,7 +250,8 @@
 
   <div class="profile-posts profile-reposts-wrap" id="profileRepostsWrap" th:if="${profileUser != null}" hidden>
 
-    <div th:if="${#lists.isEmpty(repostPosts)}" class="empty-state">
+    <div th:if="${#lists.isEmpty(repostPosts)}" class="empty-state"
+         data-profile-reposts-empty th:hidden="${profileRepostsDeferred}">
       <span th:if="${isOwnProfile}">Bạn chưa đăng lại bài viết nào.</span>
       <span th:unless="${isOwnProfile}">Người dùng này chưa đăng lại bài viết nào.</span>
     </div>
@@ -360,8 +361,9 @@
     </div>
 
     <button type="button" class="btn-outline" data-load-posts
-            th:if="${#lists.size(repostPosts) == 20}"
-            th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/reposts/fragment'}">Tải thêm</button>
+            data-profile-reposts-loader data-profile-initial="1"
+            th:if="${profileRepostsHasMore}"
+            th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/reposts/fragment'},data-cursor=${profileRepostsNextCursor}">Tải bài đăng lại</button>
   </div>
 
   <div class="people-modal" id="peopleModal" th:if="${profileUser != null}" hidden>

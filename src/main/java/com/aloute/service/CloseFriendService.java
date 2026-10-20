@@ -30,6 +30,7 @@ public class CloseFriendService {
         this.notificationService = notificationService;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public String sendRequest(Long requesterId, Long receiverId) {
         if (requesterId == null || receiverId == null || requesterId.equals(receiverId)) {
             throw new BadRequestException("Không thể tự kết bạn thân với chính mình");
@@ -67,6 +68,7 @@ public class CloseFriendService {
         return "PENDING_SENT";
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public String acceptRequest(Long currentUserId, Long otherUserId) {
         if (!friendService.isFriend(currentUserId, otherUserId))
             throw new BadRequestException("Hai tài khoản cần theo dõi lẫn nhau");
@@ -94,6 +96,7 @@ public class CloseFriendService {
         return "ACCEPTED";
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void removeRelationship(Long currentUserId, Long otherUserId) {
         closeFriendRepository
                 .findByRequesterIdAndReceiverId(currentUserId, otherUserId)
@@ -159,14 +162,33 @@ public class CloseFriendService {
         return statuses;
     }
 
+    public Map<Long, String> getStatusMap(Long currentUserId, java.util.Collection<Long> otherIds) {
+        if (currentUserId == null || otherIds == null || otherIds.isEmpty()) return Map.of();
+        Map<Long, String> statuses = new HashMap<>();
+        for (CloseFriend relationship : closeFriendRepository.findRelationships(currentUserId, otherIds)) {
+            Long otherId = currentUserId.equals(relationship.getRequesterId())
+                    ? relationship.getReceiverId() : relationship.getRequesterId();
+            String status = CloseFriend.ACCEPTED.equals(relationship.getStatus())
+                    ? "ACCEPTED"
+                    : currentUserId.equals(relationship.getRequesterId())
+                            ? "PENDING_SENT" : "PENDING_RECEIVED";
+            statuses.merge(otherId, status, (left, right) -> "ACCEPTED".equals(left) ? left : right);
+        }
+        return statuses;
+    }
+
     public List<Long> getCloseFriendIds(Long userId) {
-        Set<Long> ids = new LinkedHashSet<>();
-        closeFriendRepository
-                .findByRequesterIdAndStatus(userId, CloseFriend.ACCEPTED)
-                .forEach(cf -> ids.add(cf.getReceiverId()));
-        closeFriendRepository
-                .findByReceiverIdAndStatus(userId, CloseFriend.ACCEPTED)
-                .forEach(cf -> ids.add(cf.getRequesterId()));
-        return List.copyOf(ids);
+        return getCloseFriendIds(userId, 0, 100);
+    }
+
+    public List<Long> getCloseFriendIds(Long userId, int page, int size) {
+        return closeFriendRepository.findRelatedUserIds(
+                userId, CloseFriend.ACCEPTED,
+                org.springframework.data.domain.PageRequest.of(
+                        Math.max(0, page), Math.max(1, Math.min(100, size))));
+    }
+
+    public long countCloseFriends(Long userId) {
+        return closeFriendRepository.countRelationships(userId, CloseFriend.ACCEPTED);
     }
 }

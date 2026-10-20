@@ -43,16 +43,16 @@
                 <a class="post__reposter" th:href="@{'/profile/' + ${actor.userId}}" th:text="${actor.username}">username</a>
               </th:block>
             </span>
-            <th:block th:if="${post.otherReposters != null and !#lists.isEmpty(post.otherReposters)}">
+            <th:block th:if="${post.otherReposterCount > 0}">
               <span class="post__repost-other-prefix">cùng</span>
-              <span class="post__repost-others" tabindex="0">
-                <span class="post__repost-others__trigger" th:text="${post.otherReposters.size() + ' người khác'}">2 người khác</span>
-                <div class="post__repost-others-list">
-                  <a class="post__repost-others-list__item" th:each="actor : ${post.otherReposters}"
-                     th:href="@{'/profile/' + ${actor.userId}}">
-                    <img th:src="${actor.userAvatarUrl != null ? actor.userAvatarUrl : '/images/avatar_default.png'}" alt="" loading="lazy">
-                    <span th:text="${actor.username}">username</span>
-                  </a>
+              <span class="post__repost-others"
+                    th:attr="data-reposters-post-id=${post.interactionPostId},
+                             data-reposters-total=${post.repostCount}">
+                <button type="button" class="post__repost-others__trigger"
+                        data-reposters-trigger
+                        th:text="${post.otherReposterCount + ' người khác'}">2 người khác</button>
+                <div class="post__repost-others-list" data-reposters-list>
+                  <span class="post__repost-others-status">Nhấn để xem danh sách</span>
                 </div>
               </span>
             </th:block>

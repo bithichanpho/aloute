@@ -25,6 +25,7 @@ import com.aloute.service.AuthService;
 import com.aloute.security.ClientIpResolver;
 import com.aloute.service.FirebaseIdentityService;
 import com.aloute.service.RefreshTokenService;
+import com.aloute.service.AccessTokenRevocationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -37,21 +38,25 @@ class AuthControllerWebTest {
     private static final String LOGIN_JSON = "{\"username\":\" Victim \",\"password\":\"Wrong-Pass1!\"}";
 
     private AuthService authService;
+    private JwtUtil jwtUtil;
     private AuthRateLimitService limits;
     private ClientIpResolver clientIp;
     private RefreshTokenService refreshTokens;
+    private AccessTokenRevocationService accessRevocations;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         authService = mock(AuthService.class);
-        JwtUtil jwtUtil = mock(JwtUtil.class);
+        jwtUtil = mock(JwtUtil.class);
         limits = mock(AuthRateLimitService.class);
         FirebaseIdentityService firebase = mock(FirebaseIdentityService.class);
         clientIp = mock(ClientIpResolver.class);
         refreshTokens = mock(RefreshTokenService.class);
+        accessRevocations = mock(AccessTokenRevocationService.class);
         mvc = MockMvcBuilders.standaloneSetup(new AuthController(
-                authService, jwtUtil, limits, firebase, clientIp, refreshTokens)).build();
+                authService, jwtUtil, limits, firebase, clientIp, refreshTokens,
+                accessRevocations)).build();
     }
 
     @Test
@@ -62,6 +67,18 @@ class AuthControllerWebTest {
                 .andExpect(cookie().maxAge("ALOUTE_TOKEN", 0))
                 .andExpect(cookie().maxAge("ALOUTE_REFRESH", 0));
         verify(refreshTokens).revoke(isNull());
+    }
+
+    @Test
+    void logoutAlwaysAddsCurrentAccessTokenToDenylist() throws Exception {
+        java.time.Instant expiry = java.time.Instant.now().plusSeconds(600);
+        when(jwtUtil.expiresAt("access-token")).thenReturn(expiry);
+
+        mvc.perform(post("/api/auth/logout")
+                        .header("Authorization", "Bearer access-token"))
+                .andExpect(status().isOk());
+
+        verify(accessRevocations).revoke("access-token", expiry);
     }
 
     @Test
@@ -105,6 +122,45 @@ class AuthControllerWebTest {
         verify(limits, never()).checkAndRecord(
                 eq("LOGIN_ACCOUNT_GLOBAL"), anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 any(Duration.class), any(Duration.class), anyString(), anyString());
+    }
+
+    @Test
+    void emailVerificationAcceptsEmailAndSixDigitOtp() throws Exception {
+        when(clientIp.resolve(any())).thenReturn("203.0.113.10");
+
+        mvc.perform(post("/api/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"User@Example.com\",\"code\":\"123456\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).verifyEmail("user@example.com", "123456");
+        verify(limits).reset("VERIFY_OTP_TARGET", "user@example.com");
+    }
+
+    @Test
+    void oldVerificationLinkPayloadIsRejected() throws Exception {
+        mvc.perform(post("/api/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"old-link-token\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void passwordResetAcceptsEmailOtpAndStrongPassword() throws Exception {
+        when(clientIp.resolve(any())).thenReturn("203.0.113.10");
+
+        mvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"User@Example.com\",\"code\":\"123456\","
+                                + "\"newPassword\":\"New-Pass1!\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).resetPassword("user@example.com", "123456", "New-Pass1!");
+        verify(limits).reset("RESET_OTP_TARGET", "user@example.com");
     }
 
     private void performLoginIgnoringErrors() {

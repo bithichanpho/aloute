@@ -6,9 +6,10 @@ import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.exception.ForbiddenException;
 import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.response.ChatMessageResponse;
+import com.aloute.dto.response.ChatCursorPage;
+import com.aloute.dto.response.ConversationCursorPage;
 import com.aloute.dto.response.ConversationResponse;
 import com.aloute.model.document.ChatMessage;
-import com.aloute.model.document.UserBlock;
 import com.aloute.model.entity.GroupReadStatus;
 import com.aloute.model.entity.User;
 import com.aloute.repository.IChatMessageRepository;
@@ -45,7 +46,6 @@ public class ChatService {
     private final GroupService groupService;
     private final SimpMessagingTemplate messagingTemplate;
     private final FriendService friendService;
-    private final PresenceService presenceService;
     private final MongoTemplate mongoTemplate;
     private final PushNotificationService pushNotificationService;
     private final ConversationService conversationService;
@@ -62,7 +62,6 @@ public class ChatService {
             GroupService groupService,
             SimpMessagingTemplate messagingTemplate,
             FriendService friendService,
-            PresenceService presenceService,
             MongoTemplate mongoTemplate,
             ContentAccessService access,
             PushNotificationService pushNotificationService,
@@ -79,7 +78,6 @@ public class ChatService {
         this.groupService = groupService;
         this.messagingTemplate = messagingTemplate;
         this.friendService = friendService;
-        this.presenceService = presenceService;
         this.mongoTemplate = mongoTemplate;
         this.pushNotificationService = pushNotificationService;
         this.conversationService = conversationService;
@@ -102,7 +100,7 @@ public class ChatService {
             ContentAccessService access,
             PushNotificationService pushNotificationService) {
         this(chatMessageRepository, userRepository, groupReadStatusRepository, groupService,
-                messagingTemplate, friendService, presenceService, mongoTemplate, access,
+                messagingTemplate, friendService, mongoTemplate, access,
                 pushNotificationService,
                 new ConversationService(userRepository, groupReadStatusRepository, groupService,
                         friendService, presenceService, mongoTemplate, access),
@@ -241,6 +239,88 @@ public class ChatService {
                 ChatMessage.buildConversationId(
                         String.valueOf(currentUserId), String.valueOf(otherUserId));
         return chatHistoryService.history(conversationId, page, currentUserId);
+    }
+
+    public ChatCursorPage getMessagesByCursor(
+            Long currentUserId, Long otherUserId, String beforeId, int requestedSize) {
+        access.requireProfile(currentUserId, otherUserId);
+        String conversationId = ChatMessage.buildConversationId(
+                String.valueOf(currentUserId), String.valueOf(otherUserId));
+        return conversationHistoryByCursor(conversationId, currentUserId, beforeId, requestedSize);
+    }
+
+    public List<ChatMessageResponse> searchDirectMessages(
+            Long currentUserId,
+            Long otherUserId,
+            String keyword,
+            String beforeId,
+            int size,
+            boolean mediaOnly) {
+        access.requireProfile(currentUserId, otherUserId);
+        String conversationId = ChatMessage.buildConversationId(
+                String.valueOf(currentUserId), String.valueOf(otherUserId));
+        return searchConversation(conversationId, currentUserId, keyword, beforeId, size, mediaOnly);
+    }
+
+    public List<ChatMessageResponse> searchGroupMessages(
+            Long currentUserId,
+            Long groupId,
+            String keyword,
+            String beforeId,
+            int size,
+            boolean mediaOnly) {
+        if (!groupService.isMember(groupId, currentUserId)) {
+            throw new ForbiddenException("Bạn không phải thành viên nhóm");
+        }
+        return searchConversation(
+                ChatMessage.buildGroupConversationId(groupId),
+                currentUserId,
+                keyword,
+                beforeId,
+                size,
+                mediaOnly);
+    }
+
+    private List<ChatMessageResponse> searchConversation(
+            String conversationId,
+            Long currentUserId,
+            String keyword,
+            String beforeId,
+            int requestedSize,
+            boolean mediaOnly) {
+        int size = Math.max(1, Math.min(50, requestedSize));
+        java.util.List<Criteria> clauses = new java.util.ArrayList<>();
+        clauses.add(Criteria.where("conversationId").is(conversationId));
+        clauses.add(Criteria.where("hiddenForUserIds").nin(String.valueOf(currentUserId)));
+        String term = null;
+        if (mediaOnly) {
+            clauses.add(Criteria.where("mediaUrl").nin(null, ""));
+        } else {
+            term = keyword == null ? "" : keyword.trim();
+            if (term.isBlank()) throw new BadRequestException("Từ khóa tìm kiếm không được để trống");
+        }
+        if (beforeId != null && !beforeId.isBlank()) clauses.add(Criteria.where("_id").lt(beforeId));
+        Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)));
+        if (!mediaOnly) {
+            query.addCriteria(org.springframework.data.mongodb.core.query.TextCriteria
+                    .forDefaultLanguage().matching(term));
+        }
+        query.with(Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id"))).limit(size);
+        List<ChatMessage> messages = mongoTemplate.find(query, ChatMessage.class);
+        java.util.Set<Long> senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .filter(java.util.Objects::nonNull)
+                .map(Long::valueOf)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, User> senders = userRepository.findAllById(senderIds).stream()
+                .collect(java.util.stream.Collectors.toMap(User::getId, user -> user));
+        return messages.stream()
+                .map(message -> toResponse(
+                        message,
+                        message.getSenderId() == null
+                                ? null
+                                : senders.get(Long.valueOf(message.getSenderId()))))
+                .toList();
     }
 
     @Transactional(transactionManager = "mongoTransactionManager")
@@ -392,34 +472,9 @@ public class ChatService {
     }
 
     public long countUnreadTotal(Long userId) {
-        String recipientId = String.valueOf(userId);
-        java.util.Set<Long> excludedSenderIds = new java.util.HashSet<>();
-        mongoTemplate.find(
-                        Query.query(new Criteria().orOperator(
-                                Criteria.where("ownerId").is(userId),
-                                Criteria.where("targetId").is(userId))),
-                        UserBlock.class)
-                .forEach(block -> {
-                    Long otherId = userId.equals(block.getOwnerId()) ? block.getTargetId() : block.getOwnerId();
-                    if (otherId != null && !userId.equals(otherId)) excludedSenderIds.add(otherId);
-                });
-        userRepository.findByActiveFalse().stream()
-                .map(User::getId)
-                .filter(java.util.Objects::nonNull)
-                .forEach(excludedSenderIds::add);
-
-        Criteria directUnreadCriteria = new Criteria().andOperator(
-                Criteria.where("receiverId").is(recipientId),
-                Criteria.where("groupId").is(null),
-                Criteria.where("hiddenForUserIds").nin(recipientId),
-                new Criteria().orOperator(
-                        Criteria.where("read").is(false), Criteria.where("read").exists(false)));
-        if (!excludedSenderIds.isEmpty()) {
-            directUnreadCriteria.and("senderId").nin(
-                    excludedSenderIds.stream().map(String::valueOf).toList());
-        }
-        long directUnread = mongoTemplate.count(Query.query(directUnreadCriteria), ChatMessage.class);
-        long groupUnread = conversationService.countUnreadGroups(groupService.getMyGroups(userId), userId);
+        long directUnread = conversationService.countUnreadDirect(userId);
+        long groupUnread = conversationService.countUnreadGroupsByIds(
+                groupService.getAllMyGroupIds(userId), userId);
         return directUnread + groupUnread;
     }
 
@@ -530,6 +585,52 @@ public class ChatService {
         return chatHistoryService.history(conversationId, page, currentUserId);
     }
 
+    public ChatCursorPage getGroupMessagesByCursor(
+            Long groupId, Long currentUserId, String beforeId, int requestedSize) {
+        if (!groupService.isMember(groupId, currentUserId)) {
+            throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
+        }
+        return conversationHistoryByCursor(
+                ChatMessage.buildGroupConversationId(groupId), currentUserId, beforeId, requestedSize);
+    }
+
+    private ChatCursorPage conversationHistoryByCursor(
+            String conversationId, Long currentUserId, String beforeId, int requestedSize) {
+        int size = Math.max(1, Math.min(100, requestedSize));
+        java.util.List<Criteria> clauses = new java.util.ArrayList<>();
+        clauses.add(Criteria.where("conversationId").is(conversationId));
+        clauses.add(Criteria.where("hiddenForUserIds").nin(String.valueOf(currentUserId)));
+        if (beforeId != null && !beforeId.isBlank()) {
+            clauses.add(Criteria.where("_id").lt(beforeId.trim()));
+        }
+        Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                .with(Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id")))
+                .limit(size + 1);
+        List<ChatMessage> messages = new java.util.ArrayList<>(mongoTemplate.find(query, ChatMessage.class));
+        boolean hasMore = messages.size() > size;
+        if (hasMore) messages.remove(messages.size() - 1);
+        String nextCursor = hasMore && !messages.isEmpty()
+                ? messages.get(messages.size() - 1).getId()
+                : null;
+
+        java.util.Set<Long> senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .filter(java.util.Objects::nonNull)
+                .map(Long::valueOf)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, User> senders = userRepository.findAllById(senderIds).stream()
+                .collect(java.util.stream.Collectors.toMap(User::getId, user -> user));
+        java.util.Collections.reverse(messages);
+        List<ChatMessageResponse> items = messages.stream()
+                .map(message -> toResponse(
+                        message,
+                        message.getSenderId() == null
+                                ? null
+                                : senders.get(Long.valueOf(message.getSenderId()))))
+                .toList();
+        return new ChatCursorPage(items, nextCursor, hasMore);
+    }
+
     @Transactional
     public void markGroupAsRead(Long groupId, Long userId) {
         if (!groupService.isMember(groupId, userId)) {
@@ -537,8 +638,6 @@ public class ChatService {
         }
         String readerId = String.valueOf(userId);
         LocalDateTime readAt = LocalDateTime.now();
-        GroupReadStatus status = groupReadStatusRepository.findByGroupIdAndUserId(groupId, userId)
-                .orElseGet(() -> new GroupReadStatus(groupId, userId));
 
         Criteria unreadForReader = new Criteria().andOperator(
                 Criteria.where("groupId").is(groupId),
@@ -551,8 +650,13 @@ public class ChatService {
 
         // SQL lastReadAt is the authoritative source for the unread group badge. Commit it first;
         // update Mongo's per-message receipts and notify senders after the SQL transaction commits.
-        status.setLastReadAt(readAt);
-        groupReadStatusRepository.save(status);
+        int updated = groupReadStatusRepository.updateLastReadAt(groupId, userId, readAt);
+        if (updated == 0) {
+            // Compatibility for memberships created before read-status initialization existed.
+            GroupReadStatus status = new GroupReadStatus(groupId, userId);
+            status.setLastReadAt(readAt);
+            groupReadStatusRepository.save(status);
+        }
         if (receiptCandidates.isEmpty()) return;
 
         Map<String, List<String>> idsBySender = new java.util.HashMap<>();
@@ -600,6 +704,11 @@ public class ChatService {
         return conversationService.getConversations(userId);
     }
 
+    public ConversationCursorPage getConversationPage(
+            Long userId, String cursor, int size) {
+        return conversationService.getConversationPage(userId, cursor, size);
+    }
+
     @Transactional(transactionManager = "mongoTransactionManager")
     public void deleteMessage(String messageId, Long currentUserId, boolean forEveryone) {
         ChatMessage message = chatMessageRepository.findById(messageId)
@@ -620,7 +729,9 @@ public class ChatService {
         String removedMediaUrl = message.getMediaUrl();
         chatMessageRepository.delete(message);
         if (mediaAssets != null && removedMediaUrl != null && !removedMediaUrl.isBlank()) {
-            afterCommitSafely("deleted chat media cleanup", () -> mediaAssets.deleteIfUnreferenced(removedMediaUrl));
+            // Persist the deletion tombstone in the same Mongo transaction as message removal.
+            // Cloudinary deletion is retried by the lifecycle worker after this transaction commits.
+            mediaAssets.queueUnreferencedDeletion(removedMediaUrl);
         }
         Map<String, Object> event = Map.of("messageId", messageId, "forEveryone", true);
         List<User> recipients;

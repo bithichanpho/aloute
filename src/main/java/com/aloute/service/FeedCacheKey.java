@@ -34,6 +34,18 @@ public final class FeedCacheKey {
         return "cursor:" + Objects.toString(viewerId, "anonymous") + ":" + sha256(material);
     }
 
+    public static String createForViewer(
+            Long viewerId, String tab, String hashtag, String cursor, int requestedSize) {
+        String normalizedHashtag = Objects.toString(hashtag, "").trim()
+                .replaceFirst("^#", "").toLowerCase(java.util.Locale.ROOT);
+        String material = String.join("\n",
+                Objects.toString(tab, "").trim().toLowerCase(java.util.Locale.ROOT),
+                normalizedHashtag,
+                Objects.toString(cursor, "start"),
+                Integer.toString(Math.max(1, Math.min(30, requestedSize))));
+        return "cursor:" + Objects.toString(viewerId, "anonymous") + ":" + sha256(material);
+    }
+
     private static String sha256(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

@@ -179,7 +179,13 @@ public class SecurityConfig {
                                                                 .maxAgeInSeconds(31536000)))
                 .authorizeHttpRequests(
                         auth ->
-                                auth.requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasRole("ADMIN")
+                                auth.requestMatchers("/actuator/health", "/actuator/health/**")
+                                        .permitAll()
+                                .requestMatchers("/actuator/**")
+                                        .hasAnyRole("ADMIN", "HOST")
+                                .requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasAnyRole("ADMIN", "HOST")
+                                .requestMatchers("/api/host/**").hasRole("HOST")
+                                .requestMatchers("/admin/dashboard").hasRole("HOST")
                                 .requestMatchers("/api/admin/**", "/admin/**").hasRole("ADMIN")
                                 .requestMatchers(
                                                 "/",
@@ -212,12 +218,12 @@ public class SecurityConfig {
                                         .authenticated()
                                 .requestMatchers(HttpMethod.GET, "/api/posts/user/**")
                                         .permitAll()
-                                // Protect APIs by default; allow unknown browser routes to reach the
-                                // custom Thymeleaf 404 view instead of redirecting every typo to login.
+                                // Protect every API and HTML route that was not explicitly declared public,
+                                // so a newly added controller cannot become public by accident.
                                 .requestMatchers("/api/**")
                                         .authenticated()
                                 .anyRequest()
-                                        .permitAll())
+                                        .authenticated())
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 

@@ -31,7 +31,7 @@ public class AuthRateLimitService {
     private static final Duration BLOCK_DURATION = Duration.ofMinutes(30);
 
     // Atomic across app instances: count a request and set a block in one Redis script.
-    private static final DefaultRedisScript<List> RECORD_SCRIPT = new DefaultRedisScript<>(
+    private static final DefaultRedisScript<List<Long>> RECORD_SCRIPT = new DefaultRedisScript<>(
             "local ttl = redis.call('TTL', KEYS[2]); " +
             "if redis.call('EXISTS', KEYS[2]) == 1 then return {-1, math.max(ttl, 1)} end; " +
             "local count = redis.call('INCR', KEYS[1]); " +
@@ -40,7 +40,12 @@ public class AuthRateLimitService {
             " redis.call('SET', KEYS[2], '1', 'EX', tonumber(ARGV[3])); " +
             " return {-2, tonumber(ARGV[3])}; " +
             "end; " +
-            "return {count, redis.call('TTL', KEYS[1])};", List.class);
+            "return {count, redis.call('TTL', KEYS[1])};", longListType());
+
+    @SuppressWarnings("unchecked")
+    private static Class<List<Long>> longListType() {
+        return (Class<List<Long>>) (Class<?>) List.class;
+    }
 
     private final StringRedisTemplate redis;
     private final boolean redisRequired;
@@ -72,7 +77,7 @@ public class AuthRateLimitService {
         localRejectIfBlocked(namespace, subjectKey, blockedMsgFmt);
         String key = key(namespace, subjectKey);
         try {
-            List<?> result = redis.execute(
+            List<Long> result = redis.execute(
                     RECORD_SCRIPT,
                     List.of(key + ":count", key + ":blocked"),
                     String.valueOf(maxRequests),

@@ -14,15 +14,12 @@ import org.springframework.stereotype.Component;
 public class SystemAdminInitializer implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(SystemAdminInitializer.class);
     private final IUserRepository users;
-    private final IRoleRepository roles;
     private final String username;
 
     public SystemAdminInitializer(
             IUserRepository users,
-            IRoleRepository roles,
             @Value("${app.admin.username:}") String username) {
         this.users = users;
-        this.roles = roles;
         this.username = username;
     }
 
@@ -33,7 +30,8 @@ public class SystemAdminInitializer implements CommandLineRunner {
                 .filter(u -> u.isActive() && u.isEmailVerified())
                 .ifPresent(
                         user -> {
-                            if (!"ROLE_ADMIN".equals(user.getRole().getName())) {
+                            if (!java.util.Set.of("ROLE_ADMIN", "ROLE_HOST")
+                                    .contains(user.getRole().getName())) {
                                 log.error("Refusing automatic admin elevation for configured username; provision administrators via a trusted offline procedure");
                             }
                         });

@@ -181,6 +181,10 @@ public class DatabaseRelationshipMigrator implements ApplicationRunner {
         addIndex("idx_community_members_community", "community_members", "community_id");
         addIndex("idx_community_members_user", "community_members", "user_id");
         addIndex(
+                "idx_community_members_community_role_joined",
+                "community_members",
+                "community_id, role, joined_at");
+        addIndex(
                 "idx_communities_privacy_member_count",
                 "communities",
                 "privacy, member_count DESC");

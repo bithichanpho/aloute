@@ -14,7 +14,6 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.Optional;
 
 @Component
 public class AccountWebSocketGuard implements ChannelInterceptor {

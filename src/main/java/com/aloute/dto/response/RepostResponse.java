@@ -15,6 +15,8 @@ public class RepostResponse {
 
     private List<PostResponse.RepostActor> reposters = new ArrayList<>();
 
+    private int otherReposterCount;
+
     public RepostResponse() {}
 
     public RepostResponse(String postId, boolean reposted, int repostCount, String repostId) {
@@ -62,5 +64,13 @@ public class RepostResponse {
 
     public void setReposters(List<PostResponse.RepostActor> reposters) {
         this.reposters = reposters != null ? reposters : new ArrayList<>();
+    }
+
+    public int getOtherReposterCount() {
+        return otherReposterCount;
+    }
+
+    public void setOtherReposterCount(int otherReposterCount) {
+        this.otherReposterCount = Math.max(0, otherReposterCount);
     }
 }

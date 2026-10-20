@@ -4,8 +4,10 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.response.NotificationResponse;
+import com.aloute.dto.response.NotificationCursorPage;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.NotificationService;
+import com.aloute.service.AuthRateLimitService;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,11 +16,14 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 import java.util.Map;
 
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import org.springframework.validation.annotation.Validated;
 
 @RestController
@@ -28,16 +33,38 @@ import org.springframework.validation.annotation.Validated;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final AuthRateLimitService rateLimitService;
 
-    public NotificationController(NotificationService notificationService) {
+    public NotificationController(
+            NotificationService notificationService, AuthRateLimitService rateLimitService) {
         this.notificationService = notificationService;
+        this.rateLimitService = rateLimitService;
     }
 
     @GetMapping
     public ApiResponse<List<NotificationResponse>> getMyNotifications(
             Authentication authentication) {
         Long userId = requireUserId(authentication);
+        limitReads(userId);
         return ApiResponse.success(notificationService.getMyNotifications(userId));
+    }
+
+    @GetMapping("/cursor")
+    public ApiResponse<NotificationCursorPage> getMyNotificationsCursor(
+            Authentication authentication,
+            @RequestParam(required = false) @Positive Long beforeId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+        Long userId = requireUserId(authentication);
+        limitReads(userId);
+        return ApiResponse.success(notificationService.getMyNotifications(userId, beforeId, size));
+    }
+
+    private void limitReads(Long userId) {
+        rateLimitService.checkAndRecord(
+                "NOTIFICATION_READ", userId.toString(), 180,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tải thông báo quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa truy vấn thông báo do quá nhiều yêu cầu.");
     }
 
     @GetMapping("/unread-count")

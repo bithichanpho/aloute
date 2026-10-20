@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
 import java.util.Map;
 
 class MediaUploadModerationServiceTest {
@@ -34,7 +33,7 @@ class MediaUploadModerationServiceTest {
 
         assertThrows(BadRequestException.class, () -> service.requireApproved(uploaded, "image", "avatar"));
 
-        verify(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+        verify(mediaAssets).deleteRejectedUpload(uploaded);
         verify(storage, never()).deleteMedia(anyString(), anyString());
     }
 
@@ -46,7 +45,7 @@ class MediaUploadModerationServiceTest {
                 () -> service.requireApproved(uploaded, "image", "community"));
 
         org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatusCode());
-        verify(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+        verify(mediaAssets).deleteRejectedUpload(uploaded);
     }
 
     @Test
@@ -58,18 +57,17 @@ class MediaUploadModerationServiceTest {
         assertThrows(IllegalStateException.class,
                 () -> service.requireApproved(uploaded, "image", "community"));
 
-        verify(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
+        verify(mediaAssets).deleteRejectedUpload(uploaded);
     }
 
     @Test
-    void fallsBackToDirectDeleteOnlyWhenTheLifecycleStoreCannotBeUsed() throws Exception {
+    void rejectedCleanupStillHasOnlyOneLifecycleOwnerWhenItFails() {
         doThrow(new IllegalStateException("Mongo unavailable"))
-                .when(mediaAssets).deleteIfUnreferenced(uploaded.get("url"));
-        doThrow(new IOException("Cloudinary unavailable"))
-                .when(storage).deleteMedia(uploaded.get("publicId"), uploaded.get("resourceType"));
+                .when(mediaAssets).deleteRejectedUpload(uploaded);
 
         service.deleteQuietly(uploaded);
 
-        verify(storage).deleteMedia(uploaded.get("publicId"), uploaded.get("resourceType"));
+        verify(mediaAssets).deleteRejectedUpload(uploaded);
+        verifyNoInteractions(storage);
     }
 }

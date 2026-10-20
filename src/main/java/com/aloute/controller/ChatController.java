@@ -8,6 +8,8 @@ import com.aloute.common.exception.TooManyRequestsException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.SendMessageRequest;
 import com.aloute.dto.response.ChatMessageResponse;
+import com.aloute.dto.response.ChatCursorPage;
+import com.aloute.dto.response.ConversationCursorPage;
 import com.aloute.dto.response.ConversationResponse;
 import com.aloute.service.AuthenticationUserCache;
 import com.aloute.security.SecurityUtils;
@@ -110,6 +112,16 @@ public class ChatController {
         return ApiResponse.success(chatService.getConversations(userId));
     }
 
+    @GetMapping("/conversations/cursor")
+    public ApiResponse<ConversationCursorPage> getConversationsByCursor(
+            Authentication authentication,
+            @RequestParam(required = false) @jakarta.validation.constraints.Size(max = 512)
+                    String cursor,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+        Long userId = requireUserId(authentication);
+        return ApiResponse.success(chatService.getConversationPage(userId, cursor, size));
+    }
+
     @GetMapping("/messages/{otherUserId}")
     public ApiResponse<List<ChatMessageResponse>> getMessages(
             Authentication authentication,
@@ -117,6 +129,48 @@ public class ChatController {
             @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 200, message = "Lịch sử trò chuyện quá sâu (tối đa 200 trang)") int page) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(chatService.getMessages(userId, otherUserId, page));
+    }
+
+    @GetMapping("/messages/{otherUserId}/search")
+    public ApiResponse<List<ChatMessageResponse>> searchMessages(
+            Authentication authentication,
+            @PathVariable @Positive Long otherUserId,
+            @RequestParam("q") @NotBlank @Size(max = 100) String keyword,
+            @RequestParam(required = false) @Size(max = 100) String beforeId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+        Long userId = requireUserId(authentication);
+        rateLimitService.checkAndRecord(
+                "CHAT_SEARCH", userId.toString(), 60,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tìm kiếm quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa tìm kiếm do gửi quá nhiều yêu cầu.");
+        return ApiResponse.success(chatService.searchDirectMessages(
+                userId, otherUserId, keyword, beforeId, size, false));
+    }
+
+    @GetMapping("/messages/{otherUserId}/cursor")
+    public ApiResponse<ChatCursorPage> getMessagesByCursor(
+            Authentication authentication,
+            @PathVariable @Positive Long otherUserId,
+            @RequestParam(required = false) @Size(max = 100) String beforeId,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        Long userId = requireUserId(authentication);
+        rateLimitService.checkAndRecord(
+                "CHAT_HISTORY", userId.toString(), 180,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tải lịch sử quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa tải lịch sử do gửi quá nhiều yêu cầu.");
+        return ApiResponse.success(chatService.getMessagesByCursor(userId, otherUserId, beforeId, size));
+    }
+
+    @GetMapping("/messages/{otherUserId}/media")
+    public ApiResponse<List<ChatMessageResponse>> directMedia(
+            Authentication authentication,
+            @PathVariable @Positive Long otherUserId,
+            @RequestParam(required = false) @Size(max = 100) String beforeId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+        return ApiResponse.success(chatService.searchDirectMessages(
+                requireUserId(authentication), otherUserId, null, beforeId, size, true));
     }
 
     @PostMapping("/read/{otherUserId}")
@@ -134,6 +188,48 @@ public class ChatController {
             @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 200, message = "Lịch sử trò chuyện quá sâu (tối đa 200 trang)") int page) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(chatService.getGroupMessages(groupId, userId, page));
+    }
+
+    @GetMapping("/group/{groupId}/messages/search")
+    public ApiResponse<List<ChatMessageResponse>> searchGroupMessages(
+            Authentication authentication,
+            @PathVariable @Positive Long groupId,
+            @RequestParam("q") @NotBlank @Size(max = 100) String keyword,
+            @RequestParam(required = false) @Size(max = 100) String beforeId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+        Long userId = requireUserId(authentication);
+        rateLimitService.checkAndRecord(
+                "CHAT_SEARCH", userId.toString(), 60,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tìm kiếm quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa tìm kiếm do gửi quá nhiều yêu cầu.");
+        return ApiResponse.success(chatService.searchGroupMessages(
+                userId, groupId, keyword, beforeId, size, false));
+    }
+
+    @GetMapping("/group/{groupId}/messages/cursor")
+    public ApiResponse<ChatCursorPage> getGroupMessagesByCursor(
+            Authentication authentication,
+            @PathVariable @Positive Long groupId,
+            @RequestParam(required = false) @Size(max = 100) String beforeId,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        Long userId = requireUserId(authentication);
+        rateLimitService.checkAndRecord(
+                "CHAT_HISTORY", userId.toString(), 180,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tải lịch sử quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa tải lịch sử do gửi quá nhiều yêu cầu.");
+        return ApiResponse.success(chatService.getGroupMessagesByCursor(groupId, userId, beforeId, size));
+    }
+
+    @GetMapping("/group/{groupId}/messages/media")
+    public ApiResponse<List<ChatMessageResponse>> groupMedia(
+            Authentication authentication,
+            @PathVariable @Positive Long groupId,
+            @RequestParam(required = false) @Size(max = 100) String beforeId,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
+        return ApiResponse.success(chatService.searchGroupMessages(
+                requireUserId(authentication), groupId, null, beforeId, size, true));
     }
 
     @PostMapping("/group/{groupId}/read")

@@ -11,7 +11,16 @@ public interface IGroupMemberRepository extends JpaRepository<GroupMember, Long>
 
     List<GroupMember> findByGroupId(Long groupId);
 
+    List<GroupMember> findByGroupId(Long groupId, org.springframework.data.domain.Pageable pageable);
+
     List<GroupMember> findByUserId(Long userId);
+
+    List<GroupMember> findByUserId(Long userId, org.springframework.data.domain.Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query(
+            "select m.groupId from GroupMember m where m.userId = :userId order by m.groupId")
+    List<Long> findGroupIdsByUserId(
+            @org.springframework.data.repository.query.Param("userId") Long userId);
 
     List<GroupMember> findByUserIdAndGroupIdIn(Long userId, java.util.Collection<Long> groupIds);
 

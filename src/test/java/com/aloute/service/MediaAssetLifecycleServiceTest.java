@@ -209,6 +209,46 @@ class MediaAssetLifecycleServiceTest {
         verify(mongo, never()).save(any(ManagedMediaAsset.class));
     }
 
+    @Test
+    void rejectedUploadFallsBackToDirectCloudinaryDeleteWhenLedgerIsUnavailable() throws Exception {
+        String url = "https://res.cloudinary.com/demo/image/upload/v1/aloute/avatar/rejected.png";
+        Map<String, String> uploaded = Map.of(
+                "url", url, "publicId", "aloute/avatar/rejected", "resourceType", "image");
+        when(storage.resolveAlouteMediaReference(url)).thenReturn(Optional.of(
+                new ImageStorageService.ManagedMediaReference("aloute/avatar/rejected", "image")));
+        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(null);
+        when(mongo.findById("image:aloute/avatar/rejected", ManagedMediaAsset.class)).thenReturn(null);
+        when(mongo.save(any(ManagedMediaAsset.class))).thenThrow(new IllegalStateException("mongo down"));
+
+        service.deleteRejectedUpload(uploaded);
+
+        verify(storage).deleteMedia("aloute/avatar/rejected", "image");
+    }
+
+    @Test
+    void scheduledScanRecoversHiddenPostWhoseCleanupWasNotQueued() {
+        String url = "https://res.cloudinary.com/demo/image/upload/v1/aloute/post/hidden.png";
+        Post hidden = new Post();
+        hidden.setId("hidden-post");
+        hidden.setImageUrl(url);
+        hidden.setModerationStatus(com.aloute.model.document.ModerationStatus.HIDDEN);
+        ManagedMediaAsset asset = attachedAsset(
+                "image:aloute/post/hidden", url, "aloute/post/hidden", "image");
+        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(java.util.List.of(hidden));
+        when(mongo.find(any(Query.class), eq(ManagedMediaAsset.class)))
+                .thenReturn(java.util.List.of(), java.util.List.of());
+        when(storage.resolveAlouteMediaReference(url)).thenReturn(Optional.of(
+                new ImageStorageService.ManagedMediaReference("aloute/post/hidden", "image")));
+        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(asset);
+        when(mongo.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
+                .thenReturn(UpdateResult.acknowledged(1L, 1L, null));
+
+        service.cleanupOrphanedUploadsAndPendingDeletes();
+
+        verify(mongo).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
+        verify(mongo).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
+    }
+
     private ManagedMediaAsset attachedAsset(String id, String url, String publicId, String resourceType) {
         ManagedMediaAsset asset = new ManagedMediaAsset();
         asset.setId(id);

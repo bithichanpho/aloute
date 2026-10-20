@@ -93,12 +93,14 @@ public class UserService {
     }
 
     public UserProfileDto getProfile(Long targetUserId, Long currentUserId) {
-        access.requireProfile(currentUserId, targetUserId);
         User user =
                 userRepository
                         .findById(targetUserId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        access.requireProfile(currentUserId, user);
+        IFriendRepository.ProfileRelationshipStats relationshipStats =
+                friendRepository.getProfileRelationshipStats(targetUserId, currentUserId);
 
         UserProfileDto dto = new UserProfileDto();
         dto.setId(user.getId());
@@ -107,18 +109,26 @@ public class UserService {
         dto.setAvatarUrl(AvatarUtil.resolve(user.getAvatarUrl()));
         dto.setCoverUrl(CloudinaryUrlUtil.cover(user.getCoverUrl()));
         dto.setBio(user.getBio());
-        dto.setFollowerCount(friendRepository.countByFollowedId(targetUserId));
-        dto.setFollowingCount(friendRepository.countByFollowerId(targetUserId));
-        dto.setCloseFriendCount(closeFriendService.getCloseFriendIds(targetUserId).size());
+        dto.setFollowerCount(relationshipStats == null ? 0L : relationshipStats.followerCount());
+        dto.setFollowingCount(relationshipStats == null ? 0L : relationshipStats.followingCount());
+        dto.setCloseFriendCount((int) Math.min(Integer.MAX_VALUE,
+                closeFriendService.countCloseFriends(targetUserId)));
         dto.setPrivateAccount(user.isPrivateAccount());
 
-        if (currentUserId != null) {
-            dto.setFollowedByCurrentUser(
-                    friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId));
-            dto.setMutualFriend(friendService.isFriend(currentUserId, targetUserId));
+        if (currentUserId != null && !currentUserId.equals(targetUserId)) {
+            boolean followedByCurrentUser =
+                    relationshipStats != null && relationshipStats.viewerFollows();
+            boolean mutualFriend = followedByCurrentUser
+                    && relationshipStats.targetFollowsViewer();
+            dto.setFollowedByCurrentUser(followedByCurrentUser);
+            dto.setMutualFriend(mutualFriend);
             dto.setFollowRequestPending(
-                    "PENDING".equals(friendService.followStatus(currentUserId, targetUserId)));
-            dto.setCloseFriendStatus(closeFriendService.getStatus(currentUserId, targetUserId));
+                    !followedByCurrentUser
+                            && friendService.hasPendingFollowRequest(currentUserId, targetUserId));
+            dto.setCloseFriendStatus(
+                    closeFriendService
+                            .getStatusMap(currentUserId, List.of(targetUserId))
+                            .getOrDefault(targetUserId, "NONE"));
         }
 
         dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, targetUserId));
@@ -168,15 +178,10 @@ public class UserService {
         userRepository.save(user);
         if (feedCacheInvalidator != null) feedCacheInvalidator.invalidateViewer(userId);
         Map<String, Object> payload = Map.of("userId", userId, "avatarUrl", avatarUrl);
-        for (Long friendId : friendService.getMutualFriendIds(userId)) {
-            userRepository
-                    .findById(friendId)
-                    .ifPresent(
-                            friend ->
-                                    messagingTemplate.convertAndSendToUser(
-                                            friend.getUsername(),
-                                            "/queue/avatar-updates",
-                                            payload));
+        List<Long> friendIds = friendService.getMutualFriendIds(userId);
+        for (User friend : userRepository.findAllById(friendIds)) {
+            messagingTemplate.convertAndSendToUser(
+                    friend.getUsername(), "/queue/avatar-updates", payload);
         }
 
         messagingTemplate.convertAndSendToUser(
@@ -186,6 +191,11 @@ public class UserService {
     private static final int USER_SEARCH_LIMIT = 20;
 
     public List<UserProfileDto> searchUsers(String keyword, Long currentUserId) {
+        return searchUsers(keyword, currentUserId, 0, USER_SEARCH_LIMIT);
+    }
+
+    public List<UserProfileDto> searchUsers(
+            String keyword, Long currentUserId, int page, int size) {
         String term = keyword == null ? "" : keyword.trim();
         if (term.startsWith("@")) term = term.substring(1).trim();
         if (term.isBlank()) return Collections.emptyList();
@@ -195,7 +205,9 @@ public class UserService {
 
         // Ids come from the trigram-indexed query (newest first); entities are then loaded in one
         // batch (with their role) and put back in that order.
-        List<Long> ids = userSearchQuery.findIds(term, USER_SEARCH_LIMIT);
+        int safePage = Math.max(0, Math.min(10_000, page));
+        int safeSize = Math.max(1, Math.min(50, size));
+        List<Long> ids = userSearchQuery.findIds(term, safePage, safeSize);
         if (ids.isEmpty()) return Collections.emptyList();
         Map<Long, User> byId = new HashMap<>();
         for (User user : userRepository.findAllById(ids)) byId.put(user.getId(), user);
@@ -240,15 +252,15 @@ public class UserService {
         if (currentUserId != null) {
 
             followingSet =
-                    friendRepository.findByFollowerId(currentUserId).stream()
+                    friendRepository.findByFollowerIdAndFollowedIdIn(currentUserId, ids).stream()
                             .map(Friend::getFollowedId)
                             .collect(Collectors.toCollection(HashSet::new));
             followerSet =
-                    friendRepository.findByFollowedId(currentUserId).stream()
+                    friendRepository.findByFollowedIdAndFollowerIdIn(currentUserId, ids).stream()
                             .map(Friend::getFollowerId)
                             .collect(Collectors.toCollection(HashSet::new));
 
-            closeStatuses = closeFriendService.getStatusMap(currentUserId);
+            closeStatuses = closeFriendService.getStatusMap(currentUserId, ids);
         }
 
         List<UserProfileDto> result = new java.util.ArrayList<>(users.size());

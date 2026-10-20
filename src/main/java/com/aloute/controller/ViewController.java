@@ -36,6 +36,7 @@ import jakarta.validation.constraints.Size;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Controller
 @Validated
@@ -91,8 +92,8 @@ public class ViewController {
     }
 
     @GetMapping("/verify-email")
-    public String verifyEmailPage(@RequestParam(required = false) String token, Model model) {
-        model.addAttribute("token", token);
+    public String verifyEmailPage(@RequestParam(required = false) String email, Model model) {
+        model.addAttribute("email", email);
         return "auth/verify";
     }
 
@@ -102,8 +103,8 @@ public class ViewController {
     }
 
     @GetMapping("/reset-password")
-    public String resetPassword(@RequestParam(required = false) String token, Model model) {
-        model.addAttribute("token", token);
+    public String resetPassword(@RequestParam(required = false) String email, Model model) {
+        model.addAttribute("email", email);
         return "auth/reset-password";
     }
 
@@ -130,15 +131,14 @@ public class ViewController {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
-        List<Long> followingIds = friendService.getFollowingIds(userId);
         List<PostResponse> posts;
         String nextCursor = "";
         boolean hasMore = false;
         if (postId != null && !postId.isBlank()) {
             posts = List.of(postService.getPost(postId.trim(), userId));
         } else {
-            var feedPage = postService.getCursorFeed(
-                    userId, followingIds, tab, hashtag, null, 20);
+            var feedPage = postService.getCursorFeedForViewer(
+                    userId, tab, hashtag, null, 20);
             posts = feedPage.items();
             nextCursor = feedPage.nextCursor();
             hasMore = feedPage.hasMore();
@@ -150,11 +150,13 @@ public class ViewController {
         model.addAttribute("nextFeedCursor", nextCursor);
         model.addAttribute("feedHasMore", hasMore);
 
-        List<ChatGroup> feedGroups = groupService.getMyGroups(userId);
+        List<ChatGroup> feedGroups = groupService.getMyGroups(userId, 0, 50);
         List<User> mutualFriends = new java.util.ArrayList<>(
                 userService.findUsersByIds(friendService.getMutualFriendIds(userId)));
+        java.util.Set<String> onlineUsernames = presenceService.onlineUsernames(
+                mutualFriends.stream().map(User::getUsername).toList());
         java.util.Set<Long> onlineFriendIds = mutualFriends.stream()
-                .filter(friend -> presenceService.isOnlineUsername(friend.getUsername()))
+                .filter(friend -> onlineUsernames.contains(friend.getUsername()))
                 .map(User::getId).collect(java.util.stream.Collectors.toSet());
         mutualFriends.sort(java.util.Comparator
                 .comparing((User friend) -> !onlineFriendIds.contains(friend.getId()))
@@ -186,9 +188,17 @@ public class ViewController {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
 
-        List<ConversationResponse> conversations =
-                chatService.getConversations(currentUserId, userId);
+        var conversationPage = chatService.getConversationPage(currentUserId, null, 30);
+        List<ConversationResponse> conversations = new java.util.ArrayList<>(conversationPage.items());
+        if (userId != null && conversations.stream()
+                .noneMatch(item -> !item.isGroup() && userId.equals(item.getOtherUserId()))) {
+            chatService.getConversations(currentUserId, userId).stream()
+                    .filter(item -> !item.isGroup() && userId.equals(item.getOtherUserId()))
+                    .findFirst().ifPresent(item -> conversations.add(0, item));
+        }
         model.addAttribute("conversations", conversations);
+        model.addAttribute("conversationNextCursor", conversationPage.nextCursor());
+        model.addAttribute("conversationHasMore", conversationPage.hasMore());
 
         model.addAttribute("openUserId", userId);
         model.addAttribute("openGroupId", groupId);
@@ -258,8 +268,8 @@ public class ViewController {
             @RequestParam(required = false) @Size(max = 50, message = "Hashtag không hợp lệ") String tag) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
-        var page = postService.getCursorFeed(
-                userId, friendService.getFollowingIds(userId), tab, tag, cursor, 20);
+        var page = postService.getCursorFeedForViewer(
+                userId, tab, tag, cursor, 20);
         model.addAttribute("posts", page.items());
         var currentUser = new UserProfileDto();
         currentUser.setId(userId);
@@ -273,17 +283,18 @@ public class ViewController {
     public String profileFragment(
             Authentication authentication,
             Model model,
+            jakarta.servlet.http.HttpServletResponse response,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page) {
+            @RequestParam(required = false) @Size(max = 256) String cursor) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
-        List<PostResponse> userPosts = postService.getPostsByUser(userId, currentUserId, page, 20);
-        model.addAttribute("userPosts", userPosts);
+        var postPage = postService.getPostsByUserCursor(userId, currentUserId, cursor, 20);
+        model.addAttribute("userPosts", postPage.items());
 
         model.addAttribute("repostPosts", Collections.emptyList());
         model.addAttribute(
                 "mediaPosts",
-                userPosts.stream()
+                postPage.items().stream()
                         .filter(
                                 post ->
                                         (post.getImageUrl() != null
@@ -292,6 +303,8 @@ public class ViewController {
                                                         && !post.getVideoUrl().isBlank()))
                         .collect(java.util.stream.Collectors.toList()));
         model.addAttribute("isOwnProfile", currentUserId.equals(userId));
+        response.setHeader("X-Next-Cursor", postPage.nextCursor());
+        response.setHeader("X-Has-More", Boolean.toString(postPage.hasMore()));
         return "profile/view :: profileTimelinePost";
     }
 
@@ -299,18 +312,20 @@ public class ViewController {
     public String profileRepostFragment(
             Authentication authentication,
             Model model,
+            jakarta.servlet.http.HttpServletResponse response,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
-            @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang quá sâu") int page) {
+            @RequestParam(required = false) @Size(max = 256) String cursor) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
 
-        List<PostResponse> repostPosts =
-                postService.getRepostsByUser(userId, currentUserId, page, 20);
+        var repostPage = postService.getRepostsByUserCursor(userId, currentUserId, cursor, 20);
 
-        model.addAttribute("repostPosts", repostPosts);
+        model.addAttribute("repostPosts", repostPage.items());
         model.addAttribute("userPosts", Collections.emptyList());
         model.addAttribute("mediaPosts", Collections.emptyList());
         model.addAttribute("isOwnProfile", currentUserId.equals(userId));
+        response.setHeader("X-Next-Cursor", repostPage.nextCursor());
+        response.setHeader("X-Has-More", Boolean.toString(repostPage.hasMore()));
         return "profile/view :: profileRepostPost";
     }
 
@@ -385,7 +400,8 @@ public class ViewController {
 
     private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
         UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
-        List<PostResponse> userPosts = postService.getPostsByUser(profileUserId, currentUserId);
+        var postPage = postService.getPostsByUserCursor(profileUserId, currentUserId, null, 20);
+        List<PostResponse> userPosts = postPage.items();
 
         model.addAttribute("profileUser", profile);
         model.addAttribute("userPosts", userPosts);
@@ -401,8 +417,12 @@ public class ViewController {
                                                         && !post.getVideoUrl().isBlank()))
                         .collect(java.util.stream.Collectors.toList()));
 
-        model.addAttribute(
-                "repostPosts", postService.getRepostsByUser(profileUserId, currentUserId, 0, 20));
+        model.addAttribute("profilePostsNextCursor", postPage.nextCursor());
+        model.addAttribute("profilePostsHasMore", postPage.hasMore());
+        model.addAttribute("repostPosts", Collections.emptyList());
+        model.addAttribute("profileRepostsDeferred", true);
+        model.addAttribute("profileRepostsNextCursor", "");
+        model.addAttribute("profileRepostsHasMore", true);
         model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
         model.addAttribute(
                 "isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
@@ -425,14 +445,20 @@ public class ViewController {
                 && authentication.getAuthorities().stream()
                         .noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN")))
             throw new UnauthorizedException(
-                    "Chỉ quản trị viên hệ thống được truy cập");
+                    "Chỉ quản trị viên xử lý báo cáo được truy cập");
         boolean settingsPage = "/settings".equals(path);
         String pageKind = settingsPage ? "settings" : "moderation";
-        model.addAttribute("pageTitle", settingsPage ? "Cài đặt và an toàn" : "Kiểm duyệt nội dung");
+        model.addAttribute("pageTitle", settingsPage ? "Cài đặt và an toàn" : "Xử lý báo cáo vi phạm");
         model.addAttribute("pageKind", pageKind);
         if (settingsPage) {
-            model.addAttribute("blocks", socialFeatureService.blocks(userId));
-            model.addAttribute("followRequests", socialFeatureService.requests(userId));
+            var blockPage = socialFeatureService.blocks(userId, null, 50);
+            var requestPage = socialFeatureService.requests(userId, null, 50);
+            model.addAttribute("blocks", blockPage.items());
+            model.addAttribute("blocksNextCursor", blockPage.nextCursor());
+            model.addAttribute("blocksHasMore", blockPage.hasMore());
+            model.addAttribute("followRequests", requestPage.items());
+            model.addAttribute("requestsNextCursor", requestPage.nextCursor());
+            model.addAttribute("requestsHasMore", requestPage.hasMore());
             model.addAttribute("profileUser", userService.getProfile(userId, userId));
         } else {
             model.addAttribute("moderationQueue", socialFeatureService.queue(userId, queuePage, 20));
@@ -450,6 +476,11 @@ public class ViewController {
                 authentication != null
                         && authentication.getAuthorities().stream()
                                 .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")));
+        model.addAttribute(
+                "isHost",
+                authentication != null
+                        && authentication.getAuthorities().stream()
+                                .anyMatch(a -> a.getAuthority().equals("ROLE_HOST")));
         model.addAttribute("activeNav", activeNav);
         if (currentUserId == null) return;
         model.addAttribute("currentUser", userService.getLiteProfile(currentUserId));

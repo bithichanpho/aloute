@@ -85,7 +85,7 @@ public class FeedCacheInvalidator {
     private void invalidateRedisKeys(RedisConnectionFactory factory, String pattern) {
         RedisConnection connection = factory.getConnection();
         try {
-            Cursor<byte[]> cursor = connection.scan(
+            Cursor<byte[]> cursor = connection.keyCommands().scan(
                     ScanOptions.scanOptions().match(pattern).count(500).build());
             try {
                 List<byte[]> batch = new ArrayList<>(REDIS_DELETE_BATCH_SIZE);
@@ -105,7 +105,7 @@ public class FeedCacheInvalidator {
     }
 
     private void deleteBatch(RedisConnection connection, List<byte[]> batch) {
-        connection.del(batch.toArray(new byte[0][]));
+        connection.keyCommands().del(batch.toArray(new byte[0][]));
         batch.clear();
     }
 }

@@ -12,12 +12,40 @@ import com.aloute.repository.IUserRepository;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.Optional;
 import java.util.List;
 
 class ChatServiceTest {
+    @Test
+    void cursorHistoryReturnsChronologicalItemsAndNextCursor() {
+        IChatMessageRepository messages = mock(IChatMessageRepository.class);
+        IUserRepository users = mock(IUserRepository.class);
+        MongoTemplate mongo = mock(MongoTemplate.class);
+        ContentAccessService access = mock(ContentAccessService.class);
+        ChatMessage newest = chat("m3", "1", "newest");
+        ChatMessage middle = chat("m2", "2", "middle");
+        ChatMessage extra = chat("m1", "1", "extra");
+        when(mongo.find(any(Query.class), eq(ChatMessage.class)))
+                .thenReturn(new java.util.ArrayList<>(List.of(newest, middle, extra)));
+        when(users.findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any()))
+                .thenReturn(List.of(user(1L, "one"), user(2L, "two")));
+        ChatService service = new ChatService(
+                messages, users, mock(IGroupReadStatusRepository.class), mock(GroupService.class),
+                mock(SimpMessagingTemplate.class), mock(FriendService.class),
+                mock(PresenceService.class), mongo, access, mock(PushNotificationService.class));
+
+        var page = service.getMessagesByCursor(1L, 2L, null, 2);
+
+        assertTrue(page.hasMore());
+        assertEquals("m2", page.nextCursor());
+        assertEquals(List.of("m2", "m3"), page.items().stream().map(r -> r.getId()).toList());
+        verify(access).requireProfile(1L, 2L);
+        verify(users, times(1)).findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any());
+    }
+
     @Test
     void directMessageUsesLoadedSenderAndDeliversToBothUsers() {
         IChatMessageRepository messages = mock(IChatMessageRepository.class);
@@ -61,6 +89,16 @@ class ChatServiceTest {
         verify(push).sendChatMessageToUser(2L, "sender", "xin chào", "/chat?userId=1");
     }
 
+    private static ChatMessage chat(String id, String senderId, String content) {
+        ChatMessage message = new ChatMessage();
+        message.setId(id);
+        message.setSenderId(senderId);
+        message.setReceiverId("1".equals(senderId) ? "2" : "1");
+        message.setConversationId("1_2");
+        message.setContent(content);
+        return message;
+    }
+
     @Test
     void groupMessagePublishesRealtimeAndQueuesPushForOtherMembers() {
         IChatMessageRepository messages = mock(IChatMessageRepository.class);
@@ -78,7 +116,8 @@ class ChatServiceTest {
         group.setName("Nhóm test");
         when(groups.getGroupDetail(10L, 1L)).thenReturn(group);
         when(users.findById(1L)).thenReturn(Optional.of(sender));
-        when(users.findAllById(any(Iterable.class))).thenReturn(List.of(sender, receiver));
+        when(users.findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any()))
+                .thenReturn(List.of(sender, receiver));
         when(messages.save(any(ChatMessage.class)))
                 .thenAnswer(invocation -> {
                     ChatMessage message = invocation.getArgument(0);
@@ -119,7 +158,8 @@ class ChatServiceTest {
         message.setReceiverId("2");
         message.setMediaUrl("https://res.cloudinary.com/demo/image/upload/v1/aloute/chat/photo.png");
         when(messages.findById("message-with-media")).thenReturn(Optional.of(message));
-        when(users.findAllById(any(Iterable.class))).thenReturn(List.of(user(1L, "sender"), user(2L, "receiver")));
+        when(users.findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any()))
+                .thenReturn(List.of(user(1L, "sender"), user(2L, "receiver")));
 
         ChatService service = new ChatService(
                 messages,
@@ -128,7 +168,6 @@ class ChatServiceTest {
                 groups,
                 messaging,
                 mock(FriendService.class),
-                mock(PresenceService.class),
                 mock(MongoTemplate.class),
                 mock(ContentAccessService.class),
                 mock(PushNotificationService.class),
@@ -141,7 +180,7 @@ class ChatServiceTest {
         service.deleteMessage("message-with-media", 1L, true);
 
         verify(messages).delete(message);
-        verify(mediaAssets).deleteIfUnreferenced(message.getMediaUrl());
+        verify(mediaAssets).queueUnreferencedDeletion(message.getMediaUrl());
     }
 
     @Test
@@ -179,6 +218,37 @@ class ChatServiceTest {
         assertEquals("client-stable", response.getClientId());
         verify(messages, never()).save(any(ChatMessage.class));
         verify(messaging, never()).convertAndSendToUser(anyString(), anyString(), any());
+    }
+
+    @Test
+    void markingGroupReadAdvancesExistingCursorWithoutSelectingStatusFirst() {
+        IGroupReadStatusRepository readStatuses = mock(IGroupReadStatusRepository.class);
+        GroupService groups = mock(GroupService.class);
+        MongoTemplate mongo = mock(MongoTemplate.class);
+        when(groups.isMember(10L, 1L)).thenReturn(true);
+        when(readStatuses.updateLastReadAt(
+                        eq(10L), eq(1L), any(java.time.LocalDateTime.class)))
+                .thenReturn(1);
+        when(mongo.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of());
+        ChatService service =
+                new ChatService(
+                        mock(IChatMessageRepository.class),
+                        mock(IUserRepository.class),
+                        readStatuses,
+                        groups,
+                        mock(SimpMessagingTemplate.class),
+                        mock(FriendService.class),
+                        mock(PresenceService.class),
+                        mongo,
+                        mock(ContentAccessService.class),
+                        mock(PushNotificationService.class));
+
+        service.markGroupAsRead(10L, 1L);
+
+        verify(readStatuses)
+                .updateLastReadAt(eq(10L), eq(1L), any(java.time.LocalDateTime.class));
+        verify(readStatuses, never()).findByGroupIdAndUserId(anyLong(), anyLong());
+        verify(readStatuses, never()).save(any());
     }
 
     private User user(Long id, String username) {

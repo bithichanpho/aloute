@@ -127,7 +127,12 @@ public class PostModerationCoordinator {
     }
 
     private void evictFeedCache() {
-        var feedCache = cacheManager.getCache("feedPages");
-        if (feedCache != null) feedCache.clear();
+        try {
+            var feedCache = cacheManager.getCache("feedPages");
+            if (feedCache != null) feedCache.clear();
+        } catch (RuntimeException cacheFailure) {
+            log.warn("Feed cache eviction failed after moderation recovery; TTL will expire it ({})",
+                    cacheFailure.getClass().getSimpleName());
+        }
     }
 }

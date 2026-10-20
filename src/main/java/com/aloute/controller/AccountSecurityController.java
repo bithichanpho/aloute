@@ -14,9 +14,12 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @SecurityRequirement(name = "accessCookie")
 @RequestMapping("/api/account")
-@lombok.RequiredArgsConstructor
 public class AccountSecurityController {
     private final AccountSecurityService service;
+
+    public AccountSecurityController(AccountSecurityService service) {
+        this.service = service;
+    }
 
     public record Credentials(
             @Size(max = 200) String password,

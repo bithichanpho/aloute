@@ -53,6 +53,7 @@ public class PostResponseMapper {
         dto.setVisibility(post.getVisibility());
         dto.setContent(post.getContent());
         dto.setModerationStatus(post.getModerationStatus());
+        dto.setCommunityPostStatus(post.getCommunityPostStatus());
         dto.setCreatedAt(post.getCreatedAt());
         dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
 
@@ -131,7 +132,11 @@ public class PostResponseMapper {
         ModerationStatus status = post == null ? null : post.getModerationStatus();
         // Treat legacy records without a status as approved. PENDING, FLAGGED and HIDDEN
         // contents must not leak through counters/media of a repost.
-        return status == null || status == ModerationStatus.APPROVED;
+        com.aloute.model.document.CommunityPostStatus communityStatus =
+                post == null ? null : post.getCommunityPostStatus();
+        return (status == null || status == ModerationStatus.APPROVED)
+                && (communityStatus == null
+                        || communityStatus == com.aloute.model.document.CommunityPostStatus.APPROVED);
     }
 
     private PostResponse.RepostOrigin buildRepostOrigin(String originalPostId) {
@@ -215,6 +220,8 @@ public class PostResponseMapper {
                             dto.setId(post.getId());
                             dto.setVisibility(post.getVisibility());
                             dto.setContent(post.getContent());
+                            dto.setModerationStatus(post.getModerationStatus());
+                            dto.setCommunityPostStatus(post.getCommunityPostStatus());
                             dto.setCreatedAt(post.getCreatedAt());
                             dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
 

@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyIterable;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -71,11 +70,14 @@ class CommentServiceReplyPaginationTest {
         Comment second = comment("reply-2", "post-1", "3", "parent", 12);
         Comment third = comment("reply-3", "post-1", "3", "parent", 13);
         when(comments.findById("parent")).thenReturn(Optional.of(parent));
-        when(comments.findAllById(anyIterable())).thenReturn(List.of(parent));
-        when(users.findAllById(anyIterable())).thenReturn(List.of(user(2L, "parent-author"), user(3L, "reply-author")));
+        when(comments.findAllById(org.mockito.ArgumentMatchers.<String>anyIterable()))
+                .thenReturn(List.of(parent));
+        when(users.findAllById(org.mockito.ArgumentMatchers.<Long>anyIterable()))
+                .thenReturn(List.of(user(2L, "parent-author"), user(3L, "reply-author")));
         when(access.visibleUserIds(eq(1L), any())).thenReturn(Set.of(2L, 3L));
         when(mongo.find(any(Query.class), eq(Comment.class)))
-                .thenReturn(List.of(first, second, third), List.of(third));
+                .thenReturn(List.of(first, second, third))
+                .thenReturn(List.of(third));
 
         CommentCursorPage page1 = service.getReplies("parent", 1L, null, 2);
         assertEquals(2, page1.items().size());

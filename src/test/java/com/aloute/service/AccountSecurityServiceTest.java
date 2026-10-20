@@ -107,8 +107,7 @@ class AccountSecurityServiceTest {
 
     @Test
     void validRecoveryCodeAlsoGivesTheFailureBudgetBack() {
-        enabledTwoFactorWithUpdateResults(
-                UpdateResult.acknowledged(0, 0L, null), UpdateResult.acknowledged(1, 1L, null));
+        enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
         assertDoesNotThrow(() -> service.verifyLogin(1L, "recovery-code"));
         verify(limits).reset("TOTP", "1");
     }

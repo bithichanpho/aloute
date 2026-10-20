@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class EmailService {
 
+    /** Validity of the emailed OTPs; keep in sync with AuthService and PasswordManagementService. */
+    private static final int OTP_VALID_MINUTES = 10;
+
     private final JavaMailSender mailSender;
     private final String fromAddress;
     private final String frontendBaseUrl;
@@ -27,9 +30,7 @@ public class EmailService {
         this.frontendBaseUrl = frontendBaseUrl;
     }
 
-    public void sendVerificationEmail(String toEmail, String fullName, String verificationToken) {
-        String verifyLink = frontendBaseUrl + "/verify-email?token=" + verificationToken;
-
+    public void sendVerificationEmail(String toEmail, String fullName, String verificationOtp) {
         String safeFullName = escapeHtml(fullName);
 
         String html =
@@ -37,26 +38,21 @@ public class EmailService {
 <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
   <h2>Chào %s,</h2>
   <p><strong>Bạn vừa nhận được yêu cầu đăng ký tài khoản ALOUTE bằng địa chỉ email này.</strong></p>
-  <p>Thông tin tên đăng nhập được cung cấp khi đăng ký là yêu cầu ban đầu. Chỉ nhấn xác thực nếu chính bạn đã bắt đầu đăng ký tài khoản này.</p>
-  <p style="color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;padding:10px;border-radius:6px;font-size:14px;"><strong>Nếu bạn không tự đăng ký:</strong> đừng nhấn nút xác thực và hãy bỏ qua email này. Tài khoản sẽ không được kích hoạt chỉ bằng cách bỏ qua email.</p>
-  <p style="color:#666;font-size:14px;">Nếu bạn từng yêu cầu gửi lại email, chỉ liên kết trong email mới nhất còn hiệu lực.</p>
-  <p style="margin: 24px 0;">
-    <a href="%s" style="background:#101010;color:#fff;padding:12px 24px;
-       border-radius:8px;text-decoration:none;font-weight:600;">
-       Xác thực email
-    </a>
+  <p>Nhập mã OTP dưới đây vào trang xác thực để kích hoạt tài khoản:</p>
+  <p style="margin: 24px 0; text-align: center;">
+    <span style="display:inline-block;background:#101010;color:#fff;padding:14px 28px;
+       border-radius:8px;font-size:30px;font-weight:700;letter-spacing:8px;">%s</span>
   </p>
-  <p>Nếu nút không hoạt động, dán link sau vào trình duyệt:<br>%s</p>
-  <p style="color:#888;font-size:13px;">Nếu bạn không tạo tài khoản này, hãy bỏ qua email này.</p>
+  <p style="color:#666;font-size:14px;">Mã có hiệu lực trong %d phút. Nếu bạn yêu cầu gửi lại mã, chỉ mã trong email mới nhất còn hiệu lực.</p>
+  <p style="color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;padding:10px;border-radius:6px;font-size:14px;"><strong>Nếu bạn không tự đăng ký:</strong> hãy bỏ qua email này và không chia sẻ mã cho bất kỳ ai. Tài khoản sẽ không được kích hoạt nếu không có mã.</p>
 </div>
 """
-                        .formatted(safeFullName, verifyLink, verifyLink);
+                        .formatted(safeFullName, verificationOtp, OTP_VALID_MINUTES);
 
-        sendHtml(toEmail, "Bạn vừa nhận được yêu cầu đăng ký ALOUTE - xác thực email", html);
+        sendHtml(toEmail, "ALOUTE - Mã OTP xác thực email", html);
     }
 
-    public void sendResetPasswordEmail(String toEmail, String fullName, String resetToken) {
-        String resetLink = frontendBaseUrl + "/reset-password?token=" + resetToken;
+    public void sendResetPasswordEmail(String toEmail, String fullName, String resetOtp) {
         String safeFullName = escapeHtml(fullName);
 
         String html =
@@ -64,21 +60,18 @@ public class EmailService {
 <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
   <h2>Chào %s,</h2>
   <p>Bạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu cho tài khoản ALOUTE này.
-     Bấm nút bên dưới để đặt mật khẩu mới:</p>
-  <p style="margin: 24px 0;">
-    <a href="%s" style="background:#101010;color:#fff;padding:12px 24px;
-       border-radius:8px;text-decoration:none;font-weight:600;">
-       Đặt lại mật khẩu
-    </a>
+     Nhập mã OTP dưới đây vào trang đặt lại mật khẩu:</p>
+  <p style="margin: 24px 0; text-align: center;">
+    <span style="display:inline-block;background:#101010;color:#fff;padding:14px 28px;
+       border-radius:8px;font-size:30px;font-weight:700;letter-spacing:8px;">%s</span>
   </p>
-  <p>Nếu nút không hoạt động, dán link sau vào trình duyệt:<br>%s</p>
-  <p style="color:#888;font-size:13px;">Link có hiệu lực trong 30 phút.
-     Nếu bạn không yêu cầu điều này, hãy bỏ qua email này — mật khẩu của bạn vẫn an toàn.</p>
+  <p style="color:#888;font-size:13px;">Mã có hiệu lực trong %d phút và chỉ dùng được một lần.
+     Không chia sẻ mã này cho bất kỳ ai. Nếu bạn không yêu cầu điều này, hãy bỏ qua email này — mật khẩu của bạn vẫn an toàn.</p>
 </div>
 """
-                        .formatted(safeFullName, resetLink, resetLink);
+                        .formatted(safeFullName, resetOtp, OTP_VALID_MINUTES);
 
-        sendHtml(toEmail, "Yêu cầu đặt lại mật khẩu ALOUTE", html);
+        sendHtml(toEmail, "ALOUTE - Mã OTP đặt lại mật khẩu", html);
     }
 
     /**

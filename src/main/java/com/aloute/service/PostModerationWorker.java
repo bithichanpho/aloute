@@ -100,7 +100,7 @@ public class PostModerationWorker {
                 if (postMediaAssets != null) {
                     try {
                         if (finalStatus == ModerationStatus.HIDDEN) {
-                            postMediaAssets.deletePostMedia(snapshot);
+                            postMediaAssets.queueHiddenPostMedia(snapshot);
                         }
                     } catch (RuntimeException lifecycleFailure) {
                         log.warn("Post-media lifecycle update deferred (postId={}, cause={})",
@@ -168,7 +168,12 @@ public class PostModerationWorker {
     }
 
     private void evictFeedCache() {
-        var feedCache = cacheManager.getCache("feedPages");
-        if (feedCache != null) feedCache.clear();
+        try {
+            var feedCache = cacheManager.getCache("feedPages");
+            if (feedCache != null) feedCache.clear();
+        } catch (RuntimeException cacheFailure) {
+            log.warn("Feed cache eviction failed after post moderation; TTL will expire it ({})",
+                    cacheFailure.getClass().getSimpleName());
+        }
     }
 }

@@ -34,13 +34,16 @@ import com.aloute.dto.response.FeedCursorPage;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.dto.response.ReactionResponse;
 import com.aloute.dto.response.RepostResponse;
+import com.aloute.dto.response.ReposterCursorPage;
 import com.aloute.security.SecurityUtils;
+import com.aloute.security.ClientIpResolver;
 import com.aloute.service.AuthRateLimitService;
 import com.aloute.service.FriendService;
 import com.aloute.service.LikeService;
 import com.aloute.service.PostService;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -61,7 +64,9 @@ public class PostController {
     private final ChatService chatService;
     private final ContentAccessService contentAccessService;
     private final String frontendBaseUrl;
+    private final ClientIpResolver clientIpResolver;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public PostController(
             PostService postService,
             LikeService likeService,
@@ -69,7 +74,8 @@ public class PostController {
             AuthRateLimitService rateLimitService,
             ChatService chatService,
             ContentAccessService contentAccessService,
-            @Value("${app.mail.frontend-base-url:http://localhost:8080}") String frontendBaseUrl) {
+            @Value("${app.mail.frontend-base-url:http://localhost:8080}") String frontendBaseUrl,
+            ClientIpResolver clientIpResolver) {
         this.postService = postService;
         this.likeService = likeService;
         this.friendService = friendService;
@@ -77,6 +83,16 @@ public class PostController {
         this.chatService = chatService;
         this.contentAccessService = contentAccessService;
         this.frontendBaseUrl = frontendBaseUrl;
+        this.clientIpResolver = clientIpResolver;
+    }
+
+    /** Compatibility constructor for focused MVC unit tests. */
+    public PostController(
+            PostService postService, LikeService likeService, FriendService friendService,
+            AuthRateLimitService rateLimitService, ChatService chatService,
+            ContentAccessService contentAccessService, String frontendBaseUrl) {
+        this(postService, likeService, friendService, rateLimitService, chatService,
+                contentAccessService, frontendBaseUrl, null);
     }
 
     @GetMapping("/feed")
@@ -88,21 +104,21 @@ public class PostController {
 
         Long currentUserId = SecurityUtils.currentUserId(authentication);
 
+        if (currentUserId != null) limitFeedReads(currentUserId);
+
         if ("following".equalsIgnoreCase(tab)) {
             if (currentUserId == null) {
                 throw new UnauthorizedException("Cần đăng nhập để xem tab Following");
             }
-            List<Long> followingIds = friendService.getFollowingIds(currentUserId);
             return ApiResponse.success(
-                    postService.getFeedByFollowing(currentUserId, followingIds, page, size));
+                    legacyCursorPage(currentUserId, "following", page, size));
         }
 
         if (currentUserId == null) {
             throw new UnauthorizedException("Cần đăng nhập để xem feed");
         }
         return ApiResponse.success(
-                postService.getFeed(
-                        currentUserId, friendService.getFollowingIds(currentUserId), page, size));
+                legacyCursorPage(currentUserId, "foryou", page, size));
     }
 
     @GetMapping("/feed/cursor")
@@ -113,15 +129,39 @@ public class PostController {
             @RequestParam(required = false) @Size(max = 50) String hashtag,
             @RequestParam(defaultValue = "20") @Min(1) @Max(30) int size) {
         Long currentUserId = requireUserId(authentication);
-        return ApiResponse.success(postService.getCursorFeed(
-                currentUserId, friendService.getFollowingIds(currentUserId),
-                tab, hashtag, cursor, size));
+        limitFeedReads(currentUserId);
+        return ApiResponse.success(postService.getCursorFeedForViewer(
+                currentUserId, tab, hashtag, cursor, size));
+    }
+
+    private List<PostResponse> legacyCursorPage(
+            Long currentUserId, String tab, int page, int size) {
+        String cursor = null;
+        FeedCursorPage result = null;
+        for (int index = 0; index <= page; index++) {
+            result = postService.getCursorFeedForViewer(
+                    currentUserId, tab, null, cursor, size);
+            if (index < page && !result.hasMore()) return List.of();
+            cursor = result.nextCursor();
+        }
+        return result == null ? List.of() : result.items();
+    }
+
+    private void limitFeedReads(Long userId) {
+        rateLimitService.checkAndRecord(
+                "FEED_READ", userId.toString(), 180,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tải bảng tin quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa truy vấn bảng tin do quá nhiều yêu cầu.");
     }
 
     @GetMapping("/{postId}")
     public ApiResponse<PostResponse> getPost(
-            Authentication authentication, @PathVariable @NotBlank(message = "Thiếu mã bài viết") String postId) {
+            Authentication authentication,
+            HttpServletRequest request,
+            @PathVariable @NotBlank(message = "Thiếu mã bài viết") String postId) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
+        limitPostReads(currentUserId, request);
         return ApiResponse.success(postService.getPost(postId, currentUserId));
     }
 
@@ -129,11 +169,38 @@ public class PostController {
     @SecurityRequirements
     public ApiResponse<List<PostResponse>> getPostsByUser(
             Authentication authentication,
+            HttpServletRequest request,
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
             @RequestParam(defaultValue = "0") @Min(value = 0, message = "Trang phải từ 0 trở lên") @Max(value = 100, message = "Trang sâu hơn cần dùng cursor") int page,
             @RequestParam(defaultValue = "20") @Min(value = 1, message = "Kích thước trang phải từ 1 trở lên") @Max(value = 50, message = "Kích thước trang tối đa 50") int size) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
+        limitPostReads(currentUserId, request);
         return ApiResponse.success(postService.getPostsByUser(userId, currentUserId, page, size));
+    }
+
+    @GetMapping("/user/{userId}/cursor")
+    @SecurityRequirements
+    public ApiResponse<FeedCursorPage> getPostsByUserCursor(
+            Authentication authentication,
+            HttpServletRequest request,
+            @PathVariable @Positive Long userId,
+            @RequestParam(required = false) @Size(max = 256) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        Long currentUserId = SecurityUtils.currentUserId(authentication);
+        limitPostReads(currentUserId, request);
+        return ApiResponse.success(postService.getPostsByUserCursor(
+                userId, currentUserId, cursor, size));
+    }
+
+    private void limitPostReads(Long userId, HttpServletRequest request) {
+        String subject = userId != null
+                ? "user:" + userId
+                : "ip:" + (clientIpResolver == null ? "unknown" : clientIpResolver.resolve(request));
+        rateLimitService.checkAndRecord(
+                "POST_READ", subject, 300,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tải bài viết quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa tải bài viết do gửi quá nhiều yêu cầu.");
     }
 
     @PostMapping
@@ -175,7 +242,11 @@ public class PostController {
                 "Tạm khóa tương tác do gửi quá nhiều yêu cầu.");
         boolean liked = true;
         if (body != null && body.get("liked") != null) {
-            liked = Boolean.parseBoolean(String.valueOf(body.get("liked")));
+            Object requestedState = body.get("liked");
+            if (!(requestedState instanceof Boolean booleanState)) {
+                throw new BadRequestException("Trạng thái thích phải là true hoặc false");
+            }
+            liked = booleanState;
         }
         return ApiResponse.success(likeService.setLike(postId, currentUserId, liked));
     }
@@ -243,7 +314,7 @@ public class PostController {
     public ApiResponse<RepostResponse> repost(
             Authentication authentication,
             @PathVariable @NotBlank(message = "Thiếu mã bài viết") String postId,
-            @RequestBody(required = false) RepostRequest request) {
+            @Valid @RequestBody(required = false) RepostRequest request) {
         Long currentUserId = requireUserId(authentication);
 
         rateLimitService.checkAndRecord(
@@ -256,6 +327,21 @@ public class PostController {
                 "Bạn đã đăng lại quá nhiều lần trong thời gian ngắn. Tạm khóa 10 phút.");
 
         return ApiResponse.success(postService.repost(currentUserId, postId, request));
+    }
+
+    @GetMapping("/{postId}/reposters")
+    public ApiResponse<ReposterCursorPage> getReposters(
+            Authentication authentication,
+            @PathVariable @NotBlank(message = "Thiếu mã bài viết") String postId,
+            @RequestParam(required = false)
+                    @Size(max = 500, message = "Con trỏ quá dài")
+                    String cursor,
+            @RequestParam(defaultValue = "20")
+                    @Min(value = 1, message = "Kích thước trang tối thiểu là 1")
+                    @Max(value = 50, message = "Kích thước trang tối đa là 50")
+                    int size) {
+        Long currentUserId = requireUserId(authentication);
+        return ApiResponse.success(postService.getReposters(currentUserId, postId, cursor, size));
     }
 
     private Long requireUserId(Authentication authentication) {

@@ -76,11 +76,11 @@ public class DiscoveryService {
         int size = Math.max(1, Math.min(20, limit));
 
         Set<Long> followingSet =
-                friendRepository.findByFollowerId(currentUserId).stream()
+                friendRepository.findByFollowerId(currentUserId, PageRequest.of(0, 2000)).stream()
                         .map(Friend::getFollowedId)
                         .collect(Collectors.toCollection(HashSet::new));
         Set<Long> followerSet =
-                friendRepository.findByFollowedId(currentUserId).stream()
+                friendRepository.findByFollowedId(currentUserId, PageRequest.of(0, 2000)).stream()
                         .map(Friend::getFollowerId)
                         .collect(Collectors.toCollection(HashSet::new));
 

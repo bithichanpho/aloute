@@ -327,6 +327,98 @@
     chatListScroll.appendChild(fragment);
   }
 
+  function createConversationItem(conversation) {
+    if (!conversation) return null;
+    const isGroup = conversation.group === true;
+    const identity = isGroup ? conversation.groupId : conversation.otherUserId;
+    if (identity == null) return null;
+    const selector = isGroup
+      ? '.chat-item[data-group-id="' + String(identity) + '"]'
+      : '.chat-item[data-user-id="' + String(identity) + '"]';
+    if (chatListScroll.querySelector(selector)) return null;
+
+    const item = document.createElement('div');
+    item.className = 'chat-item' + (!isGroup && conversation.hasConversation === false ? ' chat-item--preview' : '');
+    if (isGroup) {
+      item.dataset.groupId = String(identity);
+      item.dataset.groupName = conversation.groupName || '';
+      item.dataset.memberCount = String(conversation.memberCount || 0);
+    } else {
+      item.dataset.userId = String(identity);
+      item.dataset.username = conversation.otherUsername || '';
+      item.dataset.fullname = conversation.otherFullName || conversation.otherUsername || '';
+      item.dataset.online = conversation.online === true ? 'true' : 'false';
+      item.dataset.hasConversation = conversation.hasConversation === false ? 'false' : 'true';
+    }
+    item.dataset.avatar = conversation.otherAvatarUrl || '';
+    item.dataset.lastMessageAt = conversation.lastMessageAt || '';
+
+    const avatarWrap = document.createElement('span');
+    avatarWrap.className = 'chat-item__avatar-wrap';
+    const avatar = document.createElement('img');
+    avatar.className = 'chat-item__avatar' + (isGroup ? ' chat-item__avatar--group' : '');
+    avatar.alt = isGroup ? 'avatar nhóm' : 'avatar';
+    avatar.src = conversation.otherAvatarUrl
+      || (isGroup ? 'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(identity) : '/images/avatar_default.png');
+    avatarWrap.appendChild(avatar);
+    if (!isGroup && conversation.online === true) {
+      const dot = document.createElement('span'); dot.className = 'presence-dot'; avatarWrap.appendChild(dot);
+    }
+
+    const body = document.createElement('div'); body.className = 'chat-item__body';
+    const top = document.createElement('div'); top.className = 'chat-item__top';
+    const name = document.createElement('span'); name.className = 'chat-item__name';
+    name.textContent = isGroup ? (conversation.groupName || 'Nhóm') : (conversation.otherFullName || conversation.otherUsername || 'Người dùng');
+    const time = document.createElement('span'); time.className = 'chat-item__time';
+    time.textContent = conversation.lastMessageTimeAgo || '';
+    top.append(name, time);
+    const bottom = document.createElement('div'); bottom.className = 'chat-item__bottom';
+    const preview = document.createElement('span'); preview.className = 'chat-item__preview';
+    preview.textContent = !isGroup && conversation.hasConversation === false
+      ? 'Bạn bè mới · Bắt đầu trò chuyện' : (conversation.lastMessage || '');
+    bottom.appendChild(preview);
+    const unread = Number(conversation.unreadCount || 0);
+    if (unread > 0) {
+      const badge = document.createElement('span'); badge.className = 'chat-item__unread';
+      badge.textContent = unread > 99 ? '99+' : String(unread); bottom.appendChild(badge);
+    }
+    body.append(top, bottom); item.append(avatarWrap, body);
+    item.addEventListener('click', () => openConversation(item));
+    return item;
+  }
+
+  let loadingConversationPage = false;
+  async function loadMoreConversations() {
+    if (!chatListScroll || loadingConversationPage || chatListScroll.dataset.hasMore !== 'true') return;
+    const cursor = chatListScroll.dataset.nextCursor || '';
+    if (!cursor) return;
+    loadingConversationPage = true;
+    try {
+      const page = await Aloute.api('/api/chat/conversations/cursor?size=30&cursor=' + encodeURIComponent(cursor));
+      (page && Array.isArray(page.items) ? page.items : []).forEach(conversation => {
+        const item = createConversationItem(conversation);
+        if (item) chatListScroll.appendChild(item);
+      });
+      chatListScroll.dataset.nextCursor = page && page.nextCursor ? page.nextCursor : '';
+      chatListScroll.dataset.hasMore = page && page.hasMore === true ? 'true' : 'false';
+      sortChatListItems();
+      if (chatListScroll.dataset.hasMore === 'true'
+          && chatListScroll.scrollHeight <= chatListScroll.clientHeight + 40) {
+        setTimeout(loadMoreConversations, 0);
+      }
+    } catch (error) {
+      console.warn('Could not load the next conversation page.', error);
+    } finally {
+      loadingConversationPage = false;
+    }
+  }
+
+  if (chatListScroll) chatListScroll.addEventListener('scroll', () => {
+    if (chatListScroll.scrollTop + chatListScroll.clientHeight >= chatListScroll.scrollHeight - 160) {
+      loadMoreConversations();
+    }
+  });
+
   if (searchInput) {
     searchInput.addEventListener('input', () => {
       const keyword = searchInput.value.trim().toLowerCase();
@@ -345,6 +437,11 @@
 
   sortChatListItems();
   loadChatNotes();
+  if (chatListScroll && chatListScroll.dataset.hasMore === 'true') {
+    setTimeout(() => {
+      if (chatListScroll.scrollHeight <= chatListScroll.clientHeight + 40) loadMoreConversations();
+    }, 0);
+  }
 
   if (chatShell && chatShell.dataset.openUserId) {
     const targetItem = chatList.querySelector('.chat-item[data-user-id="' + chatShell.dataset.openUserId + '"]');

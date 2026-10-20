@@ -7,15 +7,21 @@ import com.aloute.common.util.ReactionType;
 import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.request.CreatePostRequest;
 import com.aloute.dto.request.RepostRequest;
-import com.aloute.dto.response.ModerationResult;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.dto.response.RepostResponse;
+import com.aloute.dto.response.ReposterCursorPage;
 import com.aloute.model.document.ModerationStatus;
+import com.aloute.model.document.CommunityPostStatus;
 import com.aloute.model.document.Post;
+import com.aloute.model.document.ContentReport;
+import com.aloute.model.document.PostRevision;
 import com.aloute.model.document.Repost;
+import com.aloute.model.document.SavedPost;
 import com.aloute.repository.ICommentRepository;
+import com.aloute.repository.IFriendRepository;
 import com.aloute.repository.ILikeRepository;
 import com.aloute.repository.INotificationRepository;
+import com.aloute.repository.INotificationOutboxRepository;
 import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IRepostRepository;
 import com.aloute.repository.IUserRepository;
@@ -43,7 +49,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -59,16 +64,16 @@ public class PostService {
     private final IPostRepository postRepository;
     private final IUserRepository userRepository;
     private final ILikeRepository likeRepository;
-    private final ModerationService moderationService;
     private final NotificationService notificationService;
     private final MongoTemplate mongoTemplate;
     private final ICommentRepository commentRepository;
     private final INotificationRepository notificationRepository;
     private final IRepostRepository repostRepository;
-    private final PostModerationCoordinator moderationCoordinator;
     private final MediaAssetLifecycleService postMediaAssets;
     private final FeedCacheInvalidator feedCacheInvalidator;
     private final MongoTransactionRetryExecutor transactionRetryExecutor;
+    private final IFriendRepository friendRepository;
+    private final INotificationOutboxRepository notificationOutboxRepository;
 
     @Autowired
     public PostService(
@@ -87,12 +92,13 @@ public class PostService {
             PostModerationCoordinator moderationCoordinator,
             MediaAssetLifecycleService postMediaAssets,
             FeedCacheInvalidator feedCacheInvalidator,
-            MongoTransactionRetryExecutor transactionRetryExecutor) {
+            MongoTransactionRetryExecutor transactionRetryExecutor,
+            IFriendRepository friendRepository,
+            INotificationOutboxRepository notificationOutboxRepository) {
         this.access = access;
         this.postRepository = postRepository;
         this.userRepository = userRepository;
         this.likeRepository = likeRepository;
-        this.moderationService = moderationService;
         this.notificationService = notificationService;
         this.mongoTemplate = mongoTemplate;
         this.commentRepository = commentRepository;
@@ -100,10 +106,36 @@ public class PostService {
         this.repostRepository = repostRepository;
         this.repostPresentationService = repostPresentationService;
         this.postResponseMapper = postResponseMapper;
-        this.moderationCoordinator = moderationCoordinator;
         this.postMediaAssets = postMediaAssets;
         this.feedCacheInvalidator = feedCacheInvalidator;
         this.transactionRetryExecutor = transactionRetryExecutor;
+        this.friendRepository = friendRepository;
+        this.notificationOutboxRepository = notificationOutboxRepository;
+    }
+
+    /** Compatibility constructor retained for tests and callers predating notification outbox cleanup. */
+    public PostService(
+            IPostRepository postRepository,
+            IUserRepository userRepository,
+            ILikeRepository likeRepository,
+            ModerationService moderationService,
+            NotificationService notificationService,
+            MongoTemplate mongoTemplate,
+            ICommentRepository commentRepository,
+            INotificationRepository notificationRepository,
+            IRepostRepository repostRepository,
+            ContentAccessService access,
+            RepostPresentationService repostPresentationService,
+            PostResponseMapper postResponseMapper,
+            PostModerationCoordinator moderationCoordinator,
+            MediaAssetLifecycleService postMediaAssets,
+            FeedCacheInvalidator feedCacheInvalidator,
+            MongoTransactionRetryExecutor transactionRetryExecutor,
+            IFriendRepository friendRepository) {
+        this(postRepository, userRepository, likeRepository, moderationService, notificationService,
+                mongoTemplate, commentRepository, notificationRepository, repostRepository, access,
+                repostPresentationService, postResponseMapper, moderationCoordinator, postMediaAssets,
+                feedCacheInvalidator, transactionRetryExecutor, friendRepository, null);
     }
 
     /** Compatibility constructor retained for unit tests that construct PostService directly. */
@@ -125,7 +157,24 @@ public class PostService {
         this(postRepository, userRepository, likeRepository, moderationService, notificationService,
                 mongoTemplate, commentRepository, notificationRepository, repostRepository, access,
                 repostPresentationService, postResponseMapper, moderationCoordinator, postMediaAssets,
-                null, null);
+                null, null, null);
+    }
+
+    @Cacheable(
+            cacheNames = "feedPages",
+            key = "T(com.aloute.service.FeedCacheKey).createForViewer(#currentUserId, #tab, #hashtag, #encodedCursor, #requestedSize)",
+            condition = "#currentUserId != null")
+    public FeedCursorPage getCursorFeedForViewer(
+            Long currentUserId,
+            String tab,
+            String hashtag,
+            String encodedCursor,
+            int requestedSize) {
+        if (friendRepository == null) {
+            return getCursorFeed(currentUserId, List.of(), tab, hashtag, encodedCursor, requestedSize);
+        }
+        return readCursorFeed(
+                currentUserId, null, true, tab, hashtag, encodedCursor, requestedSize);
     }
 
     public PostResponse createPost(Long currentUserId, CreatePostRequest request) {
@@ -134,18 +183,21 @@ public class PostService {
 
     public PostResponse createPost(
             Long currentUserId, CreatePostRequest request, String communityId) {
-        // Production moderation runs after persistence on a bounded background executor. The
-        // post remains hidden from every viewer except its author until the decision is stored.
+        return createPost(currentUserId, request, communityId, null);
+    }
+
+    public PostResponse createPost(
+            Long currentUserId,
+            CreatePostRequest request,
+            String communityId,
+            CommunityPostStatus communityPostStatus) {
+        // Timeline posts publish immediately. Community approval is represented separately by
+        // communityPostStatus and is decided only by that community's OWNER/MANAGER.
         if (postMediaAssets != null) {
             postMediaAssets.validatePostMediaUrl(request.getImageUrl(), null, String.valueOf(currentUserId));
             postMediaAssets.validatePostMediaUrl(request.getVideoUrl(), null, String.valueOf(currentUserId));
         }
-        ModerationResult initialResult = moderationService.isEnabled()
-                ? null
-                : moderationService.check(request.getContent());
-        ModerationStatus initialStatus = moderationService.isEnabled()
-                ? ModerationStatus.PENDING
-                : moderationService.resolveStatus(initialResult);
+        ModerationStatus initialStatus = ModerationStatus.APPROVED;
 
         Post post = new Post();
         post.setUserId(String.valueOf(currentUserId));
@@ -156,17 +208,14 @@ public class PostService {
         post.setHashtags(ContentTagService.extract(request.getContent(), '#'));
         post.setMentions(ContentTagService.extract(request.getContent(), '@'));
         post.setModerationStatus(initialStatus);
-        post.setToxicityScore(initialResult == null ? 0.0 : initialResult.getScore());
+        post.setToxicityScore(0.0);
         post.setCommunityId(communityId);
-        post.setNotifyMentionsAfterModeration(initialStatus == ModerationStatus.PENDING);
+        post.setCommunityPostStatus(communityPostStatus);
+        post.setNotifyMentionsAfterModeration(false);
 
         Post saved = postRepository.save(post);
         markPostMediaAttached(saved.getId(), String.valueOf(currentUserId), saved.getImageUrl(), saved.getVideoUrl());
-        if (initialStatus == ModerationStatus.PENDING && moderationCoordinator != null) {
-            afterCommitSafely("post moderation enqueue", () -> moderationCoordinator.submit(saved.getId()));
-        } else {
-            notifyReadableMentions(saved, currentUserId);
-        }
+        notifyReadableMentions(saved, currentUserId);
         PostResponse response = toResponse(saved, currentUserId);
         invalidateViewerFeedCache(currentUserId);
         return response;
@@ -186,18 +235,20 @@ public class PostService {
     }
 
     private Query ownTimelineQuery(Long userId, Pageable pageable) {
+        return new Query(ownTimelineCriteria(userId)).with(pageable);
+    }
+
+    private Criteria ownTimelineCriteria(Long userId) {
         Criteria hasOwnCaption =
                 new Criteria()
                         .andOperator(
                                 Criteria.where("content").ne(null),
                                 Criteria.where("content").ne(""));
-        Criteria criteria =
-                Criteria.where("userId")
+        return Criteria.where("userId")
                         .is(String.valueOf(userId))
                         .and("moderationStatus")
                         .ne(ModerationStatus.HIDDEN)
                         .orOperator(Criteria.where("repostOfId").is(null), hasOwnCaption);
-        return new Query(criteria).with(pageable);
     }
 
     /**
@@ -217,10 +268,22 @@ public class PostService {
             String hashtag,
             String encodedCursor,
             int requestedSize) {
+        return readCursorFeed(
+                currentUserId, followingIds, false, tab, hashtag, encodedCursor, requestedSize);
+    }
+
+    private FeedCursorPage readCursorFeed(
+            Long currentUserId,
+            List<Long> followingIds,
+            boolean streamFollowingIds,
+            String tab,
+            String hashtag,
+            String encodedCursor,
+            int requestedSize) {
         int size = Math.max(1, Math.min(30, requestedSize));
         boolean followingOnly = "following".equalsIgnoreCase(tab);
         List<String> followed = followingIds == null
-                ? List.of()
+                ? new ArrayList<>()
                 : followingIds.stream().filter(java.util.Objects::nonNull)
                         .map(String::valueOf).collect(Collectors.toCollection(ArrayList::new));
         if (currentUserId != null && !followed.contains(String.valueOf(currentUserId))) {
@@ -246,7 +309,6 @@ public class PostService {
                     new Criteria().andOperator(
                             Criteria.where("repostOfId").ne(null),
                             Criteria.where("content").nin(null, ""))));
-            if (followingOnly) clauses.add(Criteria.where("userId").in(followed));
             if (!normalizedTag.isBlank()) clauses.add(Criteria.where("hashtags").is(normalizedTag));
             if (cursor != null) {
                 clauses.add(new Criteria().orOperator(
@@ -256,23 +318,24 @@ public class PostService {
                                 Criteria.where("id").lt(cursor.id()))));
             }
 
-            Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
-                    .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
-                    .limit(batchSize);
-            List<Post> loaded = mongoTemplate.find(query, Post.class);
+            List<Post> loaded = followingOnly && streamFollowingIds
+                    ? loadFollowingFeedBatch(clauses, currentUserId, batchSize)
+                    : loadFeedBatch(clauses, followingOnly ? followed : List.of(), batchSize);
             if (loaded.isEmpty()) {
                 hasMore = false;
                 break;
             }
 
             ContentAccessService.AccessBatch permissions = access.forPosts(loaded, currentUserId);
+            List<Post> readable = permissions.readable(loaded);
+            Map<String, PostResponse> responsesById =
+                    toReadableResponses(readable, currentUserId, permissions).stream()
+                            .collect(Collectors.toMap(PostResponse::getId, Function.identity()));
             boolean stoppedAtPageBoundary = false;
             for (int i = 0; i < loaded.size(); i++) {
                 Post candidate = loaded.get(i);
-                if (permissions.canRead(candidate)) {
-                    List<PostResponse> mapped = toReadableResponses(List.of(candidate), currentUserId, permissions);
-                    if (!mapped.isEmpty()) result.add(mapped.get(0));
-                }
+                PostResponse mapped = responsesById.get(candidate.getId());
+                if (mapped != null) result.add(mapped);
                 nextCursor = encodeFeedCursor(candidate);
                 cursor = new CursorPoint(candidate.getCreatedAt(), candidate.getId());
                 if (result.size() >= size) {
@@ -296,6 +359,85 @@ public class PostService {
         return new FeedCursorPage(result, hasMore ? nextCursor : (result.isEmpty() ? "" : nextCursor), hasMore);
     }
 
+    /**
+     * Traverses SQL follow edges in keyset batches and keeps only the newest Mongo candidates.
+     * Memory usage is bounded by roughly two feed batches regardless of follow count.
+     */
+    private List<Post> loadFollowingFeedBatch(
+            List<Criteria> baseClauses, Long viewerId, int limit) {
+        final int relationshipBatchSize = 500;
+        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        List<Post> newest = new ArrayList<>(limit * 2);
+        Long afterId = 0L;
+        boolean firstBatch = true;
+
+        while (true) {
+            List<Long> ids = friendRepository.findFollowedIdsAfter(
+                    viewerId, afterId, PageRequest.of(0, relationshipBatchSize));
+            List<String> chunk = ids.stream().filter(java.util.Objects::nonNull)
+                    .map(String::valueOf).collect(Collectors.toCollection(ArrayList::new));
+            if (firstBatch) {
+                chunk.add(String.valueOf(viewerId));
+                firstBatch = false;
+            }
+            if (!chunk.isEmpty()) {
+                List<Criteria> clauses = new ArrayList<>(baseClauses);
+                clauses.add(Criteria.where("userId").in(chunk));
+                newest.addAll(mongoTemplate.find(
+                        Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                                .with(sort).limit(limit),
+                        Post.class));
+                newest.sort(java.util.Comparator
+                        .comparing(Post::getCreatedAt,
+                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder()))
+                        .thenComparing(Post::getId,
+                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+                if (newest.size() > limit) newest.subList(limit, newest.size()).clear();
+            }
+            if (ids.size() < relationshipBatchSize) break;
+            afterId = ids.get(ids.size() - 1);
+        }
+        return newest;
+    }
+
+    /**
+     * Keeps Mongo {@code $in} predicates bounded for accounts following many users. Each chunk is
+     * index-backed and returns only the requested window; the small sorted windows are then merged.
+     */
+    private List<Post> loadFeedBatch(List<Criteria> baseClauses, List<String> followed, int limit) {
+        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        if (followed == null || followed.isEmpty()) {
+            Query query = Query.query(new Criteria().andOperator(baseClauses.toArray(Criteria[]::new)))
+                    .with(sort).limit(limit);
+            return mongoTemplate.find(query, Post.class);
+        }
+
+        final int inClauseSize = 500;
+        if (followed.size() <= inClauseSize) {
+            List<Criteria> clauses = new ArrayList<>(baseClauses);
+            clauses.add(Criteria.where("userId").in(followed));
+            return mongoTemplate.find(
+                    Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                            .with(sort).limit(limit),
+                    Post.class);
+        }
+
+        List<Post> candidates = new ArrayList<>();
+        for (int start = 0; start < followed.size(); start += inClauseSize) {
+            List<Criteria> clauses = new ArrayList<>(baseClauses);
+            clauses.add(Criteria.where("userId").in(
+                    followed.subList(start, Math.min(start + inClauseSize, followed.size()))));
+            candidates.addAll(mongoTemplate.find(
+                    Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                            .with(sort).limit(limit),
+                    Post.class));
+        }
+        candidates.sort(java.util.Comparator
+                .comparing(Post::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder()))
+                .thenComparing(Post::getId, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+        return candidates.size() <= limit ? candidates : new ArrayList<>(candidates.subList(0, limit));
+    }
+
     public List<PostResponse> getPostsByHashtag(String hashtag, Long currentUserId, int size) {
         return getCursorFeed(currentUserId, List.of(), "foryou", hashtag, null, size).items();
     }
@@ -309,7 +451,11 @@ public class PostService {
     }
 
     private String encodeFeedCursor(Post post) {
-        String value = post.getCreatedAt().toString() + "|" + post.getId();
+        return encodeCursor(post.getCreatedAt(), post.getId());
+    }
+
+    private String encodeCursor(LocalDateTime createdAt, String id) {
+        String value = createdAt.toString() + "|" + id;
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -379,6 +525,47 @@ public class PostService {
         return toResponses(posts, currentUserId);
     }
 
+    public List<PostResponse> getCommunityPostsForReview(
+            String communityId, Long currentUserId, int page, int size) {
+        Pageable pageable = PageRequest.of(
+                Math.max(0, page), Math.max(1, Math.min(50, size)),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        return postRepository
+                .findCommunityPostsByStatus(communityId, CommunityPostStatus.PENDING, pageable)
+                .stream()
+                .map(post -> postResponseMapper.toResponse(post, currentUserId))
+                .toList();
+    }
+
+    public Post getPostForCommunityManagement(String postId) {
+        return postRepository.findById(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài viết"));
+    }
+
+    public PostResponse decideCommunityPost(
+            String postId,
+            String communityId,
+            Long reviewerId,
+            CommunityPostStatus decision) {
+        if (decision != CommunityPostStatus.APPROVED
+                && decision != CommunityPostStatus.REJECTED) {
+            throw new BadRequestException("Quyết định duyệt bài không hợp lệ");
+        }
+        Post saved = mongoTemplate.findAndModify(
+                Query.query(Criteria.where("_id").is(postId)
+                        .and("communityId").is(communityId)
+                        .and("communityPostStatus").is(CommunityPostStatus.PENDING)),
+                new Update().set("communityPostStatus", decision),
+                org.springframework.data.mongodb.core.FindAndModifyOptions.options().returnNew(true),
+                Post.class);
+        if (saved == null) {
+            throw new BadRequestException(
+                    "Bài viết không tồn tại trong cộng đồng hoặc không còn chờ duyệt");
+        }
+        invalidateAllFeedCache();
+        return postResponseMapper.toResponse(saved, reviewerId);
+    }
+
     public List<PostResponse> getPostsByUser(Long userId, Long currentUserId) {
         return getPostsByUser(userId, currentUserId, 0, 20);
     }
@@ -409,6 +596,59 @@ public class PostService {
         throw new BadRequestException("Quá nhiều bài không hiển thị; hãy dùng phân trang cursor");
     }
 
+    public FeedCursorPage getPostsByUserCursor(
+            Long userId, Long currentUserId, String encodedCursor, int requestedSize) {
+        int size = Math.max(1, Math.min(50, requestedSize));
+        CursorPoint cursor = decodeFeedCursor(encodedCursor);
+        String nextCursor = encodedCursor == null ? "" : encodedCursor;
+        List<PostResponse> result = new ArrayList<>(size);
+        final int batchSize = Math.min(150, Math.max(50, size * 3));
+        boolean hasMore = false;
+
+        for (int batch = 0; batch < 20 && result.size() < size; batch++) {
+            List<Criteria> clauses = new ArrayList<>();
+            clauses.add(ownTimelineCriteria(userId));
+            if (cursor != null) {
+                clauses.add(new Criteria().orOperator(
+                        Criteria.where("createdAt").lt(cursor.createdAt()),
+                        new Criteria().andOperator(
+                                Criteria.where("createdAt").is(cursor.createdAt()),
+                                Criteria.where("id").lt(cursor.id()))));
+            }
+            Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                    .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
+                    .limit(batchSize);
+            List<Post> loaded = mongoTemplate.find(query, Post.class);
+            if (loaded.isEmpty()) {
+                hasMore = false;
+                break;
+            }
+            ContentAccessService.AccessBatch permissions = access.forPosts(loaded, currentUserId);
+            List<Post> readable = permissions.readable(loaded);
+            Map<String, PostResponse> responsesById =
+                    toReadableResponses(readable, currentUserId, permissions).stream()
+                            .collect(Collectors.toMap(PostResponse::getId, Function.identity()));
+            boolean stopped = false;
+            for (int i = 0; i < loaded.size(); i++) {
+                Post candidate = loaded.get(i);
+                PostResponse mapped = responsesById.get(candidate.getId());
+                if (mapped != null) result.add(mapped);
+                nextCursor = encodeFeedCursor(candidate);
+                cursor = new CursorPoint(candidate.getCreatedAt(), candidate.getId());
+                if (result.size() >= size) {
+                    hasMore = i < loaded.size() - 1 || loaded.size() == batchSize;
+                    stopped = true;
+                    break;
+                }
+            }
+            if (stopped) break;
+            hasMore = loaded.size() == batchSize;
+            if (!hasMore) break;
+        }
+        repostPresentationService.attachRecentReposters(result);
+        return new FeedCursorPage(result, nextCursor, hasMore);
+    }
+
     public List<PostResponse> getRepostsByUser(
             Long userId, Long currentUserId, int page, int size) {
         Pageable pageable =
@@ -429,6 +669,77 @@ public class PostService {
         return toResponses(ordered, currentUserId);
     }
 
+    public FeedCursorPage getRepostsByUserCursor(
+            Long userId, Long currentUserId, String encodedCursor, int requestedSize) {
+        int size = Math.max(1, Math.min(50, requestedSize));
+        CursorPoint cursor = decodeFeedCursor(encodedCursor);
+        String nextCursor = encodedCursor == null ? "" : encodedCursor;
+        List<PostResponse> result = new ArrayList<>(size);
+        final int batchSize = Math.min(150, Math.max(50, size * 3));
+        boolean hasMore = false;
+
+        for (int batch = 0; batch < 20 && result.size() < size; batch++) {
+            List<Criteria> clauses = new ArrayList<>();
+            clauses.add(Criteria.where("userId").is(String.valueOf(userId)));
+            if (cursor != null) {
+                clauses.add(
+                        new Criteria()
+                                .orOperator(
+                                        Criteria.where("createdAt").lt(cursor.createdAt()),
+                                        new Criteria()
+                                                .andOperator(
+                                                        Criteria.where("createdAt")
+                                                                .is(cursor.createdAt()),
+                                                        Criteria.where("_id").lt(cursor.id()))));
+            }
+            Query query =
+                    Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                            .with(
+                                    Sort.by(
+                                            Sort.Order.desc("createdAt"),
+                                            Sort.Order.desc("_id")))
+                            .limit(batchSize);
+            List<Repost> loaded = mongoTemplate.find(query, Repost.class);
+            if (loaded.isEmpty()) {
+                hasMore = false;
+                break;
+            }
+
+            List<String> postIds = loaded.stream().map(Repost::getPostId).distinct().toList();
+            Map<String, Post> postsById =
+                    postRepository.findAllById(postIds).stream()
+                            .collect(Collectors.toMap(Post::getId, Function.identity()));
+            List<Post> posts =
+                    postIds.stream()
+                            .map(postsById::get)
+                            .filter(java.util.Objects::nonNull)
+                            .toList();
+            ContentAccessService.AccessBatch permissions = access.forPosts(posts, currentUserId);
+            Map<String, PostResponse> responsesById =
+                    toReadableResponses(permissions.readable(posts), currentUserId, permissions)
+                            .stream()
+                            .collect(Collectors.toMap(PostResponse::getId, Function.identity()));
+
+            boolean stopped = false;
+            for (int i = 0; i < loaded.size(); i++) {
+                Repost candidate = loaded.get(i);
+                PostResponse mapped = responsesById.get(candidate.getPostId());
+                if (mapped != null) result.add(mapped);
+                nextCursor = encodeCursor(candidate.getCreatedAt(), candidate.getId());
+                cursor = new CursorPoint(candidate.getCreatedAt(), candidate.getId());
+                if (result.size() >= size) {
+                    hasMore = i < loaded.size() - 1 || loaded.size() == batchSize;
+                    stopped = true;
+                    break;
+                }
+            }
+            if (stopped) break;
+            hasMore = loaded.size() == batchSize;
+            if (!hasMore) break;
+        }
+        return new FeedCursorPage(result, nextCursor, hasMore);
+    }
+
     public List<PostResponse> getPostsByIds(List<String> ids, Long currentUserId) {
         if (ids.isEmpty()) return List.of();
         Map<String, Post> posts =
@@ -440,12 +751,18 @@ public class PostService {
     }
 
     public List<PostResponse> searchPosts(String keyword, Long currentUserId, int limit) {
+        return searchPosts(keyword, currentUserId, 0, limit);
+    }
+
+    public List<PostResponse> searchPosts(
+            String keyword, Long currentUserId, int page, int size) {
         if (keyword == null || keyword.isBlank()) {
             return Collections.emptyList();
         }
 
         String search = keyword.trim();
-        int boundedLimit = Math.max(1, Math.min(20, limit));
+        int boundedPage = Math.max(0, Math.min(10_000, page));
+        int boundedLimit = Math.max(1, Math.min(50, size));
         Query query;
         if (search.startsWith("#")) {
             String tag = search.substring(1).trim().toLowerCase(java.util.Locale.ROOT);
@@ -456,7 +773,9 @@ public class PostService {
             // Uses the MongoDB text index on Post.content instead of an unanchored regex scan.
             query = Query.query(TextCriteria.forLanguage("none").matching(search));
         }
-        query.with(Sort.by(Sort.Direction.DESC, "createdAt")).limit(boundedLimit);
+        query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
+                .skip((long) boundedPage * boundedLimit)
+                .limit(boundedLimit);
         return toResponses(mongoTemplate.find(query, Post.class), currentUserId);
     }
 
@@ -477,25 +796,45 @@ public class PostService {
     }
 
     public void deletePost(String postId, Long currentUserId) {
+        deletePost(postId, currentUserId, false, null);
+    }
+
+    public void deletePostAsModerator(
+            String postId, Long currentUserId, String expectedCommunityId) {
+        deletePost(postId, currentUserId, true, expectedCommunityId);
+    }
+
+    private void deletePost(
+            String postId,
+            Long currentUserId,
+            boolean moderator,
+            String expectedCommunityId) {
         if (transactionRetryExecutor == null) {
-            deletePostInTransaction(postId, currentUserId);
+            deletePostInTransaction(postId, currentUserId, moderator, expectedCommunityId);
             return;
         }
         transactionRetryExecutor.execute(() -> {
-            deletePostInTransaction(postId, currentUserId);
+            deletePostInTransaction(postId, currentUserId, moderator, expectedCommunityId);
             return null;
         });
     }
 
-    private void deletePostInTransaction(String postId, Long currentUserId) {
+    private void deletePostInTransaction(
+            String postId,
+            Long currentUserId,
+            boolean moderator,
+            String expectedCommunityId) {
         Post post =
                 postRepository
                         .findById(postId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy bài viết"));
 
-        if (!post.getUserId().equals(String.valueOf(currentUserId))) {
+        if (!moderator && !post.getUserId().equals(String.valueOf(currentUserId))) {
             throw new ForbiddenException("Bạn không có quyền xóa bài viết này");
+        }
+        if (moderator && !java.util.Objects.equals(expectedCommunityId, post.getCommunityId())) {
+            throw new ResourceNotFoundException("Không tìm thấy bài viết trong cộng đồng này");
         }
 
         // All Mongo collections that make up the post are deleted in one Mongo transaction.
@@ -510,28 +849,37 @@ public class PostService {
         if (!commentIds.isEmpty()) {
             mongoTemplate.remove(Query.query(Criteria.where("commentId").in(commentIds)),
                     com.aloute.model.document.CommentReaction.class);
+            mongoTemplate.remove(Query.query(new Criteria().andOperator(
+                    Criteria.where("targetType").is("COMMENT"),
+                    Criteria.where("targetId").in(commentIds))), ContentReport.class);
         }
         commentRepository.deleteByPostId(postId);
         repostRepository.deleteByPostId(postId);
+        Query byPost = Query.query(Criteria.where("postId").is(postId));
+        mongoTemplate.remove(byPost, SavedPost.class);
+        mongoTemplate.remove(byPost, PostRevision.class);
+        mongoTemplate.remove(Query.query(new Criteria().andOperator(
+                Criteria.where("targetType").is("POST"),
+                Criteria.where("targetId").is(postId))), ContentReport.class);
         postRepository.delete(post);
+        if (postMediaAssets != null) {
+            // The tombstone is committed with the Mongo deletion. A process crash after commit can
+            // no longer lose the Cloudinary cleanup request.
+            postMediaAssets.queuePostMediaDeletion(post);
+        }
         if (post.getRepostOfId() != null) {
-            syncRepostCount(post.getRepostOfId());
+            syncRepostSummary(post.getRepostOfId());
         }
 
-        afterCommitSafely("post notification cleanup", () -> notificationRepository.deleteByReferenceId(postId));
+        afterCommitSafely("post notification cleanup", () -> {
+            notificationRepository.deleteByReferenceId(postId);
+            if (notificationOutboxRepository != null) {
+                notificationOutboxRepository.deleteByReferenceIdIn(List.of(postId));
+            }
+        });
         // A deleted post can be present in many viewers' cached pages, not only its author's feed.
         // This is a rare content-removal path, so invalidate globally using the SCAN-based strategy.
         invalidateAllFeedCache();
-        afterCommitSafely("Cloudinary media cleanup", () -> {
-            if (postMediaAssets == null) {
-                // Compatibility constructors are used only by isolated tests. Production must
-                // have the lifecycle service; do not reintroduce an unsafe direct-delete path.
-                log.warn("Post media cleanup skipped because the lifecycle service is not configured (postId={})",
-                        postId);
-                return;
-            }
-            postMediaAssets.deletePostMedia(post);
-        });
     }
 
     public RepostResponse repost(Long currentUserId, String originalPostId, RepostRequest request) {
@@ -558,7 +906,7 @@ public class PostService {
             int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
             RepostResponse response = new RepostResponse(
                     finalOriginalId, true, count, existing.get().getId());
-            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            setRepostPreview(response, finalOriginalId);
             invalidateViewerFeedCache(currentUserId);
             return response;
         }
@@ -580,21 +928,22 @@ public class PostService {
             // Replaying the same repost=true request is a read, not an un-repost toggle.
             int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
             RepostResponse response = new RepostResponse(finalOriginalId, true, count, existing.get().getId());
-            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            setRepostPreview(response, finalOriginalId);
             return response;
         }
         if (existing.isEmpty() && hasDesiredState && !desiredReposted) {
             // Replaying repost=false when already absent is also idempotent.
             int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
             RepostResponse response = new RepostResponse(finalOriginalId, false, count, null);
-            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            setRepostPreview(response, finalOriginalId);
             return response;
         }
         if (existing.isPresent() && (!hasDesiredState || !desiredReposted)) {
             repostRepository.delete(existing.get());
-            int newCount = syncRepostCount(finalOriginalId);
-            RepostResponse response = new RepostResponse(finalOriginalId, false, newCount, null);
-            response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+            RepostSummary summary = syncRepostSummary(finalOriginalId);
+            RepostResponse response =
+                    new RepostResponse(finalOriginalId, false, summary.count(), null);
+            setRepostPreview(response, summary.reposterIds());
             return response;
         }
 
@@ -604,14 +953,26 @@ public class PostService {
         repost.setContent(request != null && request.getContent() != null && !request.getContent().isBlank()
                 ? request.getContent().trim() : null);
         Repost saved = repostRepository.save(repost);
-        int newCount = syncRepostCount(finalOriginalId);
+        RepostSummary summary = syncRepostSummary(finalOriginalId);
 
         final Long originalOwnerId = Long.valueOf(original.getUserId());
         afterCommitSafely("repost notification", () -> notificationService.notify(
                 originalOwnerId, currentUserId, "REPOST", finalOriginalId, "đã đăng lại bài viết của bạn"));
-        RepostResponse response = new RepostResponse(finalOriginalId, true, newCount, saved.getId());
-        response.setReposters(repostPresentationService.loadRepostActors(finalOriginalId));
+        RepostResponse response =
+                new RepostResponse(finalOriginalId, true, summary.count(), saved.getId());
+        setRepostPreview(response, summary.reposterIds());
         return response;
+    }
+
+    public ReposterCursorPage getReposters(
+            Long currentUserId, String postId, String cursor, int size) {
+        Post post = access.requirePost(postId, currentUserId);
+        String interactionPostId =
+                post.getRepostOfId() == null ? post.getId() : post.getRepostOfId();
+        Post original = interactionPostId.equals(post.getId()) ? post : access.requirePost(
+                interactionPostId, currentUserId);
+        return repostPresentationService.loadRepostActorsPage(
+                interactionPostId, cursor, size, original.getRepostCount());
     }
 
     private <T> T executeMongoTransaction(java.util.function.Supplier<T> work) {
@@ -657,14 +1018,33 @@ public class PostService {
                 });
     }
 
-    private int syncRepostCount(String postId) {
+    private RepostSummary syncRepostSummary(String postId) {
         int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(postId));
+        List<String> recentReposterIds = repostPresentationService.recentReposterIds(postId);
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(postId)),
-                new Update().set("repostCount", count),
+                new Update()
+                        .set("repostCount", count)
+                        .set("recentReposterIds", recentReposterIds),
                 Post.class);
-        return count;
+        return new RepostSummary(count, recentReposterIds);
     }
+
+    private void setRepostPreview(RepostResponse response, String postId) {
+        List<PostResponse.RepostActor> preview =
+                repostPresentationService.loadRecentRepostActors(postId);
+        response.setReposters(preview);
+        response.setOtherReposterCount(response.getRepostCount() - preview.size());
+    }
+
+    private void setRepostPreview(RepostResponse response, List<String> reposterIds) {
+        List<PostResponse.RepostActor> preview =
+                repostPresentationService.loadActorsByIds(reposterIds);
+        response.setReposters(preview);
+        response.setOtherReposterCount(response.getRepostCount() - preview.size());
+    }
+
+    private record RepostSummary(int count, List<String> reposterIds) {}
 
     public void adjustLikeCount(String postId, int delta) {
         Query query = Query.query(Criteria.where("_id").is(postId));

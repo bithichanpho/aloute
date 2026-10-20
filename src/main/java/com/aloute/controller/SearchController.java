@@ -57,7 +57,9 @@ public class SearchController {
     public ApiResponse<List<UserProfileDto>> searchUsers(
             Authentication authentication,
             HttpServletRequest request,
-            @RequestParam("q") @Size(max = 100, message = "Từ khóa tối đa 100 ký tự") String keyword) {
+            @RequestParam("q") @Size(max = 100, message = "Từ khóa tối đa 100 ký tự") String keyword,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
 
         enforceSearchRateLimit("SEARCH_USERS_IP", request);
         String term = keyword == null ? "" : keyword.trim();
@@ -67,14 +69,16 @@ public class SearchController {
             throw new BadRequestException("Từ khóa tìm người dùng phải có ít nhất 2 ký tự");
         }
         Long currentUserId = SecurityUtils.currentUserId(authentication);
-        return ApiResponse.success(userService.searchUsers(searchable, currentUserId));
+        return ApiResponse.success(userService.searchUsers(searchable, currentUserId, page, size));
     }
 
     @GetMapping("/posts")
     public ApiResponse<List<PostResponse>> searchPosts(
             Authentication authentication,
             HttpServletRequest request,
-            @RequestParam("q") @Size(max = 100, message = "Từ khóa tối đa 100 ký tự") String keyword) {
+            @RequestParam("q") @Size(max = 100, message = "Từ khóa tối đa 100 ký tự") String keyword,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
 
         enforceSearchRateLimit("SEARCH_POSTS_IP", request);
         String term = keyword == null ? "" : keyword.trim();
@@ -84,7 +88,7 @@ public class SearchController {
             throw new BadRequestException("Từ khóa tìm bài viết phải có ít nhất 2 ký tự");
         }
         Long currentUserId = SecurityUtils.currentUserId(authentication);
-        return ApiResponse.success(postService.searchPosts(term, currentUserId, 20));
+        return ApiResponse.success(postService.searchPosts(term, currentUserId, page, size));
     }
 
     private void enforceSearchRateLimit(String namespace, HttpServletRequest request) {

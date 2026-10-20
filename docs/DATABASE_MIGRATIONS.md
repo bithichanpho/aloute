@@ -21,4 +21,4 @@ The script only accepts a disposable database on loopback and deletes its tempor
 
 ## Version note
 
-`V20261020` exists in this source revision. Its definitions were inferred against the entity/migration tree; no independent production database dump was supplied to prove equivalence with every deployed schema. Release sign-off should include a fresh-schema run and a schema diff against a sanitized production dump.
+Versioned PostgreSQL migrations in this source currently extend through `V20261101__account_administration_audit.sql`. The latest migration stores the immutable ADMIN account-action history; `V20261031` provides the durable community-cleanup outbox. The Mongo index script also contains the idempotent `20261031-hidden-post-media-reconciliation-v1` migration. Release sign-off should include a fresh-schema run and a schema diff against a sanitized production dump.

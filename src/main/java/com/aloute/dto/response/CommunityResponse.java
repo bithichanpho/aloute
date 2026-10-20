@@ -17,6 +17,10 @@ public class CommunityResponse {
 
     private boolean admin;
 
+    private boolean manager;
+    private boolean owner;
+    private String role;
+
     public Long getId() {
         return id;
     }
@@ -95,5 +99,29 @@ public class CommunityResponse {
 
     public void setAdmin(boolean admin) {
         this.admin = admin;
+    }
+
+    public boolean isManager() {
+        return manager;
+    }
+
+    public void setManager(boolean manager) {
+        this.manager = manager;
+    }
+
+    public boolean isOwner() {
+        return owner;
+    }
+
+    public void setOwner(boolean owner) {
+        this.owner = owner;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 }

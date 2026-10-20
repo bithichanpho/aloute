@@ -28,7 +28,8 @@
         <div class="chat-notes__track" id="chatNotesTrack" role="list"></div>
       </section>
 
-      <div class="chat-list__scroll" id="chatListScroll">
+      <div class="chat-list__scroll" id="chatListScroll"
+           th:attr="data-next-cursor=${conversationNextCursor},data-has-more=${conversationHasMore}">
 
         <div th:if="${#lists.isEmpty(conversations)}" class="empty-state empty-state--chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title th:text="${pageTitle}">Quản trị máy chủ</title></head>
+<body>
+<section class="host-dashboard">
+  <header class="host-dashboard__header">
+    <div class="host-dashboard__heading">
+      <span class="host-dashboard__eyebrow">Máy chủ / Tổng quan</span>
+      <h1>Quản trị máy chủ</h1>
+      <p>Theo dõi người dùng, nội dung và cộng đồng trên toàn hệ thống.</p>
+    </div>
+
+    <form class="host-filter" method="get" th:action="@{/admin/dashboard}" aria-label="Lọc dữ liệu dashboard theo ngày">
+      <span class="host-filter__title"><i class="bi bi-calendar3" aria-hidden="true"></i> Khoảng thời gian</span>
+      <label class="host-filter__field" for="dashboardFrom">
+        <span>Từ ngày</span>
+        <input id="dashboardFrom" name="from" type="date" required
+               th:value="${dashboard.fromDate}" th:max="${dashboard.toDate}">
+      </label>
+      <span class="host-filter__separator" aria-hidden="true">—</span>
+      <label class="host-filter__field" for="dashboardTo">
+        <span>Đến ngày</span>
+        <input id="dashboardTo" name="to" type="date" required
+               th:value="${dashboard.toDate}" th:min="${dashboard.fromDate}" th:max="${today}">
+      </label>
+      <button class="host-filter__button" type="submit">
+        <i class="bi bi-funnel" aria-hidden="true"></i><span>Áp dụng</span>
+      </button>
+    </form>
+  </header>
+
+  <section class="host-overview" aria-labelledby="hostOverviewTitle">
+    <div class="host-section-heading">
+      <div>
+        <h2 id="hostOverviewTitle">Tổng quan</h2>
+        <p>Các chỉ số chính của hệ thống</p>
+      </div>
+      <span class="host-section-heading__status"><i aria-hidden="true"></i>Dữ liệu hiện tại</span>
+    </div>
+
+    <div class="host-kpi-grid">
+      <article class="host-kpi">
+        <div class="host-kpi__top"><span class="host-kpi__icon"><i class="bi bi-people" aria-hidden="true"></i></span><span>Tổng người dùng</span></div>
+        <strong th:text="${#numbers.formatInteger(dashboard.totalUsers, 1, 'COMMA')}">0</strong>
+        <small>Toàn bộ tài khoản đã đăng ký</small>
+      </article>
+      <article class="host-kpi host-kpi--online">
+        <div class="host-kpi__top"><span class="host-kpi__icon"><i class="bi bi-broadcast-pin" aria-hidden="true"></i></span><span>Đang trực tuyến</span></div>
+        <strong th:text="${dashboard.onlineUsers}">0</strong>
+        <small>Người dùng đang hoạt động</small>
+      </article>
+      <article class="host-kpi">
+        <div class="host-kpi__top"><span class="host-kpi__icon"><i class="bi bi-file-post" aria-hidden="true"></i></span><span>Tổng bài viết</span></div>
+        <strong th:text="${#numbers.formatInteger(dashboard.totalPosts, 1, 'COMMA')}">0</strong>
+        <small>Nội dung đã đăng trên ALOUTE</small>
+      </article>
+      <article class="host-kpi">
+        <div class="host-kpi__top"><span class="host-kpi__icon"><i class="bi bi-collection" aria-hidden="true"></i></span><span>Tổng cộng đồng</span></div>
+        <strong th:text="${#numbers.formatInteger(dashboard.totalCommunities, 1, 'COMMA')}">0</strong>
+        <small>Cộng đồng đang tồn tại</small>
+      </article>
+    </div>
+  </section>
+
+  <div class="host-dashboard__workspace">
+    <section class="host-panel host-growth" aria-labelledby="hostGrowthTitle">
+      <header class="host-panel__header">
+        <div>
+          <h2 id="hostGrowthTitle">Tăng trưởng theo ngày</h2>
+          <p>
+            <time th:datetime="${dashboard.fromDate}" th:text="${dashboard.fromDate}">2026-10-01</time>
+            <span aria-hidden="true">–</span>
+            <time th:datetime="${dashboard.toDate}" th:text="${dashboard.toDate}">2026-10-20</time>
+          </p>
+        </div>
+        <span class="host-panel__icon"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i></span>
+      </header>
+
+      <div class="host-growth__charts">
+        <article class="host-chart">
+          <div class="host-chart__title">
+            <div><h3>Người dùng mới</h3><span>Số tài khoản tạo mới mỗi ngày</span></div>
+          </div>
+          <div class="host-chart__bars" aria-label="Biểu đồ người dùng mới theo ngày">
+            <div class="host-chart__column" th:each="metric : ${dashboard.userGrowth}">
+              <span class="host-chart__value" th:text="${metric.count}">0</span>
+              <div class="host-chart__track"><span th:style="|height: ${metric.count * 100 / maxDailyUsers}%|"></span></div>
+              <time th:datetime="${metric.date}" th:text="${metric.label}">20/10</time>
+            </div>
+          </div>
+        </article>
+
+        <article class="host-chart host-chart--community">
+          <div class="host-chart__title">
+            <div><h3>Cộng đồng mới</h3><span>Số cộng đồng được tạo mỗi ngày</span></div>
+          </div>
+          <div class="host-chart__bars" aria-label="Biểu đồ cộng đồng mới theo ngày">
+            <div class="host-chart__column" th:each="metric : ${dashboard.communityGrowth}">
+              <span class="host-chart__value" th:text="${metric.count}">0</span>
+              <div class="host-chart__track"><span th:style="|height: ${metric.count * 100 / maxDailyCommunities}%|"></span></div>
+              <time th:datetime="${metric.date}" th:text="${metric.label}">20/10</time>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <aside class="host-dashboard__side" aria-label="Hoạt động và trạng thái vận hành">
+      <section class="host-panel host-summary" aria-labelledby="hostTodayTitle">
+        <header class="host-panel__header">
+          <div><h2 id="hostTodayTitle">Hoạt động hôm nay</h2><p>Cập nhật trong ngày</p></div>
+          <span class="host-panel__icon"><i class="bi bi-calendar-check" aria-hidden="true"></i></span>
+        </header>
+        <div class="host-summary__list">
+          <div class="host-summary__row">
+            <span class="host-summary__icon"><i class="bi bi-person-plus" aria-hidden="true"></i></span>
+            <div><span>Người dùng mới</span><small>Tài khoản mới hôm nay</small></div>
+            <strong th:text="${dashboard.newUsersToday}">0</strong>
+          </div>
+          <div class="host-summary__row">
+            <span class="host-summary__icon"><i class="bi bi-people-fill" aria-hidden="true"></i></span>
+            <div><span>Cộng đồng mới</span><small>Cộng đồng tạo hôm nay</small></div>
+            <strong th:text="${dashboard.newCommunitiesToday}">0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="host-panel host-summary" aria-labelledby="hostOperationsTitle">
+        <header class="host-panel__header">
+          <div><h2 id="hostOperationsTitle">Trạng thái vận hành</h2><p>Nội dung và tài khoản cần theo dõi</p></div>
+          <span class="host-panel__icon"><i class="bi bi-activity" aria-hidden="true"></i></span>
+        </header>
+        <div class="host-summary__list">
+          <div class="host-summary__row">
+            <span class="host-summary__icon"><i class="bi bi-chat-left-text" aria-hidden="true"></i></span>
+            <div><span>Tổng bình luận</span><small>Trên toàn hệ thống</small></div>
+            <strong th:text="${#numbers.formatInteger(dashboard.totalComments, 1, 'COMMA')}">0</strong>
+          </div>
+          <div class="host-summary__row host-summary__row--warning">
+            <span class="host-summary__icon"><i class="bi bi-flag" aria-hidden="true"></i></span>
+            <div><span>Báo cáo đang chờ</span><small>Chưa được xử lý</small></div>
+            <strong th:text="${dashboard.pendingReports}">0</strong>
+          </div>
+          <div class="host-summary__row host-summary__row--danger">
+            <span class="host-summary__icon"><i class="bi bi-person-lock" aria-hidden="true"></i></span>
+            <div><span>Tài khoản bị khóa</span><small>Đang bị hạn chế truy cập</small></div>
+            <strong th:text="${dashboard.lockedAccounts}">0</strong>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </div>
+</section>
+</body>
+</html>

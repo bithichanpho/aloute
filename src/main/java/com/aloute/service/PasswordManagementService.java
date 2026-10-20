@@ -18,7 +18,8 @@ import java.util.Locale;
 /** Password reset and change flows, separated from registration/login orchestration. */
 @Service
 public class PasswordManagementService {
-    private static final long RESET_PASSWORD_TOKEN_MINUTES = 30;
+    /** How long an emailed password-reset OTP stays valid. */
+    private static final long RESET_PASSWORD_TOKEN_MINUTES = 10;
     private static final long RESET_EMAIL_COOLDOWN_SECONDS = 60;
 
     private final IUserRepository userRepository;
@@ -86,9 +87,11 @@ public class PasswordManagementService {
                                 }
                             }
 
-                            String resetToken = authTokenService.generateToken();
+                            String resetOtp = authTokenService.generateOtp();
 
-                            String resetTokenHash = authTokenService.hashToken(resetToken);
+                            // Stored only as a hash bound to the email; the plain code goes out by mail.
+                            String resetTokenHash =
+                                    authTokenService.hashOtp(normalizedEmail, resetOtp);
 
                             user.setResetPasswordToken(resetTokenHash);
 
@@ -98,36 +101,46 @@ public class PasswordManagementService {
                             userRepository.save(user);
 
                             if (mailDispatcher != null) mailDispatcher.send(
-                                    user.getEmail(), user.getFullName(), resetToken);
+                                    user.getEmail(), user.getFullName(), resetOtp);
                             else emailService.sendResetPasswordEmail(
-                                    user.getEmail(), user.getFullName(), resetToken);
+                                    user.getEmail(), user.getFullName(), resetOtp);
                         });
     }
 
+    /**
+     * Sets a new password from the six-digit code that was emailed by {@link #forgotPassword}.
+     *
+     * <p>All failures about the email or the code share one message so the endpoint does not reveal
+     * which emails have an account. Attempts are throttled by the controller.
+     */
     @Transactional
-    public void resetPassword(String token, String newPassword) {
+    public void resetPassword(String email, String code, String newPassword) {
 
-        String value = token == null ? "" : token.trim();
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
 
-        if (value.isBlank()) {
-            throw invalidResetLink();
+        String otp = code == null ? "" : code.trim();
+
+        if (normalizedEmail.isBlank() || !authTokenService.isValidOtpFormat(otp)) {
+            throw invalidResetCode();
         }
-
-        // Only the SHA-256 digest is stored, so only the digest is looked up. Raw (plaintext) UUID
-        // tokens from older versions are no longer accepted; the V20261024 migration clears them.
-        String tokenHash = authTokenService.hashToken(value);
 
         User user =
                 userRepository
-                        .findByResetPasswordToken(tokenHash)
-                        .orElseThrow(PasswordManagementService::invalidResetLink);
+                        .findByEmailIgnoreCase(normalizedEmail)
+                        .orElseThrow(PasswordManagementService::invalidResetCode);
+
+        String storedHash = user.getResetPasswordToken();
+
+        if (!authTokenService.otpMatches(normalizedEmail, otp, storedHash)) {
+            throw invalidResetCode();
+        }
 
         LocalDateTime now = LocalDateTime.now();
 
         if (user.getResetPasswordExpiry() == null || !user.getResetPasswordExpiry().isAfter(now)) {
 
             throw new BadRequestException(
-                    "Link đặt lại mật khẩu " + "đã hết hạn, vui lòng yêu cầu lại");
+                    "Mã đặt lại mật khẩu " + "đã hết hạn, vui lòng yêu cầu lại");
         }
 
         // Hash outside the conditional UPDATE so the row is not locked during the slow BCrypt work.
@@ -137,20 +150,20 @@ public class PasswordManagementService {
         String username = user.getUsername();
 
         // Compare-and-set: succeeds for exactly one of any number of concurrent requests that
-        // present the same link; the rest affect 0 rows and are rejected.
+        // present the same code; the rest affect 0 rows and are rejected.
         int updated =
-                userRepository.consumeResetToken(userId, tokenHash, encodedPassword, revokedAt, now);
+                userRepository.consumeResetToken(userId, storedHash, encodedPassword, revokedAt, now);
 
         if (updated != 1) {
-            throw invalidResetLink();
+            throw invalidResetCode();
         }
 
         if (refreshTokens != null) refreshTokens.revokeAll(userId, revokedAt);
         invalidateAuthenticationSnapshotAfterCommit(username);
     }
 
-    private static BadRequestException invalidResetLink() {
-        return new BadRequestException("Link đặt lại mật khẩu không hợp lệ hoặc đã được dùng");
+    private static BadRequestException invalidResetCode() {
+        return new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã được dùng");
     }
 
     @Transactional

@@ -14,6 +14,9 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "outbox_event_id", unique = true, length = 36)
+    private String outboxEventId;
+
     @Column(name = "receiver_id", nullable = false)
     private Long receiverId;
 
@@ -39,7 +42,7 @@ public class Notification {
     @Column(nullable = false, length = 30)
     private String type;
 
-    @Column(name = "reference_id", length = 50)
+    @Column(name = "reference_id", length = 100)
     private String referenceId;
 
     @Column(nullable = false, length = 255)
@@ -62,6 +65,10 @@ public class Notification {
     public void setId(Long id) {
         this.id = id;
     }
+
+    public String getOutboxEventId() { return outboxEventId; }
+
+    public void setOutboxEventId(String outboxEventId) { this.outboxEventId = outboxEventId; }
 
     public Long getReceiverId() {
         return receiverId;

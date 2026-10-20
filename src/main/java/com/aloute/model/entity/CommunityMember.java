@@ -7,6 +7,9 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "community_members",
+        indexes = @Index(
+                name = "idx_community_members_community_role_joined",
+                columnList = "community_id,role,joined_at"),
         uniqueConstraints = {
             @UniqueConstraint(
                     name = "uk_community_members_community_user",

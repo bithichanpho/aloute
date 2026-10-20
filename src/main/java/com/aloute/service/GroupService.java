@@ -9,9 +9,11 @@ import com.aloute.dto.response.GroupMemberDto;
 import com.aloute.dto.response.GroupResponse;
 import com.aloute.model.entity.ChatGroup;
 import com.aloute.model.entity.GroupMember;
+import com.aloute.model.entity.GroupReadStatus;
 import com.aloute.model.entity.User;
 import com.aloute.repository.IChatGroupRepository;
 import com.aloute.repository.IGroupMemberRepository;
+import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,15 +30,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
 @Service
 public class GroupService {
 
     private static final Logger log = LoggerFactory.getLogger(GroupService.class);
+    private static final int MAX_GROUP_MEMBERS = 500;
 
     private final IChatGroupRepository groupRepository;
     private final IGroupMemberRepository memberRepository;
+    private final IGroupReadStatusRepository readStatusRepository;
     private final IUserRepository userRepository;
     private final FriendService friendService;
     private final SimpMessagingTemplate messagingTemplate;
@@ -44,11 +49,13 @@ public class GroupService {
     public GroupService(
             IChatGroupRepository groupRepository,
             IGroupMemberRepository memberRepository,
+            IGroupReadStatusRepository readStatusRepository,
             IUserRepository userRepository,
             FriendService friendService,
             SimpMessagingTemplate messagingTemplate) {
         this.groupRepository = groupRepository;
         this.memberRepository = memberRepository;
+        this.readStatusRepository = readStatusRepository;
         this.userRepository = userRepository;
         this.friendService = friendService;
         this.messagingTemplate = messagingTemplate;
@@ -73,10 +80,28 @@ public class GroupService {
         group.setCreatedBy(creatorId);
         ChatGroup saved = groupRepository.save(group);
 
-        memberRepository.save(new GroupMember(saved.getId(), creatorId, "ADMIN"));
-        for (Long memberId : memberIds) {
-            memberRepository.save(new GroupMember(saved.getId(), memberId, "MEMBER"));
-        }
+        LocalDateTime joinedAt = LocalDateTime.now();
+        List<GroupMember> memberships = new java.util.ArrayList<>(memberIds.size() + 1);
+        GroupMember creator = new GroupMember(saved.getId(), creatorId, "ADMIN");
+        creator.setJoinedAt(joinedAt);
+        memberships.add(creator);
+        memberIds.forEach(
+                memberId -> {
+                    GroupMember member = new GroupMember(saved.getId(), memberId, "MEMBER");
+                    member.setJoinedAt(joinedAt);
+                    memberships.add(member);
+                });
+        memberRepository.saveAll(memberships);
+        readStatusRepository.saveAll(
+                memberships.stream()
+                        .map(
+                                member -> {
+                                    GroupReadStatus status =
+                                            new GroupReadStatus(saved.getId(), member.getUserId());
+                                    status.setLastReadAt(joinedAt);
+                                    return status;
+                                })
+                        .toList());
 
         GroupResponse response = getGroupDetail(saved.getId(), creatorId);
 
@@ -95,10 +120,19 @@ public class GroupService {
         if (memberRepository.existsByGroupIdAndUserId(groupId, newUserId)) {
             throw new BadRequestException("Người này đã ở trong nhóm");
         }
+        if (memberRepository.countByGroupId(groupId) >= MAX_GROUP_MEMBERS) {
+            throw new BadRequestException("Nhóm đã đạt giới hạn 500 thành viên");
+        }
         if (!friendService.isFriend(requesterId, newUserId)) {
             throw new BadRequestException("Chỉ có thể thêm bạn bè (đã follow lẫn nhau) vào nhóm");
         }
-        memberRepository.save(new GroupMember(groupId, newUserId, "MEMBER"));
+        LocalDateTime joinedAt = LocalDateTime.now();
+        GroupMember member = new GroupMember(groupId, newUserId, "MEMBER");
+        member.setJoinedAt(joinedAt);
+        memberRepository.save(member);
+        GroupReadStatus status = new GroupReadStatus(groupId, newUserId);
+        status.setLastReadAt(joinedAt);
+        readStatusRepository.save(status);
 
         broadcastGroupUpdate(groupId, "member_added", newUserId, getMemberIds(groupId));
     }
@@ -133,6 +167,7 @@ public class GroupService {
         }
 
         memberRepository.deleteByGroupIdAndUserId(groupId, targetUserId);
+        readStatusRepository.deleteByGroupIdAndUserId(groupId, targetUserId);
 
         if (remaining.isEmpty()) {
             groupRepository.deleteById(groupId);
@@ -155,7 +190,8 @@ public class GroupService {
         dto.setAvatarUrl(group.getAvatarUrl());
         dto.setCreatedBy(group.getCreatedBy());
         dto.setCreatedAt(group.getCreatedAt());
-        dto.setMembers(getMemberDtos(groupId));
+        dto.setMembers(getMemberDtos(groupId, 0, 100));
+        dto.setMemberCount(getMemberCount(groupId));
         return dto;
     }
 
@@ -175,11 +211,37 @@ public class GroupService {
     }
 
     public List<ChatGroup> getMyGroups(Long userId) {
-        List<Long> groupIds =
-                memberRepository.findByUserId(userId).stream()
-                        .map(GroupMember::getGroupId)
-                        .collect(Collectors.toList());
+        return getMyGroups(userId, 0, 100);
+    }
+
+    public List<ChatGroup> getMyGroups(Long userId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(100, size));
+        List<Long> groupIds = memberRepository
+                .findByUserId(userId, org.springframework.data.domain.PageRequest.of(safePage, safeSize))
+                .stream()
+                .map(GroupMember::getGroupId)
+                .collect(Collectors.toList());
+        if (groupIds.isEmpty()) return List.of();
         return groupRepository.findByIdIn(groupIds);
+    }
+
+    /** Lightweight membership projection used by Mongo-backed inbox queries. */
+    @Transactional(readOnly = true)
+    public List<Long> getAllMyGroupIds(Long userId) {
+        return memberRepository.findGroupIdsByUserId(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChatGroup> getGroupsByIds(Collection<Long> groupIds) {
+        if (groupIds == null || groupIds.isEmpty()) return List.of();
+        return groupRepository.findByIdIn(new java.util.ArrayList<>(groupIds));
+    }
+
+    public List<GroupMemberDto> getMembers(Long groupId, Long requesterId, int page, int size) {
+        requireGroupExists(groupId);
+        requireMember(groupId, requesterId);
+        return getMemberDtos(groupId, page, size);
     }
 
     public boolean isMember(Long groupId, Long userId) {
@@ -207,8 +269,9 @@ public class GroupService {
         return (int) memberRepository.countByGroupId(groupId);
     }
 
-    private List<GroupMemberDto> getMemberDtos(Long groupId) {
-        List<GroupMember> members = memberRepository.findByGroupId(groupId);
+    private List<GroupMemberDto> getMemberDtos(Long groupId, int page, int size) {
+        List<GroupMember> members = memberRepository.findByGroupId(
+                groupId, org.springframework.data.domain.PageRequest.of(page, size));
         Map<Long, User> users =
                 userRepository
                         .findAllById(members.stream().map(GroupMember::getUserId).toList())

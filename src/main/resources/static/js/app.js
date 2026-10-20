@@ -619,11 +619,94 @@ window.Aloute = (function () {
     });
   }
 
+  function bindReposterPopover(wrap) {
+    if (!wrap || wrap.dataset.repostersBound === '1') return;
+    const trigger = wrap.querySelector('[data-reposters-trigger]');
+    const list = wrap.querySelector('[data-reposters-list]');
+    const postId = wrap.dataset.repostersPostId;
+    if (!trigger || !list || !postId) return;
+    wrap.dataset.repostersBound = '1';
+    let nextCursor = '';
+    let loading = false;
+    let loaded = false;
+
+    function appendActor(actor) {
+      const link = document.createElement('a');
+      link.className = 'post__repost-others-list__item';
+      link.href = '/profile/' + encodeURIComponent(actor.userId);
+      const img = document.createElement('img');
+      img.src = actor.userAvatarUrl || '/images/avatar_default.png';
+      img.alt = '';
+      img.loading = 'lazy';
+      const name = document.createElement('span');
+      name.textContent = actor.username || 'người dùng';
+      link.append(img, name);
+      list.appendChild(link);
+    }
+
+    async function loadPage() {
+      if (loading) return;
+      loading = true;
+      if (!loaded) {
+        list.replaceChildren();
+        const status = document.createElement('span');
+        status.className = 'post__repost-others-status';
+        status.textContent = 'Đang tải...';
+        list.appendChild(status);
+      }
+      try {
+        const cursorParam = nextCursor ? '&cursor=' + encodeURIComponent(nextCursor) : '';
+        const page = await api(
+          '/api/posts/' + encodeURIComponent(postId) + '/reposters?size=20' + cursorParam
+        );
+        if (!loaded) list.replaceChildren();
+        (page.items || []).forEach(appendActor);
+        loaded = true;
+        nextCursor = page.nextCursor || '';
+        list.querySelector('[data-reposters-more]')?.remove();
+        if (page.hasMore && nextCursor) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'post__repost-others-more';
+          more.dataset.repostersMore = '1';
+          more.textContent = 'Xem thêm';
+          more.addEventListener('click', function(event) {
+            event.stopPropagation();
+            loadPage();
+          });
+          list.appendChild(more);
+        } else if (!list.children.length) {
+          const status = document.createElement('span');
+          status.className = 'post__repost-others-status';
+          status.textContent = 'Chưa có người đăng lại';
+          list.appendChild(status);
+        }
+      } catch (error) {
+        if (!loaded) list.replaceChildren();
+        const status = document.createElement('button');
+        status.type = 'button';
+        status.className = 'post__repost-others-status post__repost-others-status--error';
+        status.textContent = 'Không tải được. Nhấn để thử lại';
+        status.addEventListener('click', loadPage, { once: true });
+        list.appendChild(status);
+      } finally {
+        loading = false;
+      }
+    }
+
+    trigger.addEventListener('click', function(event) {
+      event.stopPropagation();
+      wrap.classList.toggle('is-open');
+      if (wrap.classList.contains('is-open') && !loaded) loadPage();
+    });
+  }
+
   function initFeedInteractions() {
     linkifyPostTags(document);
     document.querySelectorAll('[data-post-id]').forEach(postEl => {
 
       const postId = postEl.dataset.actionPostId || postEl.dataset.postId;
+      postEl.querySelectorAll('[data-reposters-post-id]').forEach(bindReposterPopover);
 
       const reaction = postEl.querySelector('.reaction');
       if (reaction && !reaction.dataset.bound) {
@@ -805,7 +888,7 @@ window.Aloute = (function () {
           }
         }
 
-        function updateRepostBanner(actors) {
+        function updateRepostBanner(actors, totalCount) {
           let banner = postEl.querySelector('[data-repost-banner]');
           if (!Array.isArray(actors) || actors.length === 0) {
             if (banner) banner.remove();
@@ -835,34 +918,30 @@ window.Aloute = (function () {
             names.appendChild(link);
           });
           banner.appendChild(names);
-          if (actors.length > 3) {
+          const otherCount = Math.max(0, (Number(totalCount) || actors.length) - actors.length);
+          if (otherCount > 0) {
             banner.appendChild(document.createTextNode(' cùng '));
 
             const wrap = document.createElement('span');
             wrap.className = 'post__repost-others';
-            wrap.tabIndex = 0;
-            const trigger = document.createElement('span');
+            wrap.dataset.repostersPostId = originalPostId;
+            wrap.dataset.repostersTotal = String(Number(totalCount) || actors.length);
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
             trigger.className = 'post__repost-others__trigger';
-            trigger.textContent = (actors.length - 3) + ' người khác';
+            trigger.dataset.repostersTrigger = '1';
+            trigger.textContent = otherCount + ' người khác';
             wrap.appendChild(trigger);
             const list = document.createElement('div');
             list.className = 'post__repost-others-list';
-            actors.slice(3).forEach(function(actor) {
-              const link = document.createElement('a');
-              link.className = 'post__repost-others-list__item';
-              link.href = '/profile/' + encodeURIComponent(actor.userId);
-              const img = document.createElement('img');
-              img.src = actor.userAvatarUrl || '/images/avatar_default.png';
-              img.alt = '';
-              img.loading = 'lazy';
-              const name = document.createElement('span');
-              name.textContent = actor.username || 'người dùng';
-              link.appendChild(img);
-              link.appendChild(name);
-              list.appendChild(link);
-            });
+            list.dataset.repostersList = '1';
+            const status = document.createElement('span');
+            status.className = 'post__repost-others-status';
+            status.textContent = 'Nhấn để xem danh sách';
+            list.appendChild(status);
             wrap.appendChild(list);
             banner.appendChild(wrap);
+            bindReposterPopover(wrap);
           }
           const label = document.createElement('span');
           label.className = 'post__repost-label';
@@ -884,7 +963,7 @@ window.Aloute = (function () {
                 });
                 rState.serverState = !!result.reposted;
                 rState.serverCount = Number(result.repostCount) || 0;
-                updateRepostBanner(result.reposters || []);
+                updateRepostBanner(result.reposters || [], result.repostCount);
                 renderRepost(false);
               } catch (err) {
                 if (rState.desired === requested) {
@@ -1035,6 +1114,28 @@ window.Aloute = (function () {
     const replyButton = item.querySelector('[data-comment-reply]');
     const showRepliesButton = item.querySelector('[data-show-replies]');
     const moreRepliesButton = item.querySelector('[data-more-replies]');
+    const communityPage = document.querySelector('.community-page[data-community-manager="true"]');
+    if (communityPage && actions && !actions.querySelector('[data-community-comment-delete]')) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'comment-link comment-link--danger';
+      remove.dataset.communityCommentDelete = '1';
+      remove.textContent = 'Xóa';
+      remove.addEventListener('click', async () => {
+        const ok = await AlouteUI.confirm({ title: 'Xóa bình luận', message: 'Xóa bình luận này khỏi cộng đồng?', okText: 'Xóa' });
+        if (!ok) return;
+        remove.disabled = true;
+        try {
+          await api('/api/communities/' + communityPage.dataset.communityId + '/comments/' + encodeURIComponent(commentId), { method: 'DELETE' });
+          item.remove();
+          toast('Đã xóa bình luận khỏi cộng đồng');
+        } catch (err) {
+          remove.disabled = false;
+          toast(err.message || 'Không thể xóa bình luận', true);
+        }
+      });
+      actions.appendChild(remove);
+    }
 
     if (replyButton) {
       replyButton.addEventListener('click', () => {
@@ -1531,32 +1632,42 @@ window.Aloute = (function () {
       resultsEl.hidden = false;
     }
 
-    async function runSearch() {
+    const SEARCH_PAGE_SIZE = 20;
+
+    async function runSearch(page = 0, append = false) {
       showResults();
 
       const tab = currentTab;
       const key = keyword;
       const token = ++requestToken;
 
-      if (cache[tab][key]) {
-        paint(tab, cache[tab][key]);
+      if (!append && page === 0 && cache[tab][key]) {
+        const cached = cache[tab][key];
+        paint(tab, cached.items, cached.hasMore, cached.page);
         return;
       }
 
-      resultsEl.innerHTML = searchSkeleton(tab);
+      if (!append) resultsEl.innerHTML = searchSkeleton(tab);
       try {
-        const url = (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=') + encodeURIComponent(key);
+        const url = (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=')
+          + encodeURIComponent(key) + '&page=' + page + '&size=' + SEARCH_PAGE_SIZE;
         const data = await api(url);
         if (token !== requestToken) return;
-        cache[tab][key] = data || [];
-        paint(tab, cache[tab][key]);
+        const batch = data || [];
+        const existing = append && cache[tab][key] ? cache[tab][key].items : [];
+        cache[tab][key] = {
+          items: existing.concat(batch),
+          page,
+          hasMore: batch.length === SEARCH_PAGE_SIZE
+        };
+        paint(tab, cache[tab][key].items, cache[tab][key].hasMore, page);
       } catch (err) {
         if (token !== requestToken) return;
         resultsEl.innerHTML = discoverEmpty('Không tải được kết quả', err.message);
       }
     }
 
-    function paint(tab, items) {
+    function paint(tab, items, hasMore, page) {
       if (!items.length) {
         resultsEl.innerHTML = tab === 'posts'
           ? discoverEmpty('Chưa có bài viết nào khớp', 'Thử một từ khóa ngắn hơn hoặc kiểm tra lại chính tả.')
@@ -1575,6 +1686,14 @@ window.Aloute = (function () {
           '</div></div>';
         initFollowButtons();
         initCloseFriendButtons();
+      }
+      if (hasMore) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'btn btn-outline search-load-more';
+        more.textContent = 'Xem thêm kết quả';
+        more.addEventListener('click', () => runSearch(page + 1, true));
+        resultsEl.appendChild(more);
       }
     }
   }
@@ -1857,6 +1976,7 @@ window.Aloute = (function () {
     const grid = document.getElementById('profileGrid');
     const list = document.getElementById('profilePosts');
     const repostsWrap = document.getElementById('profileRepostsWrap');
+    const repostsLoader = repostsWrap ? repostsWrap.querySelector('[data-profile-reposts-loader]') : null;
     if (!buttons.length || !list) return;
 
     function apply(view) {
@@ -1864,6 +1984,10 @@ window.Aloute = (function () {
       if (gridWrap) gridWrap.hidden = view !== 'grid';
       if (repostsWrap) repostsWrap.hidden = view !== 'reposts';
       list.hidden = view !== 'list';
+      if (view === 'reposts' && repostsLoader && repostsLoader.dataset.profileInitial === '1') {
+        repostsLoader.dataset.profileInitial = '0';
+        setTimeout(() => repostsLoader.click(), 0);
+      }
       const hash = view === 'grid' ? '#luoi' : (view === 'reposts' ? '#dang-lai' : '');
       try { history.replaceState(null, '', hash || location.pathname); } catch (e) {}
     }
@@ -2106,6 +2230,11 @@ window.Aloute = (function () {
           const posts = fragment.content.querySelectorAll('.post');
           const count = posts.length;
           posts.forEach(post => button.before(post));
+          if (button.hasAttribute('data-profile-reposts-loader')) {
+            const emptyState = document.querySelector('[data-profile-reposts-empty]');
+            const hasAnyReposts = Boolean(button.parentElement && button.parentElement.querySelector('.post'));
+            if (emptyState) emptyState.hidden = hasAnyReposts || response.headers.get('X-Has-More') === 'true';
+          }
           appendGridTiles(posts);
           button.dataset.cursor = response.headers.get('X-Next-Cursor') || '';
           const hasMore = response.headers.get('X-Has-More') === 'true';
@@ -2383,6 +2512,204 @@ window.Aloute = (function () {
 
     const communityId = page.dataset.communityId;
     if (!communityId) return;
+    const isCommunityManager = page.dataset.communityManager === 'true';
+    const isCommunityOwner = page.dataset.communityOwner === 'true';
+
+    function communityState(text) {
+      const p = document.createElement('p');
+      p.className = 'community-management__state';
+      p.textContent = text;
+      return p;
+    }
+
+    function communityAction(label, className, handler) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className || 'btn-outline';
+      button.textContent = label;
+      button.addEventListener('click', async () => {
+        if (button.dataset.busy === '1') return;
+        button.dataset.busy = '1';
+        button.disabled = true;
+        try { await handler(); }
+        catch (err) { toast(err.message || 'Không thể thực hiện thao tác', true); }
+        finally { button.dataset.busy = '0'; button.disabled = false; }
+      });
+      return button;
+    }
+
+    async function loadCommunityMembers() {
+      const host = document.getElementById('communityMembersList');
+      if (!host) return;
+      try {
+        const members = await api('/api/communities/' + communityId + '/members?size=100') || [];
+        host.replaceChildren();
+        if (!members.length) { host.appendChild(communityState('Chưa có thành viên.')); return; }
+        members.forEach(member => {
+          const row = document.createElement('div');
+          row.className = 'community-management__row';
+          const avatar = document.createElement('img');
+          avatar.src = member.avatarUrl || '/images/avatar_default.png';
+          avatar.alt = '';
+          const info = document.createElement('div');
+          info.className = 'community-management__info';
+          const name = document.createElement('strong');
+          name.textContent = member.fullName || member.username || ('Người dùng ' + member.userId);
+          const meta = document.createElement('span');
+          const roleLabels = { OWNER: 'Chủ nhóm', MANAGER: 'Quản lý', MEMBER: 'Thành viên', BANNED: 'Đã bị cấm' };
+          meta.textContent = '@' + (member.username || member.userId) + ' · ' + (roleLabels[member.role] || member.role);
+          info.append(name, meta);
+          const actions = document.createElement('div');
+          actions.className = 'community-management__actions';
+          if (isCommunityOwner && member.role === 'MEMBER') {
+            actions.appendChild(communityAction('Bổ nhiệm', 'btn-outline', async () => {
+              await api('/api/communities/' + communityId + '/members/' + member.userId + '/manager?manager=true', { method: 'POST' });
+              toast('Đã bổ nhiệm quản lý');
+              await loadCommunityMembers();
+            }));
+          } else if (isCommunityOwner && member.role === 'MANAGER') {
+            actions.appendChild(communityAction('Gỡ quản lý', 'btn-outline', async () => {
+              await api('/api/communities/' + communityId + '/members/' + member.userId + '/manager?manager=false', { method: 'POST' });
+              toast('Đã gỡ quyền quản lý');
+              await loadCommunityMembers();
+            }));
+          }
+          if (member.role === 'BANNED') {
+            actions.appendChild(communityAction('Bỏ cấm', 'btn-outline', async () => {
+              await api('/api/communities/' + communityId + '/members/' + member.userId + '/ban?banned=false', { method: 'POST' });
+              toast('Đã bỏ cấm thành viên');
+              await loadCommunityMembers();
+            }));
+          } else if (member.role === 'MEMBER' || (isCommunityOwner && member.role === 'MANAGER')) {
+            actions.appendChild(communityAction('Cấm', 'btn-danger', async () => {
+              const ok = await AlouteUI.confirm({ title: 'Cấm thành viên', message: 'Thành viên này sẽ không thể tham gia cộng đồng.', okText: 'Cấm' });
+              if (!ok) return;
+              await api('/api/communities/' + communityId + '/members/' + member.userId + '/ban?banned=true', { method: 'POST' });
+              toast('Đã cấm thành viên');
+              await loadCommunityMembers();
+            }));
+          }
+          row.append(avatar, info, actions);
+          host.appendChild(row);
+        });
+      } catch (err) {
+        host.replaceChildren(communityState(err.message || 'Không tải được danh sách thành viên.'));
+      }
+    }
+
+    async function loadCommunityRequests(page = 0, append = false) {
+      const host = document.getElementById('communityRequestsList');
+      if (!host) return;
+      try {
+        const oldMore = host.querySelector('[data-community-requests-more]');
+        if (oldMore) oldMore.remove();
+        const requests = await api('/api/communities/' + communityId
+          + '/requests?page=' + page + '&size=50') || [];
+        if (!append) host.replaceChildren();
+        if (!requests.length && page === 0) {
+          host.appendChild(communityState('Không có yêu cầu đang chờ.'));
+          return;
+        }
+        requests.forEach(member => {
+          const row = document.createElement('div');
+          row.className = 'community-management__row';
+          const avatar = document.createElement('img');
+          avatar.src = member.avatarUrl || '/images/avatar_default.png';
+          avatar.alt = '';
+          const info = document.createElement('div');
+          info.className = 'community-management__info';
+          const name = document.createElement('strong');
+          name.textContent = member.fullName || member.username || ('Người dùng ' + member.userId);
+          const meta = document.createElement('span');
+          meta.textContent = '@' + (member.username || member.userId);
+          info.append(name, meta);
+          const actions = document.createElement('div');
+          actions.className = 'community-management__actions';
+          actions.append(
+            communityAction('Duyệt', 'btn-primary', async () => {
+              await api('/api/communities/' + communityId + '/requests/' + member.userId + '?accept=true', { method: 'POST' });
+              toast('Đã duyệt thành viên');
+              await Promise.all([loadCommunityRequests(), loadCommunityMembers()]);
+            }),
+            communityAction('Từ chối', 'btn-outline', async () => {
+              await api('/api/communities/' + communityId + '/requests/' + member.userId + '?accept=false', { method: 'POST' });
+              toast('Đã từ chối yêu cầu');
+              await loadCommunityRequests();
+            })
+          );
+          row.append(avatar, info, actions);
+          host.appendChild(row);
+        });
+        if (requests.length === 50) {
+          const more = communityAction('Xem thêm yêu cầu', 'btn-outline',
+            () => loadCommunityRequests(page + 1, true));
+          more.dataset.communityRequestsMore = 'true';
+          host.appendChild(more);
+        }
+      } catch (err) {
+        host.replaceChildren(communityState(err.message || 'Không tải được yêu cầu tham gia.'));
+      }
+    }
+
+    async function loadCommunityPendingPosts() {
+      const host = document.getElementById('communityPendingPosts');
+      if (!host) return;
+      try {
+        const posts = await api('/api/communities/' + communityId + '/posts/pending?size=50') || [];
+        host.replaceChildren();
+        if (!posts.length) { host.appendChild(communityState('Không có bài viết đang chờ.')); return; }
+        posts.forEach(post => {
+          const row = document.createElement('article');
+          row.className = 'community-management__post';
+          const author = document.createElement('strong');
+          author.textContent = '@' + (post.username || post.userId);
+          const content = document.createElement('p');
+          content.textContent = post.content || (post.imageUrl ? '[Bài viết có ảnh]' : '[Bài viết không có nội dung chữ]');
+          const actions = document.createElement('div');
+          actions.className = 'community-management__actions';
+          actions.append(
+            communityAction('Duyệt bài', 'btn-primary', async () => {
+              await api('/api/communities/' + communityId + '/posts/' + encodeURIComponent(post.id) + '/decision?accept=true', { method: 'POST' });
+              toast('Đã duyệt bài viết');
+              await loadCommunityPendingPosts();
+              location.reload();
+            }),
+            communityAction('Từ chối', 'btn-outline', async () => {
+              await api('/api/communities/' + communityId + '/posts/' + encodeURIComponent(post.id) + '/decision?accept=false', { method: 'POST' });
+              toast('Đã từ chối bài viết');
+              await loadCommunityPendingPosts();
+            })
+          );
+          row.append(author, content, actions);
+          host.appendChild(row);
+        });
+      } catch (err) {
+        host.replaceChildren(communityState(err.message || 'Không tải được hàng chờ duyệt bài.'));
+      }
+    }
+
+    function bindCommunityModeratorDeleteButtons() {
+      if (!isCommunityManager) return;
+      page.querySelectorAll('.post[data-post-id]').forEach(post => {
+        const menu = post.querySelector('.post__menu-list');
+        if (!menu || menu.querySelector('.community-post-delete') || menu.querySelector('.post__delete')) return;
+        const postId = post.dataset.postId;
+        const button = communityAction('Xóa khỏi cộng đồng', 'post__menu-item post__menu-item--danger community-post-delete', async () => {
+          const ok = await AlouteUI.confirm({ title: 'Xóa bài viết', message: 'Xóa bài viết này khỏi cộng đồng?', okText: 'Xóa' });
+          if (!ok) return;
+          await api('/api/communities/' + communityId + '/posts/' + encodeURIComponent(postId), { method: 'DELETE' });
+          post.remove();
+          toast('Đã xóa bài viết khỏi cộng đồng');
+        });
+        menu.appendChild(button);
+      });
+    }
+    page._bindModeratorDeleteButtons = bindCommunityModeratorDeleteButtons;
+
+    if (isCommunityManager) {
+      Promise.all([loadCommunityMembers(), loadCommunityRequests(), loadCommunityPendingPosts()]);
+      bindCommunityModeratorDeleteButtons();
+    }
 
     const joinBtn = document.getElementById('communityJoinBtn');
     if (joinBtn) {
@@ -2433,6 +2760,11 @@ window.Aloute = (function () {
             body: { content: content }
           });
           composeInput.value = '';
+          if (created && created.communityPostStatus === 'PENDING') {
+            toast('Bài viết đã được gửi và đang chờ quản lý duyệt');
+            composeBtn.disabled = true;
+            return;
+          }
           await showNewCommunityPost(communityId, created && created.id);
         } catch (err) {
           toast(err.message || 'Không thể đăng bài', true);
@@ -2459,6 +2791,10 @@ window.Aloute = (function () {
       if (firstPost) firstPost.before(newest);
       else panel.prepend(newest);
       initFeedInteractions();
+      const communityPage = document.querySelector('.community-page');
+      if (communityPage && typeof communityPage._bindModeratorDeleteButtons === 'function') {
+        communityPage._bindModeratorDeleteButtons();
+      }
       formatInitialCounts();
       toast('Đã đăng bài');
     } catch (e) {
@@ -2518,7 +2854,7 @@ window.Aloute = (function () {
     });
   }
 
-  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation'];
+  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation', '/admin/dashboard'];
   let restoringHistory = false;
   let softNavigationBusy = false;
 

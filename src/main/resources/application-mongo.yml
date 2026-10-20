@@ -2,6 +2,7 @@
 spring:
   data:
     mongodb:
-      auto-index-creation: true
+      auto-index-creation: ${MONGO_AUTO_INDEX_CREATION:false}
   mongodb:
-    uri: ${MONGO_URI:mongodb://localhost:27017/aloute_db}
+    # Transactions require a replica set. docker-compose.yml provides rs0 for local use.
+    uri: ${MONGO_URI:mongodb://localhost:27017/aloute_db?replicaSet=rs0}

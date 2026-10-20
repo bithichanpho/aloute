@@ -9,6 +9,9 @@ import com.aloute.repository.IUserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -50,6 +53,11 @@ public class FriendService {
         this(friendRepository, notificationService, access, mongo, users, null);
     }
 
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "relationshipIds", key = "'following:' + #currentUserId"),
+        @CacheEvict(cacheNames = "relationshipIds", key = "'followers:' + #targetUserId")
+    })
+    @org.springframework.transaction.annotation.Transactional
     public boolean toggleFollow(Long currentUserId, Long targetUserId) {
         access.requireProfile(currentUserId, targetUserId);
         if (!currentUserId.equals(targetUserId)
@@ -87,10 +95,17 @@ public class FriendService {
         return following;
     }
 
+    @Cacheable(cacheNames = "relationshipIds", key = "'following:' + #userId")
     public List<Long> getFollowingIds(Long userId) {
         return friendRepository.findByFollowerId(userId).stream()
                 .map(Friend::getFollowedId)
                 .collect(Collectors.toList());
+    }
+
+    public List<Long> getFollowingIds(Long userId, int page, int size) {
+        return friendRepository.findByFollowerId(
+                        userId, org.springframework.data.domain.PageRequest.of(page, size))
+                .stream().map(Friend::getFollowedId).toList();
     }
 
     public String followStatus(Long currentUserId, Long targetUserId) {
@@ -106,10 +121,30 @@ public class FriendService {
                 : "NONE";
     }
 
+    public boolean hasPendingFollowRequest(Long currentUserId, Long targetUserId) {
+        if (currentUserId == null
+                || targetUserId == null
+                || currentUserId.equals(targetUserId)) {
+            return false;
+        }
+        return mongo.exists(
+                org.springframework.data.mongodb.core.query.Query.query(
+                        org.springframework.data.mongodb.core.query.Criteria.where("_id")
+                                .is(currentUserId + ":" + targetUserId)),
+                FollowRequest.class);
+    }
+
+    @Cacheable(cacheNames = "relationshipIds", key = "'followers:' + #userId")
     public List<Long> getFollowerIds(Long userId) {
         return friendRepository.findByFollowedId(userId).stream()
                 .map(Friend::getFollowerId)
                 .collect(Collectors.toList());
+    }
+
+    public List<Long> getFollowerIds(Long userId, int page, int size) {
+        return friendRepository.findByFollowedId(
+                        userId, org.springframework.data.domain.PageRequest.of(page, size))
+                .stream().map(Friend::getFollowerId).toList();
     }
 
     public boolean isFriend(Long userIdA, Long userIdB) {

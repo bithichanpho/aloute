@@ -54,8 +54,11 @@ public class ClientIpResolver {
         for (String raw : value.split(",")) {
             try {
                 result.add(Cidr.parse(raw.trim()));
-            } catch (RuntimeException ignored) {
-                // Invalid trusted-proxy entries are ignored; they must never broaden trust.
+            } catch (RuntimeException invalidCidr) {
+                // A typo here can collapse all clients behind one proxy IP and defeat fair rate
+                // limiting. Refuse startup rather than silently running with a different trust set.
+                throw new IllegalStateException(
+                        "Invalid entry in APP_TRUSTED_PROXY_CIDRS: " + raw.trim(), invalidCidr);
             }
         }
         return List.copyOf(result);

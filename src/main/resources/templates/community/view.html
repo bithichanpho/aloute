@@ -3,7 +3,8 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title th:text="${community.name} + ' - ALOUTE'">Hội nhóm - ALOUTE</title></head>
 <body>
-<section class="content-inner community-page" th:attr="data-community-id=${community.id}">
+<section class="content-inner community-page"
+         th:attr="data-community-id=${community.id},data-community-manager=${community.manager},data-community-owner=${community.owner}">
 
   <a class="community-back" href="/communities" th:href="@{/communities}">&larr; Tất cả hội nhóm</a>
 
@@ -21,12 +22,38 @@
       <p class="community-header__meta"
          th:text="${community.memberCount + ' thành viên · ' + (community.privacy == 'PRIVATE' ? 'Riêng tư' : 'Công khai')}">0 thành viên</p>
       <p class="community-header__desc" th:if="${community.description != null}" th:text="${community.description}"></p>
+      <span class="community-role-badge" th:if="${community.owner}">Chủ nhóm</span>
+      <span class="community-role-badge" th:if="${!community.owner and community.manager}">Quản lý</span>
     </div>
     <div class="community-header__actions">
       <button type="button" id="communityJoinBtn" class="btn-primary" th:if="${!community.member}">Tham gia</button>
       <button type="button" id="communityLeaveBtn" class="btn-outline" th:if="${community.member}">Rời hội nhóm</button>
     </div>
   </div>
+
+  <details class="community-management" id="communityManagement" th:if="${community.manager}">
+    <summary>Quản lý cộng đồng</summary>
+    <div class="community-management__grid">
+      <section class="community-management__section">
+        <h2>Thành viên</h2>
+        <div id="communityMembersList" class="community-management__list" aria-live="polite">
+          <p class="community-management__state">Đang tải...</p>
+        </div>
+      </section>
+      <section class="community-management__section">
+        <h2>Yêu cầu tham gia</h2>
+        <div id="communityRequestsList" class="community-management__list" aria-live="polite">
+          <p class="community-management__state">Đang tải...</p>
+        </div>
+      </section>
+      <section class="community-management__section community-management__section--wide">
+        <h2>Bài viết chờ duyệt</h2>
+        <div id="communityPendingPosts" class="community-management__list" aria-live="polite">
+          <p class="community-management__state">Đang tải...</p>
+        </div>
+      </section>
+    </div>
+  </details>
 
   <div class="feed-panel" th:if="${community.member}">
     <div class="compose">

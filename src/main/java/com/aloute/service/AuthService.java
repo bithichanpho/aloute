@@ -25,12 +25,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class AuthService {
 
-    private static final long VERIFICATION_TOKEN_MINUTES = 15;
+    /** How long an emailed verification OTP stays valid. */
+    private static final long VERIFICATION_TOKEN_MINUTES = 10;
     private final String missingUserPasswordHash;
 
     private static final long PENDING_RETENTION_HOURS = 24;
@@ -129,7 +129,7 @@ public class AuthService {
         }
 
         if (pendingByEmail.filter(pending -> pending.getExpiresAt().isAfter(now)).isPresent()) {
-            // Same person registering again while still unverified: re-send the existing link
+            // Same person registering again while still unverified: send a fresh code
             // (at most once a minute). Never replace the pending data, or someone who knows the
             // email could overwrite its owner's pending registration.
             resendPendingIfAllowed(pendingByEmail.get(), now);
@@ -138,9 +138,10 @@ public class AuthService {
 
         removeExpiredPending(pendingByUsername, pendingByEmail);
 
-        String verificationToken = authTokenService.generateToken();
+        String verificationOtp = authTokenService.generateOtp();
 
-        String verificationTokenHash = authTokenService.hashToken(verificationToken);
+        // The OTP is stored only as a hash bound to the email; the plain code goes out by mail.
+        String verificationTokenHash = authTokenService.hashOtp(email, verificationOtp);
 
         PendingUser pending = new PendingUser();
 
@@ -173,7 +174,7 @@ public class AuthService {
 
         try {
             emailService.sendVerificationEmail(
-                    saved.getEmail(), saved.getFullName(), verificationToken);
+                    saved.getEmail(), saved.getFullName(), verificationOtp);
         } catch (EmailDeliveryException ex) {
 
             saved.setVerificationEmailSentAt(now.minusMinutes(1));
@@ -278,38 +279,44 @@ public class AuthService {
                 email, emailVerified, fullName, avatarUrl, twoFactorCode);
     }
 
+    /**
+     * Activates an account from the six-digit code that was emailed at registration.
+     *
+     * <p>Every failure about the code or the email gives the same message, so the endpoint does not
+     * reveal which emails have a pending registration. Attempts are throttled by the controller.
+     */
     @Transactional
-    public void verifyEmail(String token) {
+    public void verifyEmail(String email, String code) {
 
-        String value = token == null ? "" : token.trim();
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
 
-        if (value.isBlank()) {
+        String otp = code == null ? "" : code.trim();
 
-            throw new BadRequestException("Link xác thực không hợp lệ");
+        if (normalizedEmail.isBlank() || !authTokenService.isValidOtpFormat(otp)) {
+
+            throw invalidVerificationCode();
         }
 
-        String tokenHash = authTokenService.hashToken(value);
-
-        var pendingOptional = pendingUserRepository.findByVerificationToken(tokenHash);
-
-        if (pendingOptional.isEmpty() && isLegacyUuidToken(value)) {
-
-            pendingOptional = pendingUserRepository.findByVerificationToken(value);
-        }
+        var pendingOptional = pendingUserRepository.findByEmailIgnoreCase(normalizedEmail);
 
         if (pendingOptional.isEmpty()) {
 
-            verifyLegacyUser(value);
+            verifyExistingUser(normalizedEmail, otp);
             return;
         }
 
         PendingUser pending = pendingOptional.get();
 
+        if (!authTokenService.otpMatches(normalizedEmail, otp, pending.getVerificationToken())) {
+
+            throw invalidVerificationCode();
+        }
+
         if (pending.getVerificationTokenExpiry() == null
                 || !pending.getVerificationTokenExpiry().isAfter(LocalDateTime.now())) {
 
             throw new BadRequestException(
-                    "Link xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại email");
+                    "Mã xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại mã");
         }
 
         if (userRepository.existsByUsernameIgnoreCase(pending.getUsername())
@@ -343,6 +350,10 @@ public class AuthService {
         userRepository.save(user);
 
         pendingUserRepository.delete(pending);
+    }
+
+    private static BadRequestException invalidVerificationCode() {
+        return new BadRequestException("Mã xác thực không hợp lệ hoặc đã được dùng");
     }
 
     @Transactional
@@ -383,9 +394,9 @@ public class AuthService {
             throw new BadRequestException("Vui lòng chờ 60 giây " + "trước khi gửi lại email");
         }
 
-        String newToken = authTokenService.generateToken();
+        String newOtp = authTokenService.generateOtp();
 
-        user.setVerificationToken(authTokenService.hashToken(newToken));
+        user.setVerificationToken(authTokenService.hashOtp(user.getEmail(), newOtp));
 
         user.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
 
@@ -393,7 +404,7 @@ public class AuthService {
 
         userRepository.save(user);
 
-        emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), newToken);
+        emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), newOtp);
     }
 
     private void resendPendingVerification(PendingUser pending) {
@@ -431,9 +442,9 @@ public class AuthService {
 
     private void sendFreshPendingVerification(PendingUser pending, LocalDateTime now) {
 
-        String newToken = authTokenService.generateToken();
+        String newOtp = authTokenService.generateOtp();
 
-        pending.setVerificationToken(authTokenService.hashToken(newToken));
+        pending.setVerificationToken(authTokenService.hashOtp(pending.getEmail(), newOtp));
 
         pending.setVerificationTokenExpiry(now.plusMinutes(VERIFICATION_TOKEN_MINUTES));
 
@@ -443,36 +454,28 @@ public class AuthService {
 
         pendingUserRepository.save(pending);
 
-        emailService.sendVerificationEmail(pending.getEmail(), pending.getFullName(), newToken);
+        emailService.sendVerificationEmail(pending.getEmail(), pending.getFullName(), newOtp);
     }
 
-    private void verifyLegacyUser(String token) {
-
-        if (token == null || token.isBlank()) {
-
-            throw new BadRequestException("Link xác thực không hợp lệ " + "hoặc đã được dùng");
-        }
-
-        String tokenHash = authTokenService.hashToken(token);
-
-        var userOptional = userRepository.findByVerificationToken(tokenHash);
-
-        if (userOptional.isEmpty() && isLegacyUuidToken(token)) {
-
-            userOptional = userRepository.findByVerificationToken(token);
-        }
+    /** Verifies the OTP of an already-created account whose email is still unverified. */
+    private void verifyExistingUser(String normalizedEmail, String otp) {
 
         User user =
-                userOptional.orElseThrow(
-                        () ->
-                                new BadRequestException(
-                                        "Link xác thực không hợp lệ " + "hoặc đã được dùng"));
+                userRepository
+                        .findByEmailIgnoreCase(normalizedEmail)
+                        .filter(candidate -> !candidate.isEmailVerified())
+                        .orElseThrow(AuthService::invalidVerificationCode);
+
+        if (!authTokenService.otpMatches(normalizedEmail, otp, user.getVerificationToken())) {
+
+            throw invalidVerificationCode();
+        }
 
         if (user.getVerificationTokenExpiry() == null
                 || !user.getVerificationTokenExpiry().isAfter(LocalDateTime.now())) {
 
             throw new BadRequestException(
-                    "Link xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại email");
+                    "Mã xác thực đã hết hạn, " + "vui lòng yêu cầu gửi lại mã");
         }
 
         user.setEmailVerified(true);
@@ -486,28 +489,12 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    /**
-     * Recognizes verification links issued by older application versions, which stored
-     * the raw UUID instead of its hash. New links continue to use hashed tokens.
-     */
-    private boolean isLegacyUuidToken(String token) {
-        if (token == null || token.isBlank()) {
-            return false;
-        }
-        try {
-            UUID.fromString(token);
-            return true;
-        } catch (IllegalArgumentException exception) {
-            return false;
-        }
-    }
-
     public void forgotPassword(String email) {
         passwordManagementService.forgotPassword(email);
     }
 
-    public void resetPassword(String token, String newPassword) {
-        passwordManagementService.resetPassword(token, newPassword);
+    public void resetPassword(String email, String code, String newPassword) {
+        passwordManagementService.resetPassword(email, code, newPassword);
     }
 
     public void changePassword(Long userId, String currentPassword, String newPassword) {

@@ -14,8 +14,10 @@ import org.springframework.data.domain.Sort.Direction;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Component
+@ConditionalOnProperty(name = "app.mongo.run-index-migrations", havingValue = "true")
 public class FeatureIndexInitializer implements CommandLineRunner {
     private final MongoTemplate mongo;
 
@@ -32,7 +34,13 @@ public class FeatureIndexInitializer implements CommandLineRunner {
                                 .on("targetId", Direction.ASC)
                                 .unique());
         mongo.indexOps(UserBlock.class).createIndex(new Index().on("targetId", Direction.ASC));
+        mongo.indexOps(UserBlock.class).createIndex(
+                new Index().on("ownerId", Direction.ASC)
+                        .on("createdAt", Direction.DESC).on("_id", Direction.DESC));
         mongo.indexOps(FollowRequest.class).createIndex(new Index().on("targetId", Direction.ASC));
+        mongo.indexOps(FollowRequest.class).createIndex(
+                new Index().on("targetId", Direction.ASC)
+                        .on("createdAt", Direction.DESC).on("_id", Direction.DESC));
         mongo.indexOps(SavedPost.class)
                 .createIndex(
                         new Index().on("userId", Direction.ASC).on("createdAt", Direction.DESC));
@@ -57,6 +65,11 @@ public class FeatureIndexInitializer implements CommandLineRunner {
                 new Index().on("userId", Direction.ASC)
                         .on("createdAt", Direction.DESC).on("_id", Direction.DESC)
                         .named("posts_user_created_id_desc"));
+        mongo.indexOps(Post.class).createIndex(
+                new Index().on("communityId", Direction.ASC)
+                        .on("communityPostStatus", Direction.ASC)
+                        .on("createdAt", Direction.DESC)
+                        .named("posts_community_review_created"));
         mongo.indexOps(Post.class).createIndex(new Index().on("hashtags", Direction.ASC));
         mongo.indexOps(Post.class).createIndex(new Index().on("mentions", Direction.ASC));
     }

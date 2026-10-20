@@ -39,7 +39,8 @@ class AccountDataCleanupRetryWorkerTest {
         when(mongo.findAndModify(
                         any(Query.class), any(Update.class), any(FindAndModifyOptions.class),
                         eq(AccountCleanupJob.class)))
-                .thenReturn(job, null);
+                .thenReturn(job)
+                .thenReturn(null);
 
         worker.retryDueJobs();
 
@@ -53,7 +54,8 @@ class AccountDataCleanupRetryWorkerTest {
         when(mongo.findAndModify(
                         any(Query.class), any(Update.class), any(FindAndModifyOptions.class),
                         eq(AccountCleanupJob.class)))
-                .thenReturn(job, null);
+                .thenReturn(job)
+                .thenReturn(null);
         doThrow(new IllegalStateException("simulated cleanup failure"))
                 .when(cleanupService).deleteUserData(42L, "avatar-url", "cover-url");
         when(mongo.save(job)).thenReturn(job);

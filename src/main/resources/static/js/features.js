@@ -288,6 +288,34 @@
     });
     node.remove();
   }
+  function appendFollowRequest(list, request) {
+    if (!list || !request || list.querySelector('[data-request-id="' + CSS.escape(String(request.id)) + '"]')) return;
+    list.querySelector('.feature-empty')?.remove();
+    const row = element('div', null, 'feature-list__row'); row.dataset.requestId = request.id;
+    const link = element('a', 'Tài khoản #' + request.followerId); link.href = '/profile/' + encodeURIComponent(request.followerId);
+    const actions = element('span');
+    const accept = element('button', 'Chấp nhận'); accept.type = 'button'; accept.dataset.action = 'accept-follow'; accept.dataset.requestId = request.id;
+    const reject = element('button', 'Từ chối'); reject.type = 'button'; reject.dataset.action = 'reject-follow'; reject.dataset.requestId = request.id;
+    actions.append(accept, reject); row.append(link, actions); list.appendChild(row);
+  }
+  function appendBlockedAccount(list, block) {
+    if (!list || !block || list.querySelector('[data-block-id="' + CSS.escape(String(block.targetId)) + '"]')) return;
+    list.querySelector('.feature-empty')?.remove();
+    const row = element('div', null, 'feature-list__row'); row.dataset.blockId = block.targetId;
+    const label = element('span', 'Tài khoản #' + block.targetId);
+    const unblock = element('button', 'Bỏ chặn'); unblock.type = 'button'; unblock.dataset.action = 'unblock'; unblock.dataset.userId = block.targetId;
+    row.append(label, unblock); list.appendChild(row);
+  }
+  async function loadSocialPage(target, kind) {
+    const cursor = target.dataset.cursor || '';
+    const page = await api('/api/' + kind + '/cursor?size=50&cursor=' + encodeURIComponent(cursor));
+    const list = document.getElementById(kind === 'blocks' ? 'blockedAccountList' : 'followRequestList');
+    (page && Array.isArray(page.items) ? page.items : []).forEach(item => {
+      if (kind === 'blocks') appendBlockedAccount(list, item); else appendFollowRequest(list, item);
+    });
+    target.dataset.cursor = page && page.nextCursor ? page.nextCursor : '';
+    if (!page || page.hasMore !== true) target.remove();
+  }
   function bindFeaturePage() {
     const host = document.getElementById('featureContent');
     if (!host || host.dataset.actionsBound) return;
@@ -327,6 +355,8 @@
         if (action === 'unsave') { await api('/api/posts/' + target.dataset.postId + '/saved', 'DELETE'); target.closest('[data-saved-post]').remove(); }
         else if (action === 'accept-follow' || action === 'reject-follow') { await api('/api/follow-requests/' + encodeURIComponent(target.dataset.requestId), action === 'accept-follow' ? 'PUT' : 'DELETE'); target.closest('[data-request-id]').remove(); }
         else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); }
+        else if (action === 'load-more-requests') await loadSocialPage(target, 'follow-requests');
+        else if (action === 'load-more-blocks') await loadSocialPage(target, 'blocks');
         else if (action === 'setup-2fa') await setupTwoFactor();
         else if (action === 'disable-2fa') { await api('/api/account/2fa/disable', 'POST', await credentials()); location.reload(); }
         else if (action === 'deactivate-account' || action === 'delete-account') {

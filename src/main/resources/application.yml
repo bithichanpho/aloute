@@ -66,8 +66,8 @@ spring:
 
   data:
     mongodb:
-
-      auto-index-creation: true
+      # Production indexes are created by the explicit Mongo migration runner.
+      auto-index-creation: ${MONGO_AUTO_INDEX_CREATION:false}
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
 
@@ -100,7 +100,18 @@ server:
     accept-count: 200
     connection-timeout: 20s
 
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId:-},traceId:%X{traceId:-},spanId:%X{spanId:-}]"
+
 app:
+  time-zone: ${APP_TIME_ZONE:Asia/Bangkok}
+  host:
+    username: ${APP_HOST_USERNAME:}
+    bootstrap-enabled: ${APP_HOST_BOOTSTRAP_ENABLED:false}
+  mongo:
+    # Prefer deploy/migrations/mongo-indexes.js as an explicit deployment step.
+    run-index-migrations: ${MONGO_RUN_INDEX_MIGRATIONS:false}
   security:
     cookie-secure: ${APP_SECURITY_COOKIE_SECURE:false}
     refresh-token-days: ${APP_REFRESH_TOKEN_DAYS:30}
@@ -114,7 +125,9 @@ app:
     # Set APP_TRUSTED_PROXY_CIDRS to the actual immediate proxy CIDRs in each deployed environment.
     trusted-proxy-cidrs: ${APP_TRUSTED_PROXY_CIDRS:127.0.0.1/32,::1/128}
     rate-limit:
-      redis-required: ${RATE_LIMIT_REDIS_REQUIRED:true}
+      # Local development keeps working when Redis is not running. Production overrides this
+      # setting to true so rate limits remain shared across every application instance.
+      redis-required: ${RATE_LIMIT_REDIS_REQUIRED:false}
   moderation:
     enabled: ${MODERATION_ENABLED:true}
     service-url: ${MODERATION_SERVICE_URL:http://localhost:8000}
@@ -151,6 +164,7 @@ app:
       enabled: ${REDIS_CACHE_ENABLED:true}
     ttl: ${APP_CACHE_TTL:2m}
     feed-ttl: ${APP_FEED_CACHE_TTL:30s}
+    host-dashboard-ttl: ${APP_HOST_DASHBOARD_CACHE_TTL:30s}
   websocket:
     broker-relay:
       enabled: ${APP_WEBSOCKET_BROKER_RELAY_ENABLED:false}
@@ -159,6 +173,9 @@ app:
       username: ${RABBITMQ_USER:}
       password: ${RABBITMQ_PASSWORD:}
       virtual-host: ${RABBITMQ_VHOST:/}
+  calls:
+    # Local tests can use the in-process registry. Production overrides this to true.
+    distributed-state-enabled: ${APP_CALLS_DISTRIBUTED_STATE_ENABLED:false}
   maintenance:
     reaction-reconciliation-cron: ${REACTION_RECONCILIATION_CRON:0 30 3 * * *}
     reaction-reconciliation-enabled: ${REACTION_RECONCILIATION_ENABLED:true}
@@ -180,6 +197,9 @@ app:
       orphan-age-hours: ${POST_MEDIA_ORPHAN_AGE_HOURS:2}
       scan-limit: ${POST_MEDIA_CLEANUP_SCAN_LIMIT:100}
       deleted-retention-days: ${POST_MEDIA_DELETED_RETENTION_DAYS:30}
+  community-cleanup:
+    initial-delay-ms: ${COMMUNITY_CLEANUP_INITIAL_DELAY_MS:5000}
+    fixed-delay-ms: ${COMMUNITY_CLEANUP_FIXED_DELAY_MS:30000}
   db:
     relationship-migration:
       enabled: ${ALOUTE_DB_RELATIONSHIP_MIGRATION:false}

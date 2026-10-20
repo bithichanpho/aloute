@@ -11,6 +11,7 @@ public class GroupResponse {
     private Long createdBy;
     private LocalDateTime createdAt;
     private List<GroupMemberDto> members;
+    private int memberCount;
 
     public Long getId() {
         return id;
@@ -58,5 +59,13 @@ public class GroupResponse {
 
     public void setMembers(List<GroupMemberDto> members) {
         this.members = members;
+    }
+
+    public int getMemberCount() {
+        return memberCount;
+    }
+
+    public void setMemberCount(int memberCount) {
+        this.memberCount = Math.max(0, memberCount);
     }
 }

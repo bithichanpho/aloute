@@ -12,6 +12,8 @@ import com.aloute.service.GroupService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -52,6 +55,16 @@ public class GroupController {
             Authentication authentication, @PathVariable @Positive(message = "Mã nhóm không hợp lệ") Long groupId) {
         Long userId = requireUserId(authentication);
         return ApiResponse.success(groupService.getGroupDetail(groupId, userId));
+    }
+
+    @GetMapping("/{groupId}/members")
+    public ApiResponse<java.util.List<com.aloute.dto.response.GroupMemberDto>> getMembers(
+            Authentication authentication,
+            @PathVariable @Positive Long groupId,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return ApiResponse.success(
+                groupService.getMembers(groupId, requireUserId(authentication), page, size));
     }
 
     @PostMapping("/{groupId}/members")

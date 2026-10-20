@@ -18,7 +18,7 @@ import java.util.Map;
 
 @RestController
 @SecurityRequirement(name = "accessCookie")
-@RequestMapping("/api/push")
+@RequestMapping("/api/push/register")
 public class PushTokenController {
 
     private final PushNotificationService pushNotificationService;
@@ -27,7 +27,7 @@ public class PushTokenController {
         this.pushNotificationService = pushNotificationService;
     }
 
-    @PostMapping("/register")
+    @PostMapping
     public ApiResponse<Map<String, Boolean>> register(
             Authentication authentication, @Valid @RequestBody PushFidRequest request) {
         Long userId = requireUserId(authentication);
@@ -35,7 +35,7 @@ public class PushTokenController {
         return ApiResponse.success("Đã bật thông báo đẩy", Map.of("enabled", true));
     }
 
-    @DeleteMapping("/register")
+    @DeleteMapping
     public ApiResponse<Map<String, Boolean>> unregister(
             Authentication authentication, @Valid @RequestBody PushFidRequest request) {
         Long userId = requireUserId(authentication);

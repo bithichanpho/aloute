@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -61,12 +62,17 @@ public class CloseFriendController {
 
     @GetMapping
     public ApiResponse<List<UserProfileDto>> list(
-            Authentication authentication, @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            @RequestParam(defaultValue = "0") @jakarta.validation.constraints.Min(0)
+                    @jakarta.validation.constraints.Max(10000) int page,
+            @RequestParam(defaultValue = "50") @jakarta.validation.constraints.Min(1)
+                    @jakarta.validation.constraints.Max(100) int size) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
 
         List<UserProfileDto> profiles =
                 userService.getProfiles(
-                        closeFriendService.getCloseFriendIds(userId), currentUserId);
+                        closeFriendService.getCloseFriendIds(userId, page, size), currentUserId);
         return ApiResponse.success(profiles);
     }
 

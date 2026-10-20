@@ -15,11 +15,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 
 @RestController
 @SecurityRequirement(name = "accessCookie")
@@ -54,19 +57,23 @@ public class FriendController {
 
     @GetMapping("/following")
     public ApiResponse<List<UserProfileDto>> getFollowing(
-            Authentication authentication, @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
+            Authentication authentication, @PathVariable @Positive Long userId,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(100) int size) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
         userService.getProfile(userId, currentUserId);
-        List<Long> ids = friendService.getFollowingIds(userId);
+        List<Long> ids = friendService.getFollowingIds(userId, page, size);
         return ApiResponse.success(toProfiles(ids, currentUserId));
     }
 
     @GetMapping("/followers")
     public ApiResponse<List<UserProfileDto>> getFollowers(
-            Authentication authentication, @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
+            Authentication authentication, @PathVariable @Positive Long userId,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(100) int size) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
         userService.getProfile(userId, currentUserId);
-        List<Long> ids = friendService.getFollowerIds(userId);
+        List<Long> ids = friendService.getFollowerIds(userId, page, size);
         return ApiResponse.success(toProfiles(ids, currentUserId));
     }
 

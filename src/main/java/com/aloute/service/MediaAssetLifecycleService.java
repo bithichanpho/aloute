@@ -211,16 +211,75 @@ public class MediaAssetLifecycleService {
         for (String url : postMediaUrls(post)) requestDelete(url, post.getId());
     }
 
+    /**
+     * Persist deletion tombstones without performing Cloudinary I/O. Call this after removing the
+     * post inside the same Mongo transaction; the scheduled lifecycle worker performs the external
+     * deletion after commit and retries failures from the durable ledger.
+     */
+    public void queuePostMediaDeletion(Post post) {
+        if (post == null) return;
+        for (String url : postMediaUrls(post)) queueDelete(url, post.getId(), true);
+    }
+
+    /** Queue deletion without external I/O; intended for use inside the owner's Mongo transaction. */
+    public void queueUnreferencedDeletion(String url) {
+        queueDelete(url, null, true);
+    }
+
+    /**
+     * Queue every media URL of a hidden post, then mark the post reconciled. If queuing fails, the
+     * marker is not written and the scheduled scanner retries it.
+     */
+    public void queueHiddenPostMedia(Post post) {
+        if (post == null || post.getId() == null) return;
+        queuePostMediaDeletion(post);
+        mongo.updateFirst(Query.query(new Criteria().andOperator(
+                        Criteria.where("_id").is(post.getId()),
+                        Criteria.where("moderationStatus").is(ModerationStatus.HIDDEN))),
+                new Update().set("mediaCleanupQueuedAt", LocalDateTime.now()), Post.class);
+    }
+
+    /** Lifecycle-owned cleanup for an upload rejected before it can be attached. */
+    public void deleteRejectedUpload(Map<String, String> uploaded) {
+        if (uploaded == null) return;
+        String url = trimToNull(uploaded.get("url"));
+        String publicId = trimToNull(uploaded.get("publicId"));
+        String resourceType = trimToNull(uploaded.get("resourceType"));
+        if (url != null) {
+            try {
+                ManagedMediaAsset queued = queueDelete(url, null, true);
+                if (queued != null) attemptDelete(queued);
+                return;
+            } catch (RuntimeException ledgerFailure) {
+                log.warn("Media ledger unavailable for rejected upload; attempting direct cleanup (cause={})",
+                        ledgerFailure.getClass().getSimpleName());
+            }
+        }
+        if (publicId == null) return;
+        try {
+            storage.deleteMedia(publicId, resourceType);
+        } catch (IOException | RuntimeException failure) {
+            log.warn("Rejected upload cleanup failed (cause={})",
+                    failure.getClass().getSimpleName());
+        }
+    }
+
     /** Cleanup an old avatar/community/chat URL after its owning record stops referencing it. */
     public void deleteIfUnreferenced(String url) {
         requestDelete(url, null);
     }
 
     private void requestDelete(String url, String deletingPostId) {
+        ManagedMediaAsset asset = queueDelete(url, deletingPostId, false);
+        if (asset != null) attemptDelete(asset);
+    }
+
+    private ManagedMediaAsset queueDelete(
+            String url, String deletingPostId, boolean requireDurableTombstone) {
         String normalized = trimToNull(url);
-        if (normalized == null) return;
+        if (normalized == null) return null;
         ImageStorageService.ManagedMediaReference reference = storage.resolveAlouteMediaReference(normalized).orElse(null);
-        if (reference == null) return; // never delete external or another Cloudinary account's assets
+        if (reference == null) return null; // never delete external or another Cloudinary account's assets
 
         if (hasActiveReference(normalized, deletingPostId)) {
             ManagedMediaAsset shared = findTrackedAsset(normalized, reference);
@@ -229,7 +288,7 @@ public class MediaAssetLifecycleService {
                         new Update().set("status", ManagedMediaAsset.ATTACHED)
                                 .set("updatedAt", LocalDateTime.now()), ManagedMediaAsset.class);
             }
-            return;
+            return null;
         }
 
         ManagedMediaAsset asset = findTrackedAsset(normalized, reference);
@@ -251,20 +310,21 @@ public class MediaAssetLifecycleService {
             } catch (RuntimeException duplicateOrStoreError) {
                 ManagedMediaAsset existing = findTrackedAsset(normalized, reference);
                 if (existing == null) {
+                    if (requireDurableTombstone) throw duplicateOrStoreError;
                     log.warn("Unable to create media deletion tombstone (cause={})",
                             duplicateOrStoreError.getClass().getSimpleName());
                     // Fail safe: we do not delete without a persistent tombstone.
-                    return;
+                    return null;
                 }
                 asset = existing;
             }
         }
-        if (ManagedMediaAsset.DELETED.equals(asset.getStatus())) return;
+        if (ManagedMediaAsset.DELETED.equals(asset.getStatus())) return null;
         mongo.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
                 new Update().set("status", ManagedMediaAsset.DELETE_PENDING)
                         .set("updatedAt", LocalDateTime.now()), ManagedMediaAsset.class);
         asset.setStatus(ManagedMediaAsset.DELETE_PENDING);
-        attemptDelete(asset);
+        return asset;
     }
 
     @Scheduled(
@@ -273,6 +333,7 @@ public class MediaAssetLifecycleService {
     @SchedulerLock(name = "mediaAssetLifecycleCleanup", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void cleanupOrphanedUploadsAndPendingDeletes() {
         LocalDateTime now = LocalDateTime.now();
+        reconcileHiddenPostMedia();
         LocalDateTime cutoff = now.minusHours(orphanAgeHours);
         Criteria work = new Criteria().orOperator(
                 Criteria.where("status").is(ManagedMediaAsset.DELETE_PENDING),
@@ -308,6 +369,24 @@ public class MediaAssetLifecycleService {
         for (ManagedMediaAsset asset : oldTombstones) {
             if (!hasAnyPostReference(asset.getUrl()) && !hasNonPostReference(asset.getUrl())) {
                 mongo.remove(Query.query(Criteria.where("_id").is(asset.getId())), ManagedMediaAsset.class);
+            }
+        }
+    }
+
+    private void reconcileHiddenPostMedia() {
+        List<Post> hidden = mongo.find(
+                Query.query(new Criteria().andOperator(
+                                Criteria.where("moderationStatus").is(ModerationStatus.HIDDEN),
+                                Criteria.where("mediaCleanupQueuedAt").is(null)))
+                        .with(Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("_id")))
+                        .limit(scanLimit),
+                Post.class);
+        for (Post post : hidden) {
+            try {
+                queueHiddenPostMedia(post);
+            } catch (RuntimeException failure) {
+                log.warn("Hidden post media reconciliation deferred (postId={}, cause={})",
+                        post.getId(), failure.getClass().getSimpleName());
             }
         }
     }

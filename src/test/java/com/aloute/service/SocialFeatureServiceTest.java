@@ -12,6 +12,7 @@ import com.aloute.repository.*;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 import java.time.Instant;
 import java.util.*;
@@ -147,9 +148,20 @@ class SocialFeatureServiceTest {
         assertEquals(false, queue.get("hasMore"));
         assertTrue(((List<?>) queue.get("reports")).isEmpty());
         var queries = org.mockito.ArgumentCaptor.forClass(org.springframework.data.mongodb.core.query.Query.class);
-        verify(mongo, times(3)).find(queries.capture(), any(Class.class));
+        verify(mongo).find(queries.capture(), eq(ContentReport.class));
         assertTrue(queries.getAllValues().stream().allMatch(q -> q.getSkip() == 30 && q.getLimit() == 16));
         assertTrue(queries.getAllValues().stream().allMatch(q -> !q.getSortObject().isEmpty()));
+    }
+
+    @Test
+    void hostDoesNotInheritReportModerationPermission() {
+        User host = new User();
+        host.setId(10L);
+        host.setActive(true);
+        host.setRole(new Role("ROLE_HOST"));
+        when(users.findById(10L)).thenReturn(Optional.of(host));
+        assertThrows(ForbiddenException.class, () -> service.queue(10L));
+        verifyNoInteractions(mongo);
     }
 
     @Test
@@ -159,6 +171,34 @@ class SocialFeatureServiceTest {
         when(mongo.findById("1:POST:post", ContentReport.class)).thenReturn(reviewed);
         assertSame(reviewed, service.report(1L, "POST", "post", "Spam"));
         verify(mongo, never()).insert(any(ContentReport.class));
+    }
+
+    @Test
+    void blocksUseStableCursorPaginationInsteadOfReturningAnArbitraryCappedList() {
+        UserBlock newest = new UserBlock();
+        newest.setId("1:3");
+        newest.setOwnerId(1L);
+        newest.setTargetId(3L);
+        newest.setCreatedAt(Instant.parse("2026-10-19T10:00:00Z"));
+        UserBlock older = new UserBlock();
+        older.setId("1:2");
+        older.setOwnerId(1L);
+        older.setTargetId(2L);
+        older.setCreatedAt(Instant.parse("2026-10-19T09:00:00Z"));
+        when(mongo.find(any(Query.class), eq(UserBlock.class)))
+                .thenReturn(List.of(newest, older));
+
+        var page = service.blocks(1L, null, 1);
+
+        assertEquals(List.of(newest), page.items());
+        assertTrue(page.hasMore());
+        assertFalse(page.nextCursor().isBlank());
+    }
+
+    @Test
+    void socialListsRejectMalformedCursor() {
+        assertThrows(BadRequestException.class, () -> service.requests(1L, "broken", 20));
+        verify(mongo, never()).find(any(Query.class), eq(FollowRequest.class));
     }
 
 }

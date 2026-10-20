@@ -1,6 +1,7 @@
 package com.aloute.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -37,6 +38,11 @@ class ClientIpResolverTest {
         request.addHeader("X-Forwarded-For", "203.0.113.77, 198.51.100.27, 10.0.0.6");
 
         assertEquals("198.51.100.27", resolver.resolve(request));
+    }
+
+    @Test
+    void refusesInvalidTrustedProxyConfiguration() {
+        assertThrows(IllegalStateException.class, () -> new ClientIpResolver("10.0.0.0/99"));
     }
 
 }

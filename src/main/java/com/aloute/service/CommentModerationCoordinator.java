@@ -133,7 +133,12 @@ public class CommentModerationCoordinator {
     }
 
     private void evictCommentCache() {
-        var cache = cacheManager.getCache("feedPages");
-        if (cache != null) cache.clear();
+        try {
+            var cache = cacheManager.getCache("feedPages");
+            if (cache != null) cache.clear();
+        } catch (RuntimeException cacheFailure) {
+            log.warn("Feed cache eviction failed after comment recovery; TTL will expire it ({})",
+                    cacheFailure.getClass().getSimpleName());
+        }
     }
 }

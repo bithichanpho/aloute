@@ -13,6 +13,7 @@
 
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-bs-theme', theme);
+    document.documentElement.style.colorScheme = theme;
     var meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement('meta');
@@ -35,6 +36,16 @@
     if (!btn) return;
     e.preventDefault();
     setTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  });
+
+  // Synchronize the most recent choice across every open ALOUTE tab.
+  window.addEventListener('storage', function (event) {
+    if (event.key !== THEME_KEY) return;
+    if (event.newValue !== 'light' && event.newValue !== 'dark') return;
+    applyTheme(event.newValue);
+    document.dispatchEvent(new CustomEvent('aloute:themechange', {
+      detail: { theme: event.newValue }
+    }));
   });
 
   /* ---------- Modal dùng chung ---------- */

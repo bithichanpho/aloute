@@ -18,12 +18,15 @@ import com.aloute.service.AuthService;
 import com.aloute.security.ClientIpResolver;
 import com.aloute.service.FirebaseIdentityService;
 import com.aloute.service.RefreshTokenService;
+import com.aloute.service.AccessTokenRevocationService;
 import com.aloute.model.entity.User;
 import jakarta.servlet.http.Cookie;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -43,12 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
-    private com.aloute.service.AccessTokenRevocationService accessRevocations;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    public void setAccessRevocations(com.aloute.service.AccessTokenRevocationService service) {
-        this.accessRevocations = service;
-    }
+    private final AccessTokenRevocationService accessRevocations;
     private final JwtUtil jwtUtil;
     private final AuthRateLimitService authRateLimitService;
     private final FirebaseIdentityService firebaseIdentityService;
@@ -78,7 +76,8 @@ public class AuthController {
             AuthRateLimitService authRateLimitService,
             FirebaseIdentityService firebaseIdentityService,
             ClientIpResolver clientIpResolver,
-            RefreshTokenService refreshTokenService) {
+            RefreshTokenService refreshTokenService,
+            AccessTokenRevocationService accessRevocations) {
 
         this.authService = authService;
         this.jwtUtil = jwtUtil;
@@ -86,6 +85,7 @@ public class AuthController {
         this.firebaseIdentityService = firebaseIdentityService;
         this.clientIpResolver = clientIpResolver;
         this.refreshTokenService = refreshTokenService;
+        this.accessRevocations = accessRevocations;
     }
 
     @PostMapping("/register")
@@ -209,7 +209,7 @@ public class AuthController {
         } else {
             accessToken = cookieValue(request, JwtAuthFilter.COOKIE_NAME);
         }
-        if (accessToken != null && !accessToken.isBlank() && accessRevocations != null) {
+        if (accessToken != null && !accessToken.isBlank()) {
             try { accessRevocations.revoke(accessToken, jwtUtil.expiresAt(accessToken)); }
             catch (io.jsonwebtoken.JwtException | IllegalArgumentException ignored) {
                 // Invalid or expired tokens have no active session to revoke.
@@ -227,12 +227,35 @@ public class AuthController {
     }
 
     public record VerifyEmailRequest(
-            @NotBlank(message = "Thiếu mã xác thực")
-            @Size(max = 512, message = "Mã xác thực không hợp lệ") String token) {}
+            @NotBlank(message = "Email không được để trống")
+            @Email(message = "Email không đúng định dạng")
+            @Size(max = 254, message = "Email tối đa 254 ký tự") String email,
+            @NotBlank(message = "Vui lòng nhập mã OTP")
+            @Pattern(regexp = "\\d{6}", message = "Mã OTP gồm 6 chữ số") String code) {}
 
     @PostMapping("/verify-email")
-    public ApiResponse<Void> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
-        authService.verifyEmail(request.token());
+    public ApiResponse<Void> verifyEmail(
+            @Valid @RequestBody VerifyEmailRequest request, HttpServletRequest httpRequest) {
+
+        String ip = clientIpResolver.resolve(httpRequest);
+        String email = normalizeRateIdentifier(request.email());
+
+        // A six-digit code has only a million values, so guesses are throttled hard: per email
+        // (an attacker cannot dodge it by rotating IPs) and per IP.
+        authRateLimitService.checkAndRecord(
+                "VERIFY_OTP_TARGET", email,
+                5, java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(15),
+                "Bạn đã nhập mã sai quá nhiều lần. Thử lại sau khoảng %d phút.",
+                "Bạn đã nhập mã sai quá nhiều lần. Chức năng xác thực tạm khóa 15 phút.");
+        authRateLimitService.checkAndRecord(
+                "VERIFY_OTP_IP", ip,
+                30, java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(30),
+                "IP này đã nhập mã sai quá nhiều lần. Thử lại sau khoảng %d phút.",
+                "IP này tạm khóa chức năng xác thực 30 phút.");
+
+        authService.verifyEmail(email, request.code());
+
+        authRateLimitService.reset("VERIFY_OTP_TARGET", email);
         return ApiResponse.success("Xác thực email thành công", null);
     }
 
@@ -255,7 +278,7 @@ public class AuthController {
         authService.resendVerificationEmail(request.getIdentifier());
 
         return ApiResponse.success(
-                "Nếu tài khoản tồn tại và chưa xác thực, email mới đã được gửi", null);
+                "Nếu tài khoản tồn tại và chưa xác thực, mã OTP mới đã được gửi tới email", null);
     }
 
     @PostMapping("/forgot-password")
@@ -277,12 +300,30 @@ public class AuthController {
         authService.forgotPassword(request.getEmail());
 
         return ApiResponse.success(
-                "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi link đặt lại mật khẩu", null);
+                "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP đặt lại mật khẩu", null);
     }
 
     @PostMapping("/reset-password")
-    public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-        authService.resetPassword(request.getToken(), request.getNewPassword());
+    public ApiResponse<Void> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request, HttpServletRequest httpRequest) {
+
+        String ip = clientIpResolver.resolve(httpRequest);
+        String email = normalizeRateIdentifier(request.getEmail());
+
+        authRateLimitService.checkAndRecord(
+                "RESET_OTP_TARGET", email,
+                5, java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(15),
+                "Bạn đã nhập mã sai quá nhiều lần. Thử lại sau khoảng %d phút.",
+                "Bạn đã nhập mã sai quá nhiều lần. Chức năng đặt lại mật khẩu tạm khóa 15 phút.");
+        authRateLimitService.checkAndRecord(
+                "RESET_OTP_IP", ip,
+                30, java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(30),
+                "IP này đã nhập mã sai quá nhiều lần. Thử lại sau khoảng %d phút.",
+                "IP này tạm khóa chức năng đặt lại mật khẩu 30 phút.");
+
+        authService.resetPassword(email, request.getCode(), request.getNewPassword());
+
+        authRateLimitService.reset("RESET_OTP_TARGET", email);
         return ApiResponse.success("Đặt lại mật khẩu thành công, vui lòng đăng nhập lại", null);
     }
 

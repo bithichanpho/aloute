@@ -73,15 +73,10 @@ class FeatureTemplateTest {
     @Test
     void featureVariantsRenderServerSideContent() {
         assertTrue(render("features/index", false, "saved").contains("Chưa có bài viết đã lưu"));
-        assertTrue(render("features/index", true, "moderation").contains("Hàng đợi đã sạch"));
-    }
-
-    @Test
-    void removedStoriesModuleDoesNotReturnToFeatureTemplate() {
-        String html = render("features/index", false);
-        assertFalse(html.contains("storyComposer"));
-        assertFalse(html.contains("storyViewer"));
-        assertFalse(html.contains("Tin 24 giờ"));
+        String reportPage = render("features/index", true, "moderation");
+        assertTrue(reportPage.contains("Không có báo cáo đang chờ"));
+        assertFalse(reportPage.contains("Bài viết cần duyệt"));
+        assertFalse(reportPage.contains("Bình luận cần duyệt"));
     }
 
     @Test

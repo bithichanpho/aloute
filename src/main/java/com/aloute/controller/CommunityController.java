@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.request.CreateCommunityRequest;
 import com.aloute.dto.request.CreatePostRequest;
 import com.aloute.dto.response.CommunityResponse;
+import com.aloute.dto.response.CommunityMemberResponse;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.AuthRateLimitService;
@@ -64,9 +66,12 @@ public class CommunityController {
     }
 
     @GetMapping("/mine")
-    public ApiResponse<List<CommunityResponse>> mine(Authentication authentication) {
+    public ApiResponse<List<CommunityResponse>> mine(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "30") @Min(1) @Max(100) int size) {
         Long userId = requireUserId(authentication);
-        return ApiResponse.success(communityService.getMyCommunities(userId));
+        return ApiResponse.success(communityService.getMyCommunities(userId, page, size));
     }
 
     @GetMapping("/discover")
@@ -117,9 +122,12 @@ public class CommunityController {
     @GetMapping("/{communityId}/requests")
     public ApiResponse<?> pendingMembers(
             Authentication authentication,
-            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(10000) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
         return ApiResponse.success(
-                communityService.pendingMembers(communityId, requireUserId(authentication)));
+                communityService.pendingMembers(
+                        communityId, requireUserId(authentication), page, size));
     }
 
     @PostMapping("/{communityId}/requests/{userId}")
@@ -139,6 +147,27 @@ public class CommunityController {
             @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
             @RequestParam(defaultValue = "true") boolean banned) {
         communityService.banMember(communityId, requireUserId(authentication), userId, banned);
+        return ApiResponse.success(null);
+    }
+
+    @GetMapping("/{communityId}/members")
+    public ApiResponse<List<CommunityMemberResponse>> members(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return ApiResponse.success(communityService.members(
+                communityId, requireUserId(authentication), page, size));
+    }
+
+    @PostMapping("/{communityId}/members/{userId}/manager")
+    public ApiResponse<Void> setManager(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId,
+            @RequestParam(defaultValue = "true") boolean manager) {
+        communityService.setManager(
+                communityId, requireUserId(authentication), userId, manager);
         return ApiResponse.success(null);
     }
 
@@ -186,8 +215,51 @@ public class CommunityController {
                 "Bạn đã đăng bài quá nhiều lần. Vui lòng thử lại sau khoảng %d phút.",
                 "Bạn đã đăng bài quá nhiều lần trong thời gian ngắn. Tạm khóa đăng bài 15 phút.");
 
-        return ApiResponse.success(
-                "Đăng bài thành công", communityService.createPost(communityId, userId, request));
+        PostResponse created = communityService.createPost(communityId, userId, request);
+        String message = created.getCommunityPostStatus()
+                        == com.aloute.model.document.CommunityPostStatus.PENDING
+                ? "Bài viết đã được gửi và đang chờ quản lý duyệt"
+                : "Đăng bài thành công";
+        return ApiResponse.success(message, created);
+    }
+
+    @GetMapping("/{communityId}/posts/pending")
+    public ApiResponse<List<PostResponse>> pendingPosts(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        return ApiResponse.success(communityService.pendingPosts(
+                communityId, requireUserId(authentication), page, size));
+    }
+
+    @PostMapping("/{communityId}/posts/{postId}/decision")
+    public ApiResponse<PostResponse> decidePost(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @PathVariable @NotBlank @Size(max = 100) String postId,
+            @RequestParam boolean accept) {
+        return ApiResponse.success(accept ? "Đã duyệt bài viết" : "Đã từ chối bài viết",
+                communityService.decidePost(
+                        communityId, requireUserId(authentication), postId, accept));
+    }
+
+    @DeleteMapping("/{communityId}/posts/{postId}")
+    public ApiResponse<Void> deletePost(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @PathVariable @NotBlank @Size(max = 100) String postId) {
+        communityService.deletePost(communityId, requireUserId(authentication), postId);
+        return ApiResponse.success(null);
+    }
+
+    @DeleteMapping("/{communityId}/comments/{commentId}")
+    public ApiResponse<Void> deleteComment(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId,
+            @PathVariable @NotBlank @Size(max = 100) String commentId) {
+        communityService.deleteComment(communityId, requireUserId(authentication), commentId);
+        return ApiResponse.success(null);
     }
 
     private Long requireUserId(Authentication authentication) {

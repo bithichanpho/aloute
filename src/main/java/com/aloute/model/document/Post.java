@@ -18,6 +18,9 @@ import java.time.LocalDateTime;
             name = "posts_community_created",
             def = "{'communityId': 1, 'createdAt': -1}"),
     @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_community_review_created",
+            def = "{'communityId': 1, 'communityPostStatus': 1, 'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
             name = "posts_repost_origin_created",
             def = "{'repostOfId': 1, 'createdAt': -1}"),
     @org.springframework.data.mongodb.core.index.CompoundIndex(
@@ -25,7 +28,10 @@ import java.time.LocalDateTime;
             def = "{'hashtags': 1, 'createdAt': -1}"),
     @org.springframework.data.mongodb.core.index.CompoundIndex(
             name = "posts_mention_created",
-            def = "{'mentions': 1, 'createdAt': -1}")
+            def = "{'mentions': 1, 'createdAt': -1}"),
+    @org.springframework.data.mongodb.core.index.CompoundIndex(
+            name = "posts_hidden_media_cleanup",
+            def = "{'moderationStatus': 1, 'mediaCleanupQueuedAt': 1, 'createdAt': 1, '_id': 1}")
 })
 public class Post {
 
@@ -51,9 +57,18 @@ public class Post {
 
     private String communityId;
 
+    /** Null means APPROVED for posts created before community review was introduced. */
+    private CommunityPostStatus communityPostStatus;
+
     private int likeCount = 0;
     private int commentCount = 0;
     private int repostCount = 0;
+
+    /**
+     * Denormalized preview used by feed responses. Keeping only three ids prevents a popular post
+     * from forcing the feed to read every repost document just to render its banner.
+     */
+    private java.util.List<String> recentReposterIds = new java.util.ArrayList<>();
 
     private String repostOfId;
 
@@ -68,6 +83,9 @@ public class Post {
     /** Safe machine-readable reason when automatic moderation needs administrator review. */
     private String moderationFailureReason;
     private boolean notifyMentionsAfterModeration;
+
+    /** Marks that lifecycle tombstones were durably queued for every media URL on a hidden post. */
+    private LocalDateTime mediaCleanupQueuedAt;
 
     public LocalDateTime getModerationLeaseUntil() { return moderationLeaseUntil; }
     public void setModerationLeaseUntil(LocalDateTime value) { this.moderationLeaseUntil = value; }
@@ -85,6 +103,9 @@ public class Post {
     public void setNotifyMentionsAfterModeration(boolean notifyMentionsAfterModeration) {
         this.notifyMentionsAfterModeration = notifyMentionsAfterModeration;
     }
+
+    public LocalDateTime getMediaCleanupQueuedAt() { return mediaCleanupQueuedAt; }
+    public void setMediaCleanupQueuedAt(LocalDateTime value) { this.mediaCleanupQueuedAt = value; }
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -115,6 +136,14 @@ public class Post {
 
     public void setCommunityId(String communityId) {
         this.communityId = communityId;
+    }
+
+    public CommunityPostStatus getCommunityPostStatus() {
+        return communityPostStatus;
+    }
+
+    public void setCommunityPostStatus(CommunityPostStatus communityPostStatus) {
+        this.communityPostStatus = communityPostStatus;
     }
 
     public String getContent() {
@@ -163,6 +192,16 @@ public class Post {
 
     public void setRepostCount(int repostCount) {
         this.repostCount = repostCount;
+    }
+
+    public java.util.List<String> getRecentReposterIds() {
+        return recentReposterIds;
+    }
+
+    public void setRecentReposterIds(java.util.List<String> recentReposterIds) {
+        this.recentReposterIds = recentReposterIds == null
+                ? new java.util.ArrayList<>()
+                : new java.util.ArrayList<>(recentReposterIds);
     }
 
     public String getRepostOfId() {

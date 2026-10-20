@@ -149,7 +149,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Object>> handleUploadTooLarge(
             org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
         // The underlying exception can include multipart/temp-file details; do not expose it.
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
                 .body(ApiResponse.error("Tệp tải lên vượt quá dung lượng cho phép"));
     }
 

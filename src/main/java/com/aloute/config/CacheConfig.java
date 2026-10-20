@@ -36,11 +36,15 @@ public class CacheConfig implements CachingConfigurer {
     CacheManager redisCacheManager(
             RedisConnectionFactory connectionFactory,
             @Value("${app.cache.ttl:2m}") Duration defaultTtl,
-            @Value("${app.cache.feed-ttl:30s}") Duration feedTtl) {
+            @Value("${app.cache.feed-ttl:30s}") Duration feedTtl,
+            @Value("${app.cache.host-dashboard-ttl:30s}") Duration hostDashboardTtl) {
         RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig().entryTtl(defaultTtl);
         Map<String, RedisCacheConfiguration> cacheConfigurations = Map.of(
                 "trendingTopics", defaults.entryTtl(defaultTtl),
-                "feedPages", defaults.entryTtl(feedTtl));
+                "feedPages", defaults.entryTtl(feedTtl),
+                "relationshipIds", defaults.entryTtl(Duration.ofSeconds(30)),
+                "userStatus", defaults.entryTtl(Duration.ofSeconds(15)),
+                "hostDashboard", defaults.entryTtl(hostDashboardTtl));
         // SCAN clears cache entries in bounded batches; the default KEYS strategy can block Redis
         // while personalized feed caches grow.
         RedisCacheWriter writer = RedisCacheWriter.nonLockingRedisCacheWriter(
@@ -59,13 +63,23 @@ public class CacheConfig implements CachingConfigurer {
             matchIfMissing = true)
     CacheManager localCacheManager(
             @Value("${app.cache.ttl:2m}") Duration defaultTtl,
-            @Value("${app.cache.feed-ttl:30s}") Duration feedTtl) {
+            @Value("${app.cache.feed-ttl:30s}") Duration feedTtl,
+            @Value("${app.cache.host-dashboard-ttl:30s}") Duration hostDashboardTtl) {
         CaffeineCache trending = new CaffeineCache(
                 "trendingTopics", Caffeine.newBuilder().maximumSize(200).expireAfterWrite(defaultTtl).build());
         CaffeineCache feeds = new CaffeineCache(
                 "feedPages", Caffeine.newBuilder().maximumSize(1_000).expireAfterWrite(feedTtl).build());
+        CaffeineCache relationships = new CaffeineCache(
+                "relationshipIds", Caffeine.newBuilder().maximumSize(5_000)
+                        .expireAfterWrite(Duration.ofSeconds(30)).build());
+        CaffeineCache userStatus = new CaffeineCache(
+                "userStatus", Caffeine.newBuilder().maximumSize(10)
+                        .expireAfterWrite(Duration.ofSeconds(15)).build());
+        CaffeineCache hostDashboard = new CaffeineCache(
+                "hostDashboard", Caffeine.newBuilder().maximumSize(400)
+                        .expireAfterWrite(hostDashboardTtl).build());
         SimpleCacheManager manager = new SimpleCacheManager();
-        manager.setCaches(List.of(trending, feeds));
+        manager.setCaches(List.of(trending, feeds, relationships, userStatus, hostDashboard));
         return manager;
     }
 

@@ -7,7 +7,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
 import java.util.Map;
 
 /** Shared policy for purpose checks, fail-closed moderation, and managed asset cleanup. */
@@ -16,7 +15,6 @@ public class MediaUploadModerationService {
     private static final Logger log = LoggerFactory.getLogger(MediaUploadModerationService.class);
 
     private final ModerationService moderation;
-    private final ImageStorageService storage;
     private final MediaAssetLifecycleService mediaAssets;
 
     public MediaUploadModerationService(
@@ -24,7 +22,6 @@ public class MediaUploadModerationService {
             ImageStorageService storage,
             MediaAssetLifecycleService mediaAssets) {
         this.moderation = moderation;
-        this.storage = storage;
         this.mediaAssets = mediaAssets;
     }
 
@@ -58,28 +55,14 @@ public class MediaUploadModerationService {
         }
     }
 
-    /** Request lifecycle-managed deletion first; fall back to Cloudinary if the ledger is unavailable. */
+    /** Delegate all rejected-upload cleanup to the single lifecycle owner. */
     public void deleteQuietly(Map<String, String> uploaded) {
         if (uploaded == null) return;
-        String publicId = uploaded.get("publicId");
-        String resourceType = uploaded.get("resourceType");
-        String url = uploaded.get("url");
-        if (publicId == null || publicId.isBlank()) return;
         try {
-            if (url != null && !url.isBlank()) {
-                mediaAssets.deleteIfUnreferenced(url);
-            } else {
-                storage.deleteMedia(publicId, resourceType);
-            }
-        } catch (IOException | RuntimeException cleanupFailure) {
-            log.warn("Managed cleanup failed for rejected upload; trying direct delete (cause={})",
+            mediaAssets.deleteRejectedUpload(uploaded);
+        } catch (RuntimeException cleanupFailure) {
+            log.warn("Rejected upload cleanup could not be queued (cause={})",
                     cleanupFailure.getClass().getSimpleName());
-            try {
-                storage.deleteMedia(publicId, resourceType);
-            } catch (IOException | RuntimeException directFailure) {
-                log.warn("Direct cleanup retry failed for rejected upload (cause={})",
-                        directFailure.getClass().getSimpleName());
-            }
         }
     }
 }

@@ -53,6 +53,38 @@ public class PushNotificationService {
         sendToUser(userId, title, body, relativeUrl, "CHAT_MESSAGE");
     }
 
+    /**
+     * Outbox delivery waits for Firebase acknowledgement. Transient failures are propagated so the
+     * durable worker retries; permanently unregistered installations are removed and skipped.
+     */
+    public void sendNotificationToUserReliably(
+            Long userId, String title, String body, String relativeUrl) {
+        if (userId == null || !firebaseAdminService.isMessagingEnabled()) return;
+        for (UserPushToken subscription : tokenRepository.findAllByUserId(userId)) {
+            String fid = subscription.getFid();
+            try {
+                firebaseAdminService
+                        .sendDataMessage(fid, title, body, relativeUrl, "NOTIFICATION")
+                        .get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.ExecutionException failed) {
+                Throwable cause = failed.getCause() == null ? failed : failed.getCause();
+                if (cause instanceof FirebaseMessagingException firebaseError
+                        && firebaseError.getMessagingErrorCode() == MessagingErrorCode.UNREGISTERED) {
+                    tokenRepository.deleteByFid(fid);
+                    continue;
+                }
+                throw new IllegalStateException("Firebase notification delivery failed", cause);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Firebase notification delivery interrupted", interrupted);
+            } catch (java.util.concurrent.TimeoutException timeout) {
+                throw new IllegalStateException("Firebase notification delivery timed out", timeout);
+            } catch (RuntimeException dispatchFailure) {
+                throw new IllegalStateException("Firebase notification dispatch failed", dispatchFailure);
+            }
+        }
+    }
+
     private void sendToUser(Long userId, String title, String body, String relativeUrl, String type) {
         if (userId == null || !firebaseAdminService.isMessagingEnabled()) return;
         for (UserPushToken subscription : tokenRepository.findAllByUserId(userId)) {

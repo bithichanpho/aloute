@@ -84,11 +84,10 @@ class PostControllerWebTest {
         AloutePrincipal principal = new AloutePrincipal(user);
         var authentication = new UsernamePasswordAuthenticationToken(
                 principal, null, principal.getAuthorities());
-        when(friends.getFollowingIds(7L)).thenReturn(java.util.List.of(8L));
         PostResponse item = new PostResponse();
         item.setId("post-a");
         FeedCursorPage page = new FeedCursorPage(java.util.List.of(item), "opaque-next", true);
-        when(posts.getCursorFeed(7L, java.util.List.of(8L), "foryou", null, null, 20))
+        when(posts.getCursorFeedForViewer(7L, "foryou", null, null, 20))
                 .thenReturn(page);
 
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders

@@ -6,6 +6,7 @@ import io.jsonwebtoken.security.Keys;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import com.aloute.service.AccessTokenRevocationService;
 
 import java.util.Date;
 import java.nio.charset.StandardCharsets;
@@ -17,16 +18,13 @@ import javax.crypto.SecretKey;
 public class JwtUtil {
 
     private final SecretKey secretKey;
-    private com.aloute.service.AccessTokenRevocationService accessRevocations;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    public void setAccessRevocations(com.aloute.service.AccessTokenRevocationService service) {
-        this.accessRevocations = service;
-    }
+    private final AccessTokenRevocationService accessRevocations;
     private final long expirationMs;
 
     public JwtUtil(
-            @Value("${jwt.secret}") String secret, @Value("${jwt.expiration}") long expirationMs) {
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration}") long expirationMs,
+            AccessTokenRevocationService accessRevocations) {
         byte[] secretBytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
         if (secretBytes.length < 32) {
             throw new IllegalStateException(
@@ -37,6 +35,7 @@ public class JwtUtil {
         }
         this.secretKey = Keys.hmacShaKeyFor(secretBytes);
         this.expirationMs = expirationMs;
+        this.accessRevocations = accessRevocations;
     }
 
     public String generateToken(String username, Long userId, String role) {
@@ -81,7 +80,7 @@ public class JwtUtil {
         try {
             String extracted = extractUsername(token);
             return extracted.equals(username) && !isTokenExpired(token)
-                    && (accessRevocations == null || !accessRevocations.isRevoked(token));
+                    && !accessRevocations.isRevoked(token);
         } catch (Exception e) {
             return false;
         }

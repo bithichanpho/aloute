@@ -35,6 +35,12 @@ public class UserSearchQuery {
      */
     @Transactional(readOnly = true)
     public List<Long> findIds(String term, int limit) {
+        return findIds(term, 0, limit);
+    }
+
+    /** Returns one bounded result page without materializing every matching account id. */
+    @Transactional(readOnly = true)
+    public List<Long> findIds(String term, int page, int size) {
         entityManager
                 .createNativeQuery("select set_config('plan_cache_mode', 'force_custom_plan', true)")
                 .getSingleResult();
@@ -46,7 +52,8 @@ public class UserSearchQuery {
                                 + " order by u.id desc",
                         Long.class)
                 .setParameter("pattern", LikePatternUtil.contains(term))
-                .setMaxResults(limit)
+                .setFirstResult(Math.multiplyExact(page, size))
+                .setMaxResults(size)
                 .getResultList();
     }
 }

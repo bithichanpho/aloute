@@ -37,7 +37,7 @@ public class ContentAccessService {
     }
 
     private static final String PRIVACY_PRIVATE = "PRIVATE";
-    private static final Set<String> ACTIVE_ROLES = Set.of("ADMIN", "MEMBER");
+    private static final Set<String> ACTIVE_ROLES = Set.of("OWNER", "MANAGER", "ADMIN", "MEMBER");
 
     private static Long communityKey(String communityId) {
         if (communityId == null || communityId.isBlank()) return null;
@@ -204,6 +204,9 @@ public class ContentAccessService {
                     return false;
             }
             if (Objects.equals(viewer, author)) return true;
+            if (post.getCommunityPostStatus() != null
+                    && post.getCommunityPostStatus()
+                            != com.aloute.model.document.CommunityPostStatus.APPROVED) return false;
             if (post.getModerationStatus() == ModerationStatus.HIDDEN
                     || post.getModerationStatus() == ModerationStatus.PENDING
                     || post.getModerationStatus() == ModerationStatus.FLAGGED) return false;
@@ -226,11 +229,20 @@ public class ContentAccessService {
     }
 
     public boolean profileVisible(Long viewer, Long author) {
-        return users.findById(author).filter(User::isActive).isPresent()
-                && !blocked(viewer, author);
+        return users.findById(author).map(user -> profileVisible(viewer, user)).orElse(false);
+    }
+
+    public boolean profileVisible(Long viewer, User author) {
+        return author != null && author.isActive() && !blocked(viewer, author.getId());
     }
 
     public void requireProfile(Long viewer, Long author) {
+        if (!profileVisible(viewer, author))
+            throw new ResourceNotFoundException("Không tìm thấy tài khoản");
+    }
+
+    /** Uses an already loaded entity so profile assembly does not query the same user twice. */
+    public void requireProfile(Long viewer, User author) {
         if (!profileVisible(viewer, author))
             throw new ResourceNotFoundException("Không tìm thấy tài khoản");
     }
@@ -249,6 +261,9 @@ public class ContentAccessService {
                 return false;
         }
         if (Objects.equals(viewer, author)) return true;
+        if (post.getCommunityPostStatus() != null
+                && post.getCommunityPostStatus()
+                        != com.aloute.model.document.CommunityPostStatus.APPROVED) return false;
         if (post.getModerationStatus() == ModerationStatus.HIDDEN
                 || post.getModerationStatus() == ModerationStatus.PENDING
                 || post.getModerationStatus() == ModerationStatus.FLAGGED) return false;

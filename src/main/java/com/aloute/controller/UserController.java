@@ -8,6 +8,7 @@ import com.aloute.dto.request.ChangePasswordRequest;
 import com.aloute.dto.request.UpdateProfileRequest;
 import com.aloute.dto.response.UserProfileDto;
 import com.aloute.security.SecurityUtils;
+import com.aloute.security.ClientIpResolver;
 import com.aloute.service.AuthService;
 import com.aloute.service.ImageStorageService;
 import com.aloute.service.MediaUploadModerationService;
@@ -16,8 +17,10 @@ import com.aloute.service.MediaUploadRateLimitService;
 import com.aloute.service.UploadContentValidator;
 import com.aloute.service.UploadPurpose;
 import com.aloute.service.UserService;
+import com.aloute.service.AuthRateLimitService;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
 
 import org.springframework.security.core.Authentication;
@@ -47,6 +50,8 @@ public class UserController {
     private final MediaAssetLifecycleService mediaAssets;
     private final MediaUploadRateLimitService uploadLimits;
     private final AuthService authService;
+    private final AuthRateLimitService rateLimitService;
+    private final ClientIpResolver clientIpResolver;
     private final UploadContentValidator contentValidator = new UploadContentValidator();
     private static final long MAX_AVATAR_SIZE_BYTES = 15L * 1024 * 1024;
 
@@ -56,26 +61,48 @@ public class UserController {
             MediaUploadModerationService uploadModeration,
             MediaAssetLifecycleService mediaAssets,
             MediaUploadRateLimitService uploadLimits,
-            AuthService authService) {
+            AuthService authService,
+            AuthRateLimitService rateLimitService,
+            ClientIpResolver clientIpResolver) {
         this.userService = userService;
         this.imageStorageService = imageStorageService;
         this.uploadModeration = uploadModeration;
         this.mediaAssets = mediaAssets;
         this.uploadLimits = uploadLimits;
         this.authService = authService;
+        this.rateLimitService = rateLimitService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @GetMapping("/me")
     public ApiResponse<UserProfileDto> getMe(Authentication authentication) {
         Long userId = requireUserId(authentication);
+        limitProfileReads(userId);
         return ApiResponse.success(userService.getProfile(userId, userId));
     }
 
     @GetMapping("/{userId}")
     public ApiResponse<UserProfileDto> getProfile(
-            Authentication authentication, @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
+            Authentication authentication,
+            HttpServletRequest request,
+            @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long userId) {
         Long currentUserId = SecurityUtils.currentUserId(authentication);
+        limitProfileReads(currentUserId != null
+                ? "user:" + currentUserId
+                : "ip:" + clientIpResolver.resolve(request));
         return ApiResponse.success(userService.getProfile(userId, currentUserId));
+    }
+
+    private void limitProfileReads(Long userId) {
+        limitProfileReads("user:" + userId);
+    }
+
+    private void limitProfileReads(String subject) {
+        rateLimitService.checkAndRecord(
+                "PROFILE_READ", subject, 300,
+                java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1),
+                "Bạn tải trang cá nhân quá nhanh. Thử lại sau %d phút.",
+                "Tạm khóa truy vấn trang cá nhân do quá nhiều yêu cầu.");
     }
 
     @PutMapping("/me")

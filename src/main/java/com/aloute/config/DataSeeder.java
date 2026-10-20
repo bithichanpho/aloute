@@ -26,5 +26,9 @@ public class DataSeeder implements CommandLineRunner {
         roleRepository
                 .findByName("ROLE_ADMIN")
                 .orElseGet(() -> roleRepository.save(new Role("ROLE_ADMIN")));
+
+        roleRepository
+                .findByName("ROLE_HOST")
+                .orElseGet(() -> roleRepository.save(new Role("ROLE_HOST")));
     }
 }

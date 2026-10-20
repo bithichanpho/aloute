@@ -2,6 +2,7 @@ package com.aloute.dto.response;
 
 import com.aloute.model.document.PostVisibility;
 import com.aloute.model.document.ModerationStatus;
+import com.aloute.model.document.CommunityPostStatus;
 
 import java.time.LocalDateTime;
 
@@ -15,6 +16,7 @@ public class PostResponse implements java.io.Serializable {
     private String userAvatarUrl;
     private String content;
     private ModerationStatus moderationStatus;
+    private CommunityPostStatus communityPostStatus;
     private String imageUrl;
     private String videoUrl;
     private int likeCount;
@@ -35,6 +37,8 @@ public class PostResponse implements java.io.Serializable {
     private java.util.List<RepostActor> recentReposters = new java.util.ArrayList<>();
 
     private java.util.List<RepostActor> otherReposters = new java.util.ArrayList<>();
+
+    private int otherReposterCount;
 
     private String timeAgo;
 
@@ -76,6 +80,14 @@ public class PostResponse implements java.io.Serializable {
 
     public void setModerationStatus(ModerationStatus moderationStatus) {
         this.moderationStatus = moderationStatus;
+    }
+
+    public CommunityPostStatus getCommunityPostStatus() {
+        return communityPostStatus;
+    }
+
+    public void setCommunityPostStatus(CommunityPostStatus communityPostStatus) {
+        this.communityPostStatus = communityPostStatus;
     }
 
     public String getContent() {
@@ -205,6 +217,14 @@ public class PostResponse implements java.io.Serializable {
 
     public void setOtherReposters(java.util.List<RepostActor> otherReposters) {
         this.otherReposters = otherReposters != null ? otherReposters : new java.util.ArrayList<>();
+    }
+
+    public int getOtherReposterCount() {
+        return otherReposterCount;
+    }
+
+    public void setOtherReposterCount(int otherReposterCount) {
+        this.otherReposterCount = Math.max(0, otherReposterCount);
     }
 
     public static class RepostActor implements java.io.Serializable {

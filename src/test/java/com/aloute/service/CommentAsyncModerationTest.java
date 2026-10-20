@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
-import static org.mockito.ArgumentMatchers.anyIterable;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -61,7 +60,8 @@ class CommentAsyncModerationTest {
         AloutePrincipal principal = new AloutePrincipal(viewer);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
-        when(users.findAllById(anyIterable())).thenReturn(List.of(viewer));
+        when(users.findAllById(org.mockito.ArgumentMatchers.<Long>anyIterable()))
+                .thenReturn(List.of(viewer));
         when(access.visibleUserIds(eq(1L), anyCollection())).thenReturn(Set.of(1L));
         when(moderation.isEnabled()).thenReturn(true);
     }
@@ -72,44 +72,35 @@ class CommentAsyncModerationTest {
     }
 
     @Test
-    void createCommentPersistsPendingAndQueuesWithoutCallingRemoteModerationOnRequestThread() {
+    void createCommentPublishesImmediatelyWithoutGlobalModeration() {
         CreateCommentRequest request = new CreateCommentRequest();
         request.setContent("Hello from ALOUTE");
         Comment saved = comment("comment-1", "1", request.getContent());
-        when(persistence.create(eq("post-1"), eq(1L), eq(request), eq(ModerationStatus.PENDING), eq(null)))
+        saved.setModerationStatus(ModerationStatus.APPROVED);
+        when(persistence.create(eq("post-1"), eq(1L), eq(request), eq(ModerationStatus.APPROVED), eq(null)))
                 .thenReturn(saved);
 
         CommentResponse response = service.createComment("post-1", 1L, request);
 
         assertEquals("comment-1", response.getId());
-        assertEquals(ModerationStatus.PENDING, response.getModerationStatus());
-        verify(coordinator).submit("comment-1");
+        assertEquals(ModerationStatus.APPROVED, response.getModerationStatus());
+        verify(coordinator, never()).submit(any());
         verify(moderation, never()).check(any());
     }
 
     @Test
-    void editCommentMarksPendingAndQueuesAsynchronously() {
+    void editCommentRemainsPublishedWithoutGlobalModeration() {
         Comment original = comment("comment-2", "1", "old text");
         when(comments.findById("comment-2")).thenReturn(Optional.of(original));
-        when(persistence.updatePendingForModeration(eq(original), eq("new text")))
-                .thenAnswer(invocation -> {
-                    Comment changed = invocation.getArgument(0);
-                    changed.setContent("new text");
-                    changed.setModerationStatus(ModerationStatus.PENDING);
-                    changed.setModerationAttempts(0);
-                    changed.setModerationLastAttemptAt(null);
-                    changed.setModerationLeaseUntil(null);
-                    changed.setModerationFailureReason(null);
-                    return changed;
-                });
+        when(comments.save(any(Comment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         CommentResponse response = service.editComment("comment-2", 1L, "new text");
 
         assertNotNull(response);
-        assertEquals(ModerationStatus.PENDING, response.getModerationStatus());
+        assertEquals(ModerationStatus.APPROVED, response.getModerationStatus());
         assertEquals("new text", response.getContent());
-        verify(coordinator).invalidateFeedCache();
-        verify(coordinator).submit("comment-2");
+        verify(coordinator, never()).invalidateFeedCache();
+        verify(coordinator, never()).submit(any());
         verify(moderation, never()).check(any());
     }
 

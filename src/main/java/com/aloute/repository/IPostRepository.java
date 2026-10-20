@@ -16,7 +16,15 @@ public interface IPostRepository extends MongoRepository<Post, String> {
 
 
     @org.springframework.data.mongodb.repository.Query(
-            value = "{'communityId': ?0, 'repostOfId': null, 'moderationStatus': {$ne: 'HIDDEN'}}",
+            value = "{'communityId': ?0, 'repostOfId': null, 'moderationStatus': {$ne: 'HIDDEN'}, '$or': [{'communityPostStatus': null}, {'communityPostStatus': 'APPROVED'}]}",
             sort = "{'createdAt': -1}")
     List<Post> findByCommunityIdOrderByCreatedAtDesc(String communityId, Pageable pageable);
+
+    @org.springframework.data.mongodb.repository.Query(
+            value = "{'communityId': ?0, 'repostOfId': null, 'communityPostStatus': ?1}",
+            sort = "{'createdAt': -1}")
+    List<Post> findCommunityPostsByStatus(
+            String communityId,
+            com.aloute.model.document.CommunityPostStatus status,
+            Pageable pageable);
 }

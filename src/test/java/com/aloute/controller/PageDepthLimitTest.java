@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -29,8 +30,8 @@ class PageDepthLimitTest {
     void postAndProfilePagesAreBounded() {
         assertBounded(PostController.class, "getFeed", 100);
         assertBounded(PostController.class, "getPostsByUser", 100);
-        assertBounded(ViewController.class, "profileFragment", 100);
-        assertBounded(ViewController.class, "profileRepostFragment", 100);
+        assertCursorBounded(ViewController.class, "profileFragment", 256);
+        assertCursorBounded(ViewController.class, "profileRepostFragment", 256);
     }
 
     @Test
@@ -61,5 +62,40 @@ class PageDepthLimitTest {
             assertEquals(maxAllowed, max.value(),
                     controller.getSimpleName() + "#" + methodName + " page limit");
         }
+    }
+
+    private static void assertCursorBounded(
+            Class<?> controller, String methodName, int maxAllowed) {
+        Method method =
+                Arrays.stream(controller.getDeclaredMethods())
+                        .filter(candidate -> candidate.getName().equals(methodName))
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new AssertionError(
+                                                controller.getSimpleName()
+                                                        + "#"
+                                                        + methodName
+                                                        + " not found"));
+        Parameter cursor =
+                Arrays.stream(method.getParameters())
+                        .filter(parameter -> parameter.getType() == String.class)
+                        .filter(
+                                parameter -> {
+                                    RequestParam request =
+                                            parameter.getAnnotation(RequestParam.class);
+                                    return request != null && !request.required();
+                                })
+                        .findFirst()
+                        .orElseThrow(
+                                () ->
+                                        new AssertionError(
+                                                controller.getSimpleName()
+                                                        + "#"
+                                                        + methodName
+                                                        + " has no optional cursor parameter"));
+        Size size = cursor.getAnnotation(Size.class);
+        assertNotNull(size, controller.getSimpleName() + "#" + methodName + " cursor has no @Size");
+        assertEquals(maxAllowed, size.max(), controller.getSimpleName() + "#" + methodName + " cursor limit");
     }
 }

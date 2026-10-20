@@ -1,71 +1,34 @@
-# ALOUTE — Consolidated Eclipse-first backend patch manifest
+# ALOUTE backend working-tree manifest
 
-## Base revision
-- Exact base: `aloute_eclipse_post_media_hardened_source.zip` from the preceding consolidated turn.
-- Recommended update strategy: use the full source ZIP `aloute_eclipse_backend_final_source.zip` in a new Eclipse project folder to avoid stacking patches.
-- This delta patch is safe only over the exact base revision above. Do not apply it over the full final source ZIP or over the original `src.zip`.
-- The project `pom.xml` uses the supplied Spring Boot 4.1.1 / Java 21 configuration, including `jackson-2-bom.version=2.21.7`, `spring-boot-starter-flyway`, PostgreSQL Flyway support, the requested test starters, and Maven Failsafe 3.5.4.
+This repository is maintained as source code on the current Git branch. It is no longer distributed as a delta ZIP over an unnamed archive, so old file counts and manual copy/delete instructions are intentionally removed.
 
-## Changed files (32, including this manifest)
-- `.env.example`
-- `README.md`
-- `docs/APPLY_POST_MEDIA_PATCH.md`
-- `docs/BACKEND_AUDIT_REMEDIATION.md`
-- `docs/PATCH_MANIFEST.txt`
-- `docs/PRIVACY_AND_MODERATION.md`
-- `pom.xml`
-- `src/main/java/com/aloute/config/CacheConfig.java`
-- `src/main/java/com/aloute/config/WebSocketEventListener.java`
-- `src/main/java/com/aloute/controller/UploadController.java`
-- `src/main/java/com/aloute/controller/UserController.java`
-- `src/main/java/com/aloute/repository/ICommunityRepository.java`
-- `src/main/java/com/aloute/repository/IUserRepository.java`
-- `src/main/java/com/aloute/service/AccountDataCleanupService.java`
-- `src/main/java/com/aloute/service/AccountSecurityService.java`
-- `src/main/java/com/aloute/service/ChatService.java`
-- `src/main/java/com/aloute/service/CommunityService.java`
-- `src/main/java/com/aloute/service/ImageStorageService.java`
-- `src/main/java/com/aloute/service/MediaUploadModerationService.java`
-- `src/main/java/com/aloute/service/ModerationService.java`
-- `src/main/java/com/aloute/service/PostModerationWorker.java`
-- `src/main/java/com/aloute/service/PostService.java`
-- `src/main/java/com/aloute/service/PresenceService.java`
-- `src/main/java/com/aloute/service/SocialFeatureService.java`
-- `src/main/java/com/aloute/service/UploadPurpose.java`
-- `src/main/resources/application-prod.yml`
-- `src/main/resources/application.yml`
-- `src/test/java/com/aloute/controller/UploadControllerTest.java`
-- `src/test/java/com/aloute/service/ChatServiceTest.java`
-- `src/test/java/com/aloute/service/FeedQueryBudgetTest.java`
-- `src/test/java/com/aloute/service/MediaUploadModerationServiceTest.java`
-- `src/test/java/com/aloute/service/UploadPurposeTest.java`
+## Current backend baseline
 
-## Added files (7)
-- `src/main/java/com/aloute/model/document/ManagedMediaAsset.java`
-- `src/main/java/com/aloute/service/MediaAssetLifecycleService.java`
-- `src/main/java/com/aloute/service/MediaUploadRateLimitService.java`
-- `src/test/java/com/aloute/service/CacheConfigTest.java`
-- `src/test/java/com/aloute/service/CommunityServiceMediaCleanupTest.java`
-- `src/test/java/com/aloute/service/MediaAssetLifecycleServiceTest.java`
-- `src/test/java/com/aloute/service/PresenceServiceConfigurationTest.java`
+- Java 21 and Spring Boot 4.1.1.
+- PostgreSQL schema managed by Flyway through `V20261101`.
+- MongoDB indexes managed idempotently by `deploy/migrations/mongo-indexes.js`.
+- Redis used for cache, distributed rate limiting, presence and call state according to environment policy.
+- Mongo replica-set transactions used where document deletion and durable media tombstones must commit together.
+- PostgreSQL outbox jobs used for cleanup that crosses PostgreSQL, MongoDB and Cloudinary.
 
-## Removed files (3)
-- `src/main/java/com/aloute/model/document/PostMediaAsset.java`
-- `src/main/java/com/aloute/service/PostMediaAssetLifecycleService.java`
-- `src/test/java/com/aloute/service/PostMediaAssetLifecycleServiceTest.java`
+## Main remediation areas
 
-## Consolidated behavior in this revision
-- Cloudinary URL identity requires HTTPS, `res.cloudinary.com`, exact configured `cloudinary.cloud-name`, safe URL path, the managed `aloute/` folder, exact ledger URL, expected purpose/resource type, and authenticated uploader.
-- Upload endpoint and direct user-avatar endpoint share Redis per-user rate limiting (30 uploads/hour; 15-minute block after the threshold). Required Redis outages fail closed for rate limits.
-- Document/raw upload is disabled in both controller and storage layers until a dedicated scanner is added. Legacy raw delivery URLs may still be parsed for cleanup only.
-- Upload-purpose policies are centralized in `UploadPurpose`; post media is moderated by the post worker after persistence, while chat/community/avatar/general image/video upload is checked before a public URL is returned when moderation is enabled. Non-post upload fails closed if moderation is disabled/unavailable.
-- `MediaAssetLifecycleService` is the single lifecycle owner for post, chat, community, avatar, and account cleanup; it tracks uploader/purpose/reference, retries failed Cloudinary deletion, invalidates CDN delivery, and retains tombstones to prevent approving posts whose media was deleted.
-- Orphan scans select aged `UPLOADED` items and `DELETE_PENDING` items only; `ATTACHED` media is not repeatedly scanned. `postId` is stored when available.
-- Admin APPROVE is rejected when the post's tracked media was deleted or is pending deletion; replacement media should be uploaded and submitted in a new post.
-- Redis cache failures are fail-open (cache is an optimization). Security rate limiting remains independent and fail-closed when configured as required. Online presence uses Redis session leases with same-node fallback when Redis is unavailable.
-- Docker Compose/Coturn provisioning remains intentionally deferred to the group's deployment phase. Backend TURN credential generation does not mean a real TURN server is present. Multi-instance STOMP fan-out still requires broker relay infrastructure.
-- Exactly one migration document is kept at `docs/DATABASE_MIGRATIONS.md`; the only patch manifest is `docs/PATCH_MANIFEST.txt`.
+- Request validation, authentication/OTP, token revocation and trusted-proxy handling.
+- Cursor pagination and query-budget improvements for feed, profile, group, chat and notifications.
+- Durable notification and account/community cleanup jobs.
+- Community-manager authorization and server-wide `ROLE_HOST` dashboard.
+- Repost presentation, group unread state and removed story functionality.
+- Central media lifecycle, hidden-post reconciliation and retryable Cloudinary deletion.
+- Bounded asynchronous moderation with lease recovery for posts and comments.
+- Explicit Redis outage behavior for cache, rate limits and presence.
+- Paginated community/search APIs, database-aggregated HOST metrics and audited ADMIN account control.
 
-## Safety exclusions
-- No real `.env`, `.secret/`, Firebase Admin credential JSON, `.git/`, `target/`, `__pycache__/`, `.pyc`, `.class`, or local logs are included in generated archives.
-- This manifest lists files to delete from the base. Applying the delta patch does not automatically delete removed paths; delete those exact paths manually after confirming the base revision. Prefer the full source ZIP to avoid this manual step.
+## Validation commands
+
+```powershell
+mvn clean test
+mvn verify
+.\deploy\scripts\validate-empty-schema.ps1
+```
+
+The schema script accepts only a disposable PostgreSQL database on loopback. Do not run it against Supabase or another shared database.

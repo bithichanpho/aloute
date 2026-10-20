@@ -170,7 +170,7 @@ class AuthServiceRegisterTest {
     }
 
     @Test
-    void livePendingEmailGetsAFreshLinkOnceTheCooldownHasPassed() {
+    void livePendingEmailGetsAFreshOtpOnceTheCooldownHasPassed() {
         PendingUser pending = livePending("alice", "me@example.com", LocalDateTime.now().minusMinutes(5));
         when(pendings.findByEmailIgnoreCase("me@example.com")).thenReturn(Optional.of(pending));
 

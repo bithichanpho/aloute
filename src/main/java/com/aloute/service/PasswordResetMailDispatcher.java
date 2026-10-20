@@ -11,8 +11,8 @@ public class PasswordResetMailDispatcher {
     private final EmailService email;
     public PasswordResetMailDispatcher(EmailService email) { this.email = email; }
     @Async("passwordMailExecutor")
-    public void send(String recipient, String fullName, String token) {
-        try { email.sendResetPasswordEmail(recipient, fullName, token); }
+    public void send(String recipient, String fullName, String otp) {
+        try { email.sendResetPasswordEmail(recipient, fullName, otp); }
         catch (RuntimeException ex) { log.error("Password reset email delivery failed ({})", ex.getClass().getSimpleName(), ex); }
     }
 }

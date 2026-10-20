@@ -19,7 +19,6 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -36,9 +35,7 @@ public class CommentService {
     private final IUserRepository userRepository;
     private final MongoTemplate mongoTemplate;
     private final CommentPersistenceService commentPersistenceService;
-    private final ModerationService moderationService;
     private final AuthRateLimitService rateLimitService;
-    private final CommentModerationCoordinator moderationCoordinator;
     private final MongoTransactionRetryExecutor transactionRetryExecutor;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -60,9 +57,7 @@ public class CommentService {
         this.userRepository = userRepository;
         this.mongoTemplate = mongoTemplate;
         this.commentPersistenceService = commentPersistenceService;
-        this.moderationService = moderationService;
         this.rateLimitService = rateLimitService;
-        this.moderationCoordinator = moderationCoordinator;
         this.transactionRetryExecutor = transactionRetryExecutor;
     }
 
@@ -107,19 +102,11 @@ public class CommentService {
                 "Bạn bình luận quá nhanh. Thử lại sau %d phút.",
                 "Tạm khóa bình luận do gửi quá nhiều yêu cầu.");
 
-        // Production requests persist immediately as PENDING. Slow HTTP/OpenAI work runs on
-        // moderationExecutor; the Tomcat request thread never waits for the remote moderator.
-        var status = moderationService.isEnabled()
-                ? com.aloute.model.document.ModerationStatus.PENDING
-                : moderationService.resolveStatus(moderationService.check(request.getContent()));
-        if (status == com.aloute.model.document.ModerationStatus.PENDING && moderationCoordinator == null) {
-            throw new IllegalStateException("Comment moderation coordinator is not configured");
-        }
+        // Comments publish immediately. Community managers approve community posts separately;
+        // reported comments are handled after publication instead of entering a global queue.
+        var status = com.aloute.model.document.ModerationStatus.APPROVED;
         Comment saved = commentPersistenceService.create(
                 postId, currentUserId, request, status, request.getParentCommentId());
-        if (status == com.aloute.model.document.ModerationStatus.PENDING) {
-            moderationCoordinator.submit(saved.getId());
-        }
 
         return toResponses(List.of(saved)).stream()
                 .findFirst()
@@ -127,7 +114,7 @@ public class CommentService {
                         () -> {
                             CommentResponse dto = new CommentResponse();
                             dto.setId(saved.getId());
-                            dto.setContent("Bình luận đang được kiểm duyệt");
+                            dto.setContent("Không thể hiển thị bình luận");
                             return dto;
                         });
     }
@@ -278,19 +265,33 @@ public class CommentService {
     }
 
     public void deleteComment(String commentId, Long currentUserId) {
-        Runnable operation = () -> deleteCommentInTransaction(commentId, currentUserId);
+        deleteComment(commentId, currentUserId, false);
+    }
+
+    public void deleteCommentAsModerator(String commentId, Long currentUserId) {
+        deleteComment(commentId, currentUserId, true);
+    }
+
+    public Comment getCommentForCommunityManagement(String commentId) {
+        return commentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bình luận"));
+    }
+
+    private void deleteComment(String commentId, Long currentUserId, boolean moderator) {
+        Runnable operation = () -> deleteCommentInTransaction(commentId, currentUserId, moderator);
         if (transactionRetryExecutor == null) operation.run();
         else transactionRetryExecutor.execute(() -> { operation.run(); return null; });
     }
 
-    private void deleteCommentInTransaction(String commentId, Long currentUserId) {
+    private void deleteCommentInTransaction(
+            String commentId, Long currentUserId, boolean moderator) {
         Comment comment =
                 commentRepository
                         .findById(commentId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy bình luận"));
 
-        if (!comment.getUserId().equals(String.valueOf(currentUserId))) {
+        if (!moderator && !comment.getUserId().equals(String.valueOf(currentUserId))) {
             throw new ForbiddenException("Bạn không có quyền xóa bình luận này");
         }
 
@@ -325,23 +326,8 @@ public class CommentService {
             throw new ForbiddenException("Nội dung đã bị ẩn, không thể chỉnh sửa");
         }
         String normalizedContent = content == null ? "" : content.trim();
-        if (moderationService.isEnabled() && moderationCoordinator == null) {
-            throw new IllegalStateException("Comment moderation coordinator is not configured");
-        }
-        if (moderationService.isEnabled()) {
-            Comment saved = commentPersistenceService.updatePendingForModeration(comment, normalizedContent);
-            // Dispatch only after the Mongo transaction commits so the worker can see the latest edit.
-            TransactionCommitHooks.afterCommit(() -> {
-                moderationCoordinator.invalidateFeedCache();
-                moderationCoordinator.submit(saved.getId());
-            });
-            return toResponses(List.of(saved)).stream()
-                    .findFirst()
-                    .orElseThrow(() -> new ResourceNotFoundException("Bình luận đang chờ kiểm duyệt"));
-        }
-        var result = moderationService.check(normalizedContent);
         comment.setContent(normalizedContent);
-        comment.setModerationStatus(moderationService.resolveStatus(result));
+        comment.setModerationStatus(ModerationStatus.APPROVED);
         return toResponses(List.of(commentRepository.save(comment))).stream()
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Bình luận đang bị ẩn"));

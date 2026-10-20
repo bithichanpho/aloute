@@ -49,6 +49,14 @@ public class SocialFeatureController {
         return ApiResponse.success(service.blocks(user(a)));
     }
 
+    @GetMapping("/blocks/cursor")
+    public ApiResponse<?> blocksByCursor(
+            Authentication a,
+            @RequestParam(required = false) @Size(max = 512) String cursor,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return ApiResponse.success(service.blocks(user(a), cursor, size));
+    }
+
     @PutMapping("/blocks/{id}")
     public ApiResponse<?> block(Authentication a, @PathVariable @Positive(message = "Mã người dùng không hợp lệ") Long id) {
         service.block(user(a), id, true);
@@ -64,6 +72,14 @@ public class SocialFeatureController {
     @GetMapping("/follow-requests")
     public ApiResponse<?> requests(Authentication a) {
         return ApiResponse.success(service.requests(user(a)));
+    }
+
+    @GetMapping("/follow-requests/cursor")
+    public ApiResponse<?> requestsByCursor(
+            Authentication a,
+            @RequestParam(required = false) @Size(max = 512) String cursor,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return ApiResponse.success(service.requests(user(a), cursor, size));
     }
 
     @PutMapping("/follow-requests/{id}")

@@ -12,7 +12,6 @@ import com.aloute.repository.IUserPushTokenRepository;
 import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.common.util.UsernamePolicy;
-import com.aloute.service.FirebaseAdminService;
 import org.springframework.beans.factory.annotation.Autowired;
 
 
