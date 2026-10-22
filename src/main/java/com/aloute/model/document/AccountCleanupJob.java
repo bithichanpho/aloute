@@ -1,13 +1,13 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 import java.time.Instant;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
 
-/** Durable retry record for cross-store account deletion cleanup. */
-@Document(collection = "account_cleanup_jobs")
+/** Durable retry record for account deletion cleanup. */
 @lombok.Data
+@PgDocument(collection = "account_cleanup_jobs")
 public class AccountCleanupJob {
     @Id
     private String id;
@@ -20,6 +20,5 @@ public class AccountCleanupJob {
 
     private Instant createdAt = Instant.now();
 
-    @Indexed
     private Instant nextAttemptAt = Instant.now();
 }

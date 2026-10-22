@@ -22,18 +22,18 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 
 class RepostPresentationServiceTest {
 
     private final IRepostRepository reposts = mock(IRepostRepository.class);
     private final IPostRepository posts = mock(IPostRepository.class);
     private final IUserRepository users = mock(IUserRepository.class);
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final RepostPresentationService service =
-            new RepostPresentationService(reposts, posts, users, mongo);
+            new RepostPresentationService(reposts, posts, users, documentStore);
 
     @Test
     void feedUsesDenormalizedPreviewWithoutReadingRepostHistory() {
@@ -49,7 +49,7 @@ class RepostPresentationServiceTest {
         assertTrue(response.getOtherReposters().isEmpty());
         verify(reposts, never()).findByPostIdOrderByCreatedAtDesc(
                 eq("post-1"), any(Pageable.class));
-        verify(mongo, never()).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
+        verify(documentStore, never()).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
     }
 
     @Test
@@ -67,7 +67,7 @@ class RepostPresentationServiceTest {
         ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
         verify(reposts).findByPostIdOrderByCreatedAtDesc(eq("post-1"), page.capture());
         assertEquals(3, page.getValue().getPageSize());
-        verify(mongo).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
+        verify(documentStore).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
         assertEquals(3, response.getRecentReposters().size());
         assertEquals(1, response.getOtherReposterCount());
     }
@@ -75,14 +75,14 @@ class RepostPresentationServiceTest {
     @Test
     void fullAudienceUsesBoundedCursorQuery() {
         List<Repost> loaded = List.of(repost("r3", "3"), repost("r2", "2"), repost("r1", "1"));
-        when(mongo.find(any(Query.class), eq(Repost.class))).thenReturn(loaded);
+        when(documentStore.find(any(Query.class), eq(Repost.class))).thenReturn(loaded);
         when(users.findAllById(any())).thenReturn(List.of(user(1), user(2), user(3)));
 
         var page = service.loadRepostActorsPage("post-1", null, 2, 25);
 
         ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
-        verify(mongo).find(query.capture(), eq(Repost.class));
-        assertEquals(3, query.getValue().getLimit());
+        verify(documentStore).find(query.capture(), eq(Repost.class));
+        assertEquals(3, query.getValue().limit());
         assertEquals(2, page.items().size());
         assertTrue(page.hasMore());
         assertFalse(page.nextCursor().isBlank());

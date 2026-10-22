@@ -3,23 +3,22 @@ package com.aloute.service;
 import com.aloute.model.document.Post;
 import com.aloute.repository.IPostRepository;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
-import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /** Repairs denormalized post reaction counters from the authoritative likes collection. */
 @Service
@@ -31,11 +30,11 @@ public class ReactionCountReconciliationService {
     private static final int BATCH_SIZE = 200;
 
     private final IPostRepository postRepository;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
 
-    public ReactionCountReconciliationService(IPostRepository postRepository, MongoTemplate mongoTemplate) {
+    public ReactionCountReconciliationService(IPostRepository postRepository, PostgresDocumentStore documentStore) {
         this.postRepository = postRepository;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
     }
 
     // lockAtLeastFor outlasts clock skew between replicas that fire the same cron tick;
@@ -69,7 +68,7 @@ public class ReactionCountReconciliationService {
                 int total = byType.values().stream().mapToInt(Integer::intValue).sum();
                 Query query = Query.query(Criteria.where("_id").is(post.getId()));
                 Update update = new Update().set("likeCount", total).set("reactionCounts", byType);
-                mongoTemplate.updateFirst(query, update, Post.class);
+                documentStore.updateFirst(query, update, Post.class);
                 updatedPosts++;
             }
             if (posts.size() < BATCH_SIZE) break;
@@ -80,24 +79,21 @@ public class ReactionCountReconciliationService {
 
     private Map<String, Map<String, Integer>> aggregateLikes(List<String> postIds) {
         if (postIds.isEmpty()) return Map.of();
-        Aggregation aggregation = Aggregation.newAggregation(
-                Aggregation.match(Criteria.where("postId").in(postIds)),
-                Aggregation.group("postId", "reactionType").count().as("count"));
-        List<Document> rows = mongoTemplate.aggregate(aggregation, "likes", Document.class).getMappedResults();
         Map<String, Map<String, Integer>> counts = new HashMap<>();
-        for (Document row : rows) {
-            Object idValue = row.get("_id");
-            if (!(idValue instanceof Document groupedKey)) continue;
-            Object postIdValue = groupedKey.get("postId");
-            if (postIdValue == null) continue;
-            String postId = postIdValue.toString();
-            Object typeValue = groupedKey.get("reactionType");
-            String type = typeValue == null || typeValue.toString().isBlank()
-                    ? "LIKE" : typeValue.toString().toUpperCase(java.util.Locale.ROOT);
-            Object countValue = row.get("count");
-            if (!(countValue instanceof Number count)) continue;
-            counts.computeIfAbsent(postId, ignored -> new HashMap<>()).put(type, count.intValue());
-        }
+        // Aggregate in PostgreSQL instead of materializing every reaction in the application.
+        documentStore.countGroupedBy(
+                        Query.query(Criteria.where("postId").in(postIds)),
+                        com.aloute.model.document.Like.class,
+                        "postId", "reactionType")
+                .forEach((key, count) -> {
+                    if (key.size() < 2 || key.get(0) == null) return;
+                    String rawType = key.get(1);
+                    String type = rawType == null || rawType.isBlank()
+                            ? "LIKE" : rawType.toUpperCase(Locale.ROOT);
+                    int exactCount = Math.toIntExact(count);
+                    counts.computeIfAbsent(key.get(0), ignored -> new HashMap<>())
+                            .merge(type, exactCount, Math::addExact);
+                });
         return counts;
     }
 }

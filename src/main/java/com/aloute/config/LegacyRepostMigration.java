@@ -10,9 +10,9 @@ import com.aloute.repository.IRepostRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,19 +24,19 @@ import java.util.List;
 @ConditionalOnProperty(name = "app.migrations.legacy-repost.enabled", havingValue = "true")
 public class LegacyRepostMigration implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(LegacyRepostMigration.class);
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
     private final IPostRepository postRepository;
     private final IRepostRepository repostRepository;
     private final ICommentRepository commentRepository;
     private final ILikeRepository likeRepository;
 
     public LegacyRepostMigration(
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             IPostRepository postRepository,
             IRepostRepository repostRepository,
             ICommentRepository commentRepository,
             ILikeRepository likeRepository) {
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
         this.postRepository = postRepository;
         this.repostRepository = repostRepository;
         this.commentRepository = commentRepository;
@@ -54,7 +54,7 @@ public class LegacyRepostMigration implements CommandLineRunner {
                                                 .orOperator(
                                                         Criteria.where("content").is(null),
                                                         Criteria.where("content").is(""))));
-        List<Post> legacy = mongoTemplate.find(q, Post.class);
+        List<Post> legacy = documentStore.find(q, Post.class);
         for (Post post : legacy) {
             if (post.getUserId() == null
                     || post.getRepostOfId() == null

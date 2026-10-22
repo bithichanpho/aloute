@@ -12,23 +12,23 @@ import com.aloute.model.document.Post;
 import com.aloute.model.document.PostRevision;
 import com.aloute.repository.ICommunityRepository;
 import com.aloute.repository.IUserRepository;
-import com.mongodb.client.result.UpdateResult;
+import com.aloute.persistence.postgres.document.UpdateResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 
 import java.util.Map;
 import java.util.Optional;
 
 class MediaAssetLifecycleServiceTest {
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final ImageStorageService storage = mock(ImageStorageService.class);
     private final IUserRepository users = mock(IUserRepository.class);
     private final ICommunityRepository communities = mock(ICommunityRepository.class);
     private final MediaAssetLifecycleService service =
-            new MediaAssetLifecycleService(mongo, storage, users, communities, 100, 2, 30);
+            new MediaAssetLifecycleService(documentStore, storage, users, communities, 100, 2, 30);
 
     @BeforeEach
     void clearRepositoryDefaults() {
@@ -46,11 +46,11 @@ class MediaAssetLifecycleServiceTest {
                 "publicId", "aloute/post/post-image", "resourceType", "image", "type", "image");
         when(storage.resolveAlouteMediaReference(url)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-image", "image")));
-        when(mongo.findById("image:aloute/post/post-image", ManagedMediaAsset.class)).thenReturn(null);
+        when(documentStore.findById("image:aloute/post/post-image", ManagedMediaAsset.class)).thenReturn(null);
 
         service.registerUpload(image, UploadPurpose.POST, 7L);
 
-        verify(mongo).save(argThat((ManagedMediaAsset asset) ->
+        verify(documentStore).save(argThat((ManagedMediaAsset asset) ->
                 "image:aloute/post/post-image".equals(asset.getId())
                         && ManagedMediaAsset.UPLOADED.equals(asset.getStatus())
                         && "7".equals(asset.getUploaderId())
@@ -68,7 +68,7 @@ class MediaAssetLifecycleServiceTest {
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/chat/chat-image", "image")));
 
         assertThrows(BadRequestException.class, () -> service.registerUpload(image, UploadPurpose.POST, 7L));
-        verify(mongo, never()).save(any(ManagedMediaAsset.class));
+        verify(documentStore, never()).save(any(ManagedMediaAsset.class));
     }
 
     @Test
@@ -78,9 +78,9 @@ class MediaAssetLifecycleServiceTest {
                 "aloute/post/post-image", "image");
         when(storage.resolveAlouteMediaReference(url)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-image", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(asset);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class)))
-                .thenReturn(UpdateResult.acknowledged(1L, 1L, null));
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.of(asset));
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class)))
+                .thenReturn(new UpdateResult(1L, 1L));
 
         Post post = new Post();
         post.setId("hidden-post");
@@ -88,7 +88,7 @@ class MediaAssetLifecycleServiceTest {
         service.deletePostMedia(post);
 
         verify(storage).deleteMedia("aloute/post/post-image", "image");
-        verify(mongo, atLeast(2)).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
+        verify(documentStore, atLeast(2)).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
     }
 
     @Test
@@ -102,15 +102,15 @@ class MediaAssetLifecycleServiceTest {
         otherVisiblePost.setId("visible-post");
         when(storage.resolveAlouteMediaReference(url)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/shared", "image")));
-        when(mongo.findOne(any(Query.class), eq(Post.class))).thenReturn(otherVisiblePost);
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(asset);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class)))
-                .thenReturn(UpdateResult.acknowledged(1L, 1L, null));
+        when(documentStore.findOne(any(Query.class), eq(Post.class))).thenReturn(Optional.of(otherVisiblePost));
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.of(asset));
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class)))
+                .thenReturn(new UpdateResult(1L, 1L));
 
         service.deletePostMedia(hiddenPost);
 
         verify(storage, never()).deleteMedia(anyString(), anyString());
-        verify(mongo).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
+        verify(documentStore).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
     }
 
     @Test
@@ -123,14 +123,14 @@ class MediaAssetLifecycleServiceTest {
         post.setEditHistory(java.util.List.of(revision));
         when(storage.resolveAlouteMediaReference(url)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-old", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(null);
-        when(mongo.findById("image:aloute/post/post-old", ManagedMediaAsset.class)).thenReturn(null);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class)))
-                .thenReturn(UpdateResult.acknowledged(1L, 1L, null));
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.empty());
+        when(documentStore.findById("image:aloute/post/post-old", ManagedMediaAsset.class)).thenReturn(null);
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class)))
+                .thenReturn(new UpdateResult(1L, 1L));
 
         service.deletePostMedia(post);
 
-        verify(mongo).save(argThat((ManagedMediaAsset asset) ->
+        verify(documentStore).save(argThat((ManagedMediaAsset asset) ->
                 "image:aloute/post/post-old".equals(asset.getId())
                         && ManagedMediaAsset.DELETE_PENDING.equals(asset.getStatus())));
         verify(storage).deleteMedia("aloute/post/post-old", "image");
@@ -144,8 +144,8 @@ class MediaAssetLifecycleServiceTest {
                 "aloute/post/post-image", "image");
         when(storage.resolveAlouteMediaReference(transformed)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-image", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(null);
-        when(mongo.findById("image:aloute/post/post-image", ManagedMediaAsset.class)).thenReturn(asset);
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.empty());
+        when(documentStore.findById("image:aloute/post/post-image", ManagedMediaAsset.class)).thenReturn(asset);
 
         assertThrows(BadRequestException.class,
                 () -> service.validatePostMediaUrl(transformed, null, "7"));
@@ -176,7 +176,7 @@ class MediaAssetLifecycleServiceTest {
         deleted.setStatus(ManagedMediaAsset.DELETED);
         when(storage.resolveAlouteMediaReference(url)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-image", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(deleted);
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.of(deleted));
         Post post = new Post();
         post.setImageUrl(url);
 
@@ -191,7 +191,7 @@ class MediaAssetLifecycleServiceTest {
         asset.setUploaderId("8");
         when(storage.resolveAlouteMediaReference(url)).thenReturn(
                 Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-image", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(asset);
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.of(asset));
 
         assertThrows(BadRequestException.class,
                 () -> service.requirePurposeUrl(url, UploadPurpose.POST, "7", "image", "video"));
@@ -206,7 +206,7 @@ class MediaAssetLifecycleServiceTest {
 
         assertDoesNotThrow(() -> service.deletePostMedia(post));
         verify(storage, never()).deleteMedia(anyString(), anyString());
-        verify(mongo, never()).save(any(ManagedMediaAsset.class));
+        verify(documentStore, never()).save(any(ManagedMediaAsset.class));
     }
 
     @Test
@@ -216,9 +216,9 @@ class MediaAssetLifecycleServiceTest {
                 "url", url, "publicId", "aloute/avatar/rejected", "resourceType", "image");
         when(storage.resolveAlouteMediaReference(url)).thenReturn(Optional.of(
                 new ImageStorageService.ManagedMediaReference("aloute/avatar/rejected", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(null);
-        when(mongo.findById("image:aloute/avatar/rejected", ManagedMediaAsset.class)).thenReturn(null);
-        when(mongo.save(any(ManagedMediaAsset.class))).thenThrow(new IllegalStateException("mongo down"));
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.empty());
+        when(documentStore.findById("image:aloute/avatar/rejected", ManagedMediaAsset.class)).thenReturn(null);
+        when(documentStore.save(any(ManagedMediaAsset.class))).thenThrow(new IllegalStateException("documentStore down"));
 
         service.deleteRejectedUpload(uploaded);
 
@@ -234,19 +234,19 @@ class MediaAssetLifecycleServiceTest {
         hidden.setModerationStatus(com.aloute.model.document.ModerationStatus.HIDDEN);
         ManagedMediaAsset asset = attachedAsset(
                 "image:aloute/post/hidden", url, "aloute/post/hidden", "image");
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(java.util.List.of(hidden));
-        when(mongo.find(any(Query.class), eq(ManagedMediaAsset.class)))
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(java.util.List.of(hidden));
+        when(documentStore.find(any(Query.class), eq(ManagedMediaAsset.class)))
                 .thenReturn(java.util.List.of(), java.util.List.of());
         when(storage.resolveAlouteMediaReference(url)).thenReturn(Optional.of(
                 new ImageStorageService.ManagedMediaReference("aloute/post/hidden", "image")));
-        when(mongo.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(asset);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
-                .thenReturn(UpdateResult.acknowledged(1L, 1L, null));
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.of(asset));
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
+                .thenReturn(new UpdateResult(1L, 1L));
 
         service.cleanupOrphanedUploadsAndPendingDeletes();
 
-        verify(mongo).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
-        verify(mongo).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
+        verify(documentStore).updateFirst(any(Query.class), any(Update.class), eq(Post.class));
+        verify(documentStore).updateFirst(any(Query.class), any(Update.class), eq(ManagedMediaAsset.class));
     }
 
     private ManagedMediaAsset attachedAsset(String id, String url, String publicId, String resourceType) {

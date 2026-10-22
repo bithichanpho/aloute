@@ -1,14 +1,12 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
-@Document(collection = "likes")
-@CompoundIndex(name = "post_user_unique", def = "{'postId': 1, 'userId': 1}", unique = true)
-@CompoundIndex(name = "like_user_created", def = "{'userId': 1, 'createdAt': -1}")
+@PgDocument(collection = "likes")
 public class Like {
 
     @Id private String id;

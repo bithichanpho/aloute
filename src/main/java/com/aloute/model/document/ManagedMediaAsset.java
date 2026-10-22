@@ -1,10 +1,8 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.CompoundIndexes;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
@@ -14,13 +12,7 @@ import java.time.LocalDateTime;
  * The legacy collection name is deliberately retained so existing post-media records remain
  * visible after this model is generalized to cover chat, community and avatar uploads as well.
  */
-@Document(collection = "post_media_assets")
-@CompoundIndexes({
-    @CompoundIndex(name = "post_media_status_uploaded", def = "{'status': 1, 'uploadedAt': 1}"),
-    @CompoundIndex(name = "post_media_status_updated", def = "{'status': 1, 'updatedAt': 1}"),
-    @CompoundIndex(name = "post_media_purpose_uploader", def = "{'purpose': 1, 'uploaderId': 1}"),
-    @CompoundIndex(name = "post_media_post_status", def = "{'postId': 1, 'status': 1}")
-})
+@PgDocument(collection = "post_media_assets")
 public class ManagedMediaAsset {
     public static final String UPLOADED = "UPLOADED";
     public static final String ATTACHED = "ATTACHED";
@@ -30,7 +22,6 @@ public class ManagedMediaAsset {
     @Id
     private String id;
 
-    @Indexed
     private String url;
     private String publicId;
     private String resourceType;

@@ -11,9 +11,9 @@ import com.aloute.repository.IUserRepository;
 import com.aloute.repository.DailyCountProjection;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
 
@@ -31,19 +31,19 @@ public class HostDashboardService {
     private static final long MAX_RANGE_DAYS = 366;
     private final IUserRepository users;
     private final ICommunityRepository communities;
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final PresenceService presence;
     private final ZoneId zoneId;
 
     public HostDashboardService(
             IUserRepository users,
             ICommunityRepository communities,
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             PresenceService presence,
             @Value("${app.time-zone:Asia/Bangkok}") String timeZone) {
         this.users = users;
         this.communities = communities;
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.presence = presence;
         this.zoneId = ZoneId.of(timeZone);
     }
@@ -73,9 +73,9 @@ public class HostDashboardService {
         return new HostDashboardResponse(
                 userStats.getTotalUsers(),
                 userStats.getNewUsersToday(),
-                mongo.count(new Query(), Post.class),
-                mongo.count(new Query(), Comment.class),
-                mongo.count(Query.query(Criteria.where("status").is("OPEN")), ContentReport.class),
+                documentStore.count(new Query(), Post.class),
+                documentStore.count(new Query(), Comment.class),
+                documentStore.count(Query.query(Criteria.where("status").is("OPEN")), ContentReport.class),
                 userStats.getLockedAccounts(),
                 presence.countOnlineUsers(),
                 communityStats.getTotalCommunities(),

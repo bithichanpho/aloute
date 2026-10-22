@@ -1,7 +1,9 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 @lombok.Data
-@org.springframework.data.mongodb.core.mapping.Document
+@PgDocument(collection = "post_revisions")
 public class PostRevision {
     @org.springframework.data.annotation.Id private String id;
     private String postId;

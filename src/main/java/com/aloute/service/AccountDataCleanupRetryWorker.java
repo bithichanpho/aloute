@@ -5,15 +5,15 @@ import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.FindAndModifyOptions;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-/** Claims and retries durable account cleanup jobs after crashes or transient Mongo failures. */
+/** Claims and retries durable account cleanup jobs after crashes or transient PostgreSQL failures. */
 @Service
 public class AccountDataCleanupRetryWorker {
     private static final Logger log = LoggerFactory.getLogger(AccountDataCleanupRetryWorker.class);
@@ -21,11 +21,11 @@ public class AccountDataCleanupRetryWorker {
     private static final long CLAIM_LEASE_SECONDS = 300;
     private static final long MAX_BACKOFF_SECONDS = 6 * 60 * 60;
 
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final AccountDataCleanupService cleanupService;
 
-    public AccountDataCleanupRetryWorker(MongoTemplate mongo, AccountDataCleanupService cleanupService) {
-        this.mongo = mongo;
+    public AccountDataCleanupRetryWorker(PostgresDocumentStore documentStore, AccountDataCleanupService cleanupService) {
+        this.documentStore = documentStore;
         this.cleanupService = cleanupService;
     }
 
@@ -38,7 +38,7 @@ public class AccountDataCleanupRetryWorker {
             try {
                 job = claimOneDueJob();
             } catch (RuntimeException claimFailure) {
-                // The retry record remains durable in Mongo. A later scheduled pass will retry
+                // The retry record remains durable in PostgreSQL. A later scheduled pass will retry
                 // the claim when the database is reachable again.
                 log.warn("Unable to claim account cleanup retry job (cause={})",
                         claimFailure.getClass().getSimpleName());
@@ -54,7 +54,7 @@ public class AccountDataCleanupRetryWorker {
         Query due = Query.query(Criteria.where("nextAttemptAt").lte(now))
                 .with(Sort.by(Sort.Direction.ASC, "nextAttemptAt"));
         Update claim = new Update().set("nextAttemptAt", now.plusSeconds(CLAIM_LEASE_SECONDS));
-        return mongo.findAndModify(
+        return documentStore.findAndModify(
                 due,
                 claim,
                 FindAndModifyOptions.options().returnNew(true),
@@ -65,7 +65,7 @@ public class AccountDataCleanupRetryWorker {
         try {
             cleanupService.deleteUserData(
                     job.getUserId(), job.getPreviousAvatarUrl(), job.getPreviousCoverUrl());
-            mongo.remove(Query.query(Criteria.where("_id").is(job.getId())), AccountCleanupJob.class);
+            documentStore.remove(Query.query(Criteria.where("_id").is(job.getId())), AccountCleanupJob.class);
             log.info("Account cleanup retry succeeded (userId={}, attempts={})",
                     job.getUserId(), job.getAttemptCount());
         } catch (RuntimeException failure) {
@@ -76,7 +76,7 @@ public class AccountDataCleanupRetryWorker {
             job.setLastErrorType(failure.getClass().getSimpleName());
             job.setNextAttemptAt(Instant.now().plusSeconds(delay));
             try {
-                mongo.save(job);
+                documentStore.save(job);
                 log.error("Account cleanup retry failed; next retry scheduled (userId={}, attempts={}, delaySeconds={}, cause={})",
                         job.getUserId(), attempts, delay, job.getLastErrorType());
             } catch (RuntimeException persistenceFailure) {

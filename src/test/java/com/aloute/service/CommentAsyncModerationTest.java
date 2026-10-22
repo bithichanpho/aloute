@@ -27,7 +27,7 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -48,7 +48,7 @@ class CommentAsyncModerationTest {
         moderation = mock(ModerationService.class);
         persistence = mock(CommentPersistenceService.class);
         coordinator = mock(CommentModerationCoordinator.class);
-        service = new CommentService(comments, mock(PostService.class), users, mock(MongoTemplate.class),
+        service = new CommentService(comments, mock(PostService.class), users, mock(PostgresDocumentStore.class),
                 persistence, access, moderation, mock(AuthRateLimitService.class), coordinator);
 
         User viewer = new User();

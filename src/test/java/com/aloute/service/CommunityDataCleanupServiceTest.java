@@ -25,14 +25,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 class CommunityDataCleanupServiceTest {
     @Test
     void removesCommunityContentDependenciesAndQueuesMediaDeletion() {
-        MongoTemplate mongo = mock(MongoTemplate.class);
-        MongoTransactionRetryExecutor transactions = mock(MongoTransactionRetryExecutor.class);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
+        PostgresTransactionRetryExecutor transactions = mock(PostgresTransactionRetryExecutor.class);
         MediaAssetLifecycleService media = mock(MediaAssetLifecycleService.class);
         INotificationRepository notifications = mock(INotificationRepository.class);
         INotificationOutboxRepository outbox = mock(INotificationOutboxRepository.class);
@@ -47,13 +48,14 @@ class CommunityDataCleanupServiceTest {
         comment.setPostId("post-1");
 
         AtomicBoolean postsReturned = new AtomicBoolean();
-        when(mongo.find(any(Query.class), eq(Post.class))).thenAnswer(invocation -> {
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
-            if (query.getQueryObject().containsKey("repostOfId")) return List.of();
+            if (query.criteria() != null && query.criteria().nodes().stream()
+                    .anyMatch(node -> containsField(node, "repostOfId"))) return List.of();
             return postsReturned.getAndSet(true) ? List.of() : List.of(post);
         });
         AtomicBoolean commentsReturned = new AtomicBoolean();
-        when(mongo.find(any(Query.class), eq(Comment.class))).thenAnswer(invocation ->
+        when(documentStore.find(any(Query.class), eq(Comment.class))).thenAnswer(invocation ->
                 commentsReturned.getAndSet(true) ? List.of() : List.of(comment));
         when(transactions.execute(any())).thenAnswer(invocation -> {
             Supplier<?> work = invocation.getArgument(0);
@@ -61,7 +63,7 @@ class CommunityDataCleanupServiceTest {
         });
 
         CommunityDataCleanupService service = new CommunityDataCleanupService(
-                mongo, transactions, media, notifications, outbox, cache);
+                documentStore, transactions, media, notifications, outbox, cache);
         service.deleteCommunityData(42L, "avatar", "cover");
 
         @SuppressWarnings("unchecked")
@@ -69,14 +71,14 @@ class CommunityDataCleanupServiceTest {
         verify(notifications).deleteByReferenceIdIn(postIds.capture());
         assertEquals(List.of("post-1"), postIds.getValue());
         verify(outbox).deleteByReferenceIdIn(List.of("post-1"));
-        verify(mongo).remove(any(Query.class), eq(CommentReaction.class));
-        verify(mongo).remove(any(Query.class), eq(Comment.class));
-        verify(mongo).remove(any(Query.class), eq(Like.class));
-        verify(mongo).remove(any(Query.class), eq(Repost.class));
-        verify(mongo).remove(any(Query.class), eq(SavedPost.class));
-        verify(mongo).remove(any(Query.class), eq(PostRevision.class));
-        verify(mongo, atLeastOnce()).remove(any(Query.class), eq(ContentReport.class));
-        verify(mongo).remove(any(Query.class), eq(Post.class));
+        verify(documentStore).remove(any(Query.class), eq(CommentReaction.class));
+        verify(documentStore).remove(any(Query.class), eq(Comment.class));
+        verify(documentStore).remove(any(Query.class), eq(Like.class));
+        verify(documentStore).remove(any(Query.class), eq(Repost.class));
+        verify(documentStore).remove(any(Query.class), eq(SavedPost.class));
+        verify(documentStore).remove(any(Query.class), eq(PostRevision.class));
+        verify(documentStore, atLeastOnce()).remove(any(Query.class), eq(ContentReport.class));
+        verify(documentStore).remove(any(Query.class), eq(Post.class));
         verify(media).queuePostMediaDeletion(post);
         verify(media).deleteIfUnreferenced("avatar");
         verify(media).deleteIfUnreferenced("cover");
@@ -86,14 +88,14 @@ class CommunityDataCleanupServiceTest {
     }
 
     @Test
-    void doesNotDeleteMediaOrCacheWhenMongoCleanupFails() {
-        MongoTemplate mongo = mock(MongoTemplate.class);
-        when(mongo.find(any(Query.class), eq(Post.class)))
-                .thenThrow(new IllegalStateException("mongo unavailable"));
+    void doesNotDeleteMediaOrCacheWhenPostgresCleanupFails() {
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
+        when(documentStore.find(any(Query.class), eq(Post.class)))
+                .thenThrow(new IllegalStateException("documentStore unavailable"));
         MediaAssetLifecycleService media = mock(MediaAssetLifecycleService.class);
         FeedCacheInvalidator cache = mock(FeedCacheInvalidator.class);
         CommunityDataCleanupService service = new CommunityDataCleanupService(
-                mongo, null, media, mock(INotificationRepository.class),
+                documentStore, null, media, mock(INotificationRepository.class),
                 mock(INotificationOutboxRepository.class), cache);
 
         org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
@@ -102,4 +104,17 @@ class CommunityDataCleanupServiceTest {
         verify(media, never()).deleteIfUnreferenced(any());
         verify(cache, never()).invalidateAll();
     }
+    private static boolean containsField(Criteria.Node node, String field) {
+        if (node instanceof Criteria.ComparisonNode comparison) {
+            return field.equals(comparison.field());
+        }
+        if (node instanceof Criteria.TextNode text) {
+            return field.equals(text.field());
+        }
+        if (node instanceof Criteria.LogicalNode logical) {
+            return logical.children().stream().anyMatch(child -> containsField(child, field));
+        }
+        return false;
+    }
+
 }

@@ -13,10 +13,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -31,14 +31,14 @@ import java.util.Set;
 /**
  * Single lifecycle owner for all Cloudinary assets managed by ALOUTE.
  *
- * The legacy Mongo collection name remains `post_media_assets` to preserve the post-media ledger
+ * The legacy PostgreSQL document collection name remains `post_media_assets` to preserve the post-media ledger
  * already written by previous builds. New records include purpose/uploader/reference metadata.
  */
 @Service
 public class MediaAssetLifecycleService {
     private static final Logger log = LoggerFactory.getLogger(MediaAssetLifecycleService.class);
 
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final ImageStorageService storage;
     private final IUserRepository users;
     private final ICommunityRepository communities;
@@ -47,14 +47,14 @@ public class MediaAssetLifecycleService {
     private final int deletedRetentionDays;
 
     public MediaAssetLifecycleService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             ImageStorageService storage,
             IUserRepository users,
             ICommunityRepository communities,
             @Value("${app.media.cleanup.scan-limit:100}") int scanLimit,
             @Value("${app.media.cleanup.orphan-age-hours:2}") int orphanAgeHours,
             @Value("${app.media.cleanup.deleted-retention-days:30}") int deletedRetentionDays) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.storage = storage;
         this.users = users;
         this.communities = communities;
@@ -85,7 +85,7 @@ public class MediaAssetLifecycleService {
         }
 
         String id = resourceType + ":" + publicId;
-        ManagedMediaAsset existing = mongo.findById(id, ManagedMediaAsset.class);
+        ManagedMediaAsset existing = documentStore.findById(id, ManagedMediaAsset.class);
         if (existing != null) {
             if (ManagedMediaAsset.DELETED.equals(existing.getStatus())) {
                 throw new BadRequestException("Cloudinary public ID này đã bị thu hồi; vui lòng tải tệp khác");
@@ -109,7 +109,7 @@ public class MediaAssetLifecycleService {
         LocalDateTime now = LocalDateTime.now();
         asset.setUploadedAt(now);
         asset.setUpdatedAt(now);
-        mongo.save(asset);
+        documentStore.save(asset);
     }
 
     /** Require a tracked, original URL uploaded by this user for this exact purpose. */
@@ -188,7 +188,7 @@ public class MediaAssetLifecycleService {
                 .set("updatedAt", LocalDateTime.now());
         if (postId == null) update.unset("postId");
         else update.set("postId", postId);
-        mongo.updateFirst(query, update, ManagedMediaAsset.class);
+        documentStore.updateFirst(query, update, ManagedMediaAsset.class);
     }
 
     /** Block APPROVE after HIDE already caused an asset to be deleted or queued for deletion. */
@@ -213,7 +213,7 @@ public class MediaAssetLifecycleService {
 
     /**
      * Persist deletion tombstones without performing Cloudinary I/O. Call this after removing the
-     * post inside the same Mongo transaction; the scheduled lifecycle worker performs the external
+     * post inside the same PostgreSQL transaction; the scheduled lifecycle worker performs the external
      * deletion after commit and retries failures from the durable ledger.
      */
     public void queuePostMediaDeletion(Post post) {
@@ -221,7 +221,7 @@ public class MediaAssetLifecycleService {
         for (String url : postMediaUrls(post)) queueDelete(url, post.getId(), true);
     }
 
-    /** Queue deletion without external I/O; intended for use inside the owner's Mongo transaction. */
+    /** Queue deletion without external I/O; intended for use inside the owner's PostgreSQL transaction. */
     public void queueUnreferencedDeletion(String url) {
         queueDelete(url, null, true);
     }
@@ -233,7 +233,7 @@ public class MediaAssetLifecycleService {
     public void queueHiddenPostMedia(Post post) {
         if (post == null || post.getId() == null) return;
         queuePostMediaDeletion(post);
-        mongo.updateFirst(Query.query(new Criteria().andOperator(
+        documentStore.updateFirst(Query.query(new Criteria().andOperator(
                         Criteria.where("_id").is(post.getId()),
                         Criteria.where("moderationStatus").is(ModerationStatus.HIDDEN))),
                 new Update().set("mediaCleanupQueuedAt", LocalDateTime.now()), Post.class);
@@ -284,7 +284,7 @@ public class MediaAssetLifecycleService {
         if (hasActiveReference(normalized, deletingPostId)) {
             ManagedMediaAsset shared = findTrackedAsset(normalized, reference);
             if (shared != null && !ManagedMediaAsset.DELETED.equals(shared.getStatus())) {
-                mongo.updateFirst(Query.query(Criteria.where("_id").is(shared.getId())),
+                documentStore.updateFirst(Query.query(Criteria.where("_id").is(shared.getId())),
                         new Update().set("status", ManagedMediaAsset.ATTACHED)
                                 .set("updatedAt", LocalDateTime.now()), ManagedMediaAsset.class);
             }
@@ -306,7 +306,7 @@ public class MediaAssetLifecycleService {
             asset.setUploadedAt(LocalDateTime.now());
             asset.setUpdatedAt(LocalDateTime.now());
             try {
-                mongo.save(asset);
+                documentStore.save(asset);
             } catch (RuntimeException duplicateOrStoreError) {
                 ManagedMediaAsset existing = findTrackedAsset(normalized, reference);
                 if (existing == null) {
@@ -320,7 +320,7 @@ public class MediaAssetLifecycleService {
             }
         }
         if (ManagedMediaAsset.DELETED.equals(asset.getStatus())) return null;
-        mongo.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
+        documentStore.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
                 new Update().set("status", ManagedMediaAsset.DELETE_PENDING)
                         .set("updatedAt", LocalDateTime.now()), ManagedMediaAsset.class);
         asset.setStatus(ManagedMediaAsset.DELETE_PENDING);
@@ -340,7 +340,7 @@ public class MediaAssetLifecycleService {
                 new Criteria().andOperator(
                         Criteria.where("status").is(ManagedMediaAsset.UPLOADED),
                         Criteria.where("uploadedAt").lte(cutoff)));
-        List<ManagedMediaAsset> candidates = mongo.find(
+        List<ManagedMediaAsset> candidates = documentStore.find(
                 Query.query(work)
                         .with(Sort.by(Sort.Order.asc("updatedAt"), Sort.Order.asc("uploadedAt")))
                         .limit(scanLimit),
@@ -360,7 +360,7 @@ public class MediaAssetLifecycleService {
 
         // Retain tombstones while any post (including HIDDEN posts) still refers to the URL, so
         // APPROVE remains blocked after deletion. Purge only unreferenced, old tombstones.
-        List<ManagedMediaAsset> oldTombstones = mongo.find(
+        List<ManagedMediaAsset> oldTombstones = documentStore.find(
                 Query.query(new Criteria().andOperator(
                         Criteria.where("status").is(ManagedMediaAsset.DELETED),
                         Criteria.where("deletedAt").lt(now.minusDays(deletedRetentionDays))))
@@ -368,13 +368,13 @@ public class MediaAssetLifecycleService {
                 ManagedMediaAsset.class);
         for (ManagedMediaAsset asset : oldTombstones) {
             if (!hasAnyPostReference(asset.getUrl()) && !hasNonPostReference(asset.getUrl())) {
-                mongo.remove(Query.query(Criteria.where("_id").is(asset.getId())), ManagedMediaAsset.class);
+                documentStore.remove(Query.query(Criteria.where("_id").is(asset.getId())), ManagedMediaAsset.class);
             }
         }
     }
 
     private void reconcileHiddenPostMedia() {
-        List<Post> hidden = mongo.find(
+        List<Post> hidden = documentStore.find(
                 Query.query(new Criteria().andOperator(
                                 Criteria.where("moderationStatus").is(ModerationStatus.HIDDEN),
                                 Criteria.where("mediaCleanupQueuedAt").is(null)))
@@ -400,12 +400,12 @@ public class MediaAssetLifecycleService {
                     .set("attachedToType", "POST")
                     .set("attachedToId", post.getId())
                     .set("postId", post.getId());
-        } else if (mongo.exists(Query.query(Criteria.where("mediaUrl").is(asset.getUrl())), ChatMessage.class)) {
+        } else if (documentStore.exists(Query.query(Criteria.where("mediaUrl").is(asset.getUrl())), ChatMessage.class)) {
             update.set("attachedToType", "CHAT_MESSAGE");
         } else {
             update.set("attachedToType", "OTHER");
         }
-        mongo.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())), update, ManagedMediaAsset.class);
+        documentStore.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())), update, ManagedMediaAsset.class);
     }
 
     private boolean hasActiveReference(String url, String excludedPostId) {
@@ -415,7 +415,7 @@ public class MediaAssetLifecycleService {
 
     private boolean hasNonPostReference(String url) {
         if (url == null || url.isBlank()) return false;
-        if (mongo.exists(Query.query(Criteria.where("mediaUrl").is(url)), ChatMessage.class)) return true;
+        if (documentStore.exists(Query.query(Criteria.where("mediaUrl").is(url)), ChatMessage.class)) return true;
         return users.existsByAvatarUrl(url)
                 || users.existsByCoverUrl(url)
                 || communities.existsByAvatarUrl(url)
@@ -424,7 +424,7 @@ public class MediaAssetLifecycleService {
 
     private boolean hasAnyPostReference(String url) {
         if (url == null || url.isBlank()) return false;
-        return mongo.exists(Query.query(new Criteria().orOperator(
+        return documentStore.exists(Query.query(new Criteria().orOperator(
                 Criteria.where("imageUrl").is(url), Criteria.where("videoUrl").is(url),
                 Criteria.where("editHistory.imageUrl").is(url), Criteria.where("editHistory.videoUrl").is(url))),
                 Post.class);
@@ -440,26 +440,28 @@ public class MediaAssetLifecycleService {
         clauses.add(new Criteria().orOperator(
                 Criteria.where("imageUrl").is(url), Criteria.where("videoUrl").is(url),
                 Criteria.where("editHistory.imageUrl").is(url), Criteria.where("editHistory.videoUrl").is(url)));
-        return mongo.findOne(Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new))), Post.class);
+        return documentStore.findOne(Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new))), Post.class)
+                .orElse(null);
     }
 
     private ManagedMediaAsset findTrackedAsset(
             String url, ImageStorageService.ManagedMediaReference reference) {
-        ManagedMediaAsset asset = mongo.findOne(Query.query(Criteria.where("url").is(url)), ManagedMediaAsset.class);
+        ManagedMediaAsset asset = documentStore.findOne(
+                Query.query(Criteria.where("url").is(url)), ManagedMediaAsset.class).orElse(null);
         if (asset != null || reference == null) return asset;
-        return mongo.findById(reference.resourceType() + ":" + reference.publicId(), ManagedMediaAsset.class);
+        return documentStore.findById(reference.resourceType() + ":" + reference.publicId(), ManagedMediaAsset.class);
     }
 
     private void attemptDelete(ManagedMediaAsset asset) {
         try {
             storage.deleteMedia(asset.getPublicId(), asset.getResourceType());
-            mongo.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
+            documentStore.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
                     new Update().set("status", ManagedMediaAsset.DELETED)
                             .set("deletedAt", LocalDateTime.now())
                             .set("updatedAt", LocalDateTime.now())
                             .unset("lastDeleteError"), ManagedMediaAsset.class);
         } catch (IOException | RuntimeException failure) {
-            mongo.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
+            documentStore.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),
                     new Update().set("status", ManagedMediaAsset.DELETE_PENDING)
                             .set("lastDeleteError", failure.getClass().getSimpleName())
                             .set("updatedAt", LocalDateTime.now())

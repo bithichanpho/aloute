@@ -6,7 +6,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /**
  * Runs side effects only after the active local transaction commits.
  *
- * <p>This does not create a distributed transaction across PostgreSQL and MongoDB. It is for
+ * <p>This does not create a distributed transaction across PostgreSQL and PostgreSQL. It is for
  * deferring WebSocket, push, notification, and external-storage side effects until the store
  * responsible for the primary write has committed.
  */

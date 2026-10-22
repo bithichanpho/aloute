@@ -24,10 +24,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.stereotype.Service;
 
 /** Maps repost relationships into bounded actor previews and cursor pages. */
@@ -38,22 +38,22 @@ public class RepostPresentationService {
     private final IRepostRepository repostRepository;
     private final IPostRepository postRepository;
     private final IUserRepository userRepository;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
 
     public RepostPresentationService(
             IRepostRepository repostRepository,
             IPostRepository postRepository,
             IUserRepository userRepository,
-            MongoTemplate mongoTemplate) {
+            PostgresDocumentStore documentStore) {
         this.repostRepository = repostRepository;
         this.postRepository = postRepository;
         this.userRepository = userRepository;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
     }
 
     /**
      * Enriches a feed page using the three reposter ids stored on each post. This keeps feed work
-     * bounded to one Mongo batch and one SQL batch regardless of the total number of reposts.
+     * bounded to one PostgreSQL batch and one SQL batch regardless of the total number of reposts.
      */
     public void attachRecentReposters(List<PostResponse> responses) {
         if (responses == null || responses.isEmpty()) return;
@@ -77,7 +77,7 @@ public class RepostPresentationService {
             // an index-backed, bounded query instead of loading its complete repost history.
             if (previewIds.isEmpty() && post.getRepostCount() > 0) {
                 previewIds = recentReposterIds(postId);
-                mongoTemplate.updateFirst(
+                documentStore.updateFirst(
                         Query.query(Criteria.where("_id").is(postId)),
                         new Update().set("recentReposterIds", previewIds),
                         Post.class);
@@ -144,7 +144,7 @@ public class RepostPresentationService {
         Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                 .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
                 .limit(size + 1);
-        List<Repost> loaded = mongoTemplate.find(query, Repost.class);
+        List<Repost> loaded = documentStore.find(query, Repost.class);
         boolean hasMore = loaded.size() > size;
         List<Repost> page = hasMore ? loaded.subList(0, size) : loaded;
         String nextCursor =

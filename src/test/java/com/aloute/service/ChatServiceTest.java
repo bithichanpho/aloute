@@ -11,8 +11,8 @@ import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.Optional;
@@ -23,19 +23,19 @@ class ChatServiceTest {
     void cursorHistoryReturnsChronologicalItemsAndNextCursor() {
         IChatMessageRepository messages = mock(IChatMessageRepository.class);
         IUserRepository users = mock(IUserRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
         ContentAccessService access = mock(ContentAccessService.class);
         ChatMessage newest = chat("m3", "1", "newest");
         ChatMessage middle = chat("m2", "2", "middle");
         ChatMessage extra = chat("m1", "1", "extra");
-        when(mongo.find(any(Query.class), eq(ChatMessage.class)))
+        when(documentStore.find(any(Query.class), eq(ChatMessage.class)))
                 .thenReturn(new java.util.ArrayList<>(List.of(newest, middle, extra)));
         when(users.findAllById(org.mockito.ArgumentMatchers.<Iterable<Long>>any()))
                 .thenReturn(List.of(user(1L, "one"), user(2L, "two")));
         ChatService service = new ChatService(
                 messages, users, mock(IGroupReadStatusRepository.class), mock(GroupService.class),
                 mock(SimpMessagingTemplate.class), mock(FriendService.class),
-                mock(PresenceService.class), mongo, access, mock(PushNotificationService.class));
+                mock(PresenceService.class), documentStore, access, mock(PushNotificationService.class));
 
         var page = service.getMessagesByCursor(1L, 2L, null, 2);
 
@@ -73,7 +73,7 @@ class ChatServiceTest {
                         messaging,
                         mock(FriendService.class),
                         mock(PresenceService.class),
-                        mock(MongoTemplate.class),
+                        mock(PostgresDocumentStore.class),
                         access,
                         push);
 
@@ -132,7 +132,7 @@ class ChatServiceTest {
                 messaging,
                 mock(FriendService.class),
                 mock(PresenceService.class),
-                mock(MongoTemplate.class),
+                mock(PostgresDocumentStore.class),
                 access,
                 push);
 
@@ -168,7 +168,7 @@ class ChatServiceTest {
                 groups,
                 messaging,
                 mock(FriendService.class),
-                mock(MongoTemplate.class),
+                mock(PostgresDocumentStore.class),
                 mock(ContentAccessService.class),
                 mock(PushNotificationService.class),
                 mock(ConversationService.class),
@@ -207,7 +207,7 @@ class ChatServiceTest {
                 messaging,
                 mock(FriendService.class),
                 mock(PresenceService.class),
-                mock(MongoTemplate.class),
+                mock(PostgresDocumentStore.class),
                 mock(ContentAccessService.class),
                 mock(PushNotificationService.class));
 
@@ -224,12 +224,12 @@ class ChatServiceTest {
     void markingGroupReadAdvancesExistingCursorWithoutSelectingStatusFirst() {
         IGroupReadStatusRepository readStatuses = mock(IGroupReadStatusRepository.class);
         GroupService groups = mock(GroupService.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
         when(groups.isMember(10L, 1L)).thenReturn(true);
         when(readStatuses.updateLastReadAt(
                         eq(10L), eq(1L), any(java.time.LocalDateTime.class)))
                 .thenReturn(1);
-        when(mongo.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of());
+        when(documentStore.find(any(Query.class), eq(ChatMessage.class))).thenReturn(List.of());
         ChatService service =
                 new ChatService(
                         mock(IChatMessageRepository.class),
@@ -239,7 +239,7 @@ class ChatServiceTest {
                         mock(SimpMessagingTemplate.class),
                         mock(FriendService.class),
                         mock(PresenceService.class),
-                        mongo,
+                        documentStore,
                         mock(ContentAccessService.class),
                         mock(PushNotificationService.class));
 

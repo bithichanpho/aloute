@@ -9,20 +9,20 @@ import com.aloute.model.entity.*;
 import com.aloute.repository.*;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 import java.util.*;
 import java.util.stream.IntStream;
 
 class ContentAccessBatchTest {
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final IUserRepository users = mock(IUserRepository.class);
     private final IFriendRepository friends = mock(IFriendRepository.class);
     private final ICommunityRepository communities = mock(ICommunityRepository.class);
     private final ICommunityMemberRepository members = mock(ICommunityMemberRepository.class);
     private final ContentAccessService service =
-            new ContentAccessService(mongo, users, friends, communities, members);
+            new ContentAccessService(documentStore, users, friends, communities, members);
 
     @Test
     void publicBatchUsesTwoQueriesRegardlessOfPostCount() {
@@ -36,8 +36,8 @@ class ContentAccessBatchTest {
         assertEquals(120, batch.readable(posts).size());
         assertEquals(120, batch.readable(posts).size());
         verify(users, times(1)).findAllById(any());
-        verify(mongo, times(1)).find(any(Query.class), eq(UserBlock.class));
-        verifyNoMoreInteractions(users, mongo);
+        verify(documentStore, times(1)).find(any(Query.class), eq(UserBlock.class));
+        verifyNoMoreInteractions(users, documentStore);
         verifyNoInteractions(friends);
     }
 
@@ -57,7 +57,7 @@ class ContentAccessBatchTest {
         UserBlock block = new UserBlock();
         block.setOwnerId(3L);
         block.setTargetId(99L);
-        when(mongo.find(any(Query.class), eq(UserBlock.class))).thenReturn(List.of(block));
+        when(documentStore.find(any(Query.class), eq(UserBlock.class))).thenReturn(List.of(block));
         var posts =
                 List.of(
                         post(1, PostVisibility.PUBLIC),
@@ -78,9 +78,9 @@ class ContentAccessBatchTest {
         Post repost = post(2, PostVisibility.PUBLIC);
         repost.setRepostOfId("original");
         when(users.findAllById(any())).thenReturn(List.of(author(1, false), author(2, false)));
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(List.of(original));
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of(original));
         assertFalse(service.forPosts(List.of(repost), 2L).canRead(repost));
-        verify(mongo, never()).findById(anyString(), eq(Post.class));
+        verify(documentStore, never()).findById(anyString(), eq(Post.class));
     }
 
     @Test
@@ -167,7 +167,7 @@ class ContentAccessBatchTest {
         Post repost = post(2, PostVisibility.PUBLIC);
         repost.setRepostOfId("original");
         when(users.findAllById(any())).thenReturn(List.of(author(1, false), author(2, false)));
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(List.of(original));
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of(original));
         when(communities.findByIdIn(any())).thenReturn(List.of(community(10L, "PRIVATE")));
         when(members.findByUserIdAndCommunityIdIn(eq(7L), any())).thenReturn(List.of());
         assertFalse(service.forPosts(List.of(repost), 7L).canRead(repost));

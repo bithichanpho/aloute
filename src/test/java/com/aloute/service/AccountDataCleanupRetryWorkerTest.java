@@ -16,27 +16,27 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.FindAndModifyOptions;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 
 @ExtendWith(MockitoExtension.class)
 class AccountDataCleanupRetryWorkerTest {
-    @Mock private MongoTemplate mongo;
+    @Mock private PostgresDocumentStore documentStore;
     @Mock private AccountDataCleanupService cleanupService;
 
     private AccountDataCleanupRetryWorker worker;
 
     @BeforeEach
     void setUp() {
-        worker = new AccountDataCleanupRetryWorker(mongo, cleanupService);
+        worker = new AccountDataCleanupRetryWorker(documentStore, cleanupService);
     }
 
     @Test
     void removesRetryJobOnlyAfterCleanupSucceeds() {
         AccountCleanupJob job = job();
-        when(mongo.findAndModify(
+        when(documentStore.findAndModify(
                         any(Query.class), any(Update.class), any(FindAndModifyOptions.class),
                         eq(AccountCleanupJob.class)))
                 .thenReturn(job)
@@ -45,20 +45,20 @@ class AccountDataCleanupRetryWorkerTest {
         worker.retryDueJobs();
 
         verify(cleanupService).deleteUserData(42L, "avatar-url", "cover-url");
-        verify(mongo).remove(any(Query.class), eq(AccountCleanupJob.class));
+        verify(documentStore).remove(any(Query.class), eq(AccountCleanupJob.class));
     }
 
     @Test
     void persistsBackoffWhenCleanupFails() {
         AccountCleanupJob job = job();
-        when(mongo.findAndModify(
+        when(documentStore.findAndModify(
                         any(Query.class), any(Update.class), any(FindAndModifyOptions.class),
                         eq(AccountCleanupJob.class)))
                 .thenReturn(job)
                 .thenReturn(null);
         doThrow(new IllegalStateException("simulated cleanup failure"))
                 .when(cleanupService).deleteUserData(42L, "avatar-url", "cover-url");
-        when(mongo.save(job)).thenReturn(job);
+        when(documentStore.save(job)).thenReturn(job);
         Instant before = Instant.now();
 
         worker.retryDueJobs();
@@ -66,8 +66,8 @@ class AccountDataCleanupRetryWorkerTest {
         assertEquals(1, job.getAttemptCount());
         assertEquals("IllegalStateException", job.getLastErrorType());
         assertTrue(job.getNextAttemptAt().isAfter(before));
-        verify(mongo).save(job);
-        verify(mongo, never()).remove(any(Query.class), eq(AccountCleanupJob.class));
+        verify(documentStore).save(job);
+        verify(documentStore, never()).remove(any(Query.class), eq(AccountCleanupJob.class));
     }
 
     private AccountCleanupJob job() {

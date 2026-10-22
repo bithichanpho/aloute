@@ -7,7 +7,9 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: 8080
-      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/aloute_db?replicaSet=rs0}
+      # Containers cannot use localhost to reach a database on the host. Set COMPOSE_DB_URL
+      # to this Docker-reachable address, or to your managed PostgreSQL JDBC URL in production.
+      DB_URL: ${COMPOSE_DB_URL:-jdbc:postgresql://host.docker.internal:5432/aloute}
       REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379
       RATE_LIMIT_REDIS_REQUIRED: "true"
       MODERATION_SERVICE_URL: http://moderation:8000
@@ -52,8 +54,6 @@ services:
       moderation:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
-      mongo:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health >/dev/null 2>&1 || exit 1"]
@@ -141,22 +141,6 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     # No host port: Redis is accessible only to services on this Compose network.
 
-  mongo:
-    image: mongo:8
-    container_name: aloute-mongo
-    restart: unless-stopped
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-    volumes:
-      - aloute-mongo-data:/data/db
-    networks:
-      - aloute-backend
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval \"try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }\" | grep -q 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-
   turn:
     image: coturn/coturn:4.6-alpine
     container_name: aloute-turn
@@ -188,4 +172,3 @@ networks:
 
 volumes:
   aloute-redis-data:
-  aloute-mongo-data:

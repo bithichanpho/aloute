@@ -7,7 +7,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
-/** Durable PostgreSQL intent for deleting MongoDB data after a community is removed. */
+/** Durable PostgreSQL intent for deleting PostgreSQL data after a community is removed. */
 @Entity
 @Table(
         name = "community_cleanup_jobs",

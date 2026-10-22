@@ -10,10 +10,10 @@ import com.aloute.model.document.Post;
 import com.aloute.repository.ICommentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
@@ -23,7 +23,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Objects;
 
-/** Keeps a comment, post counter and parent reply counter atomic within MongoDB. */
+/** Keeps a comment, post counter and parent reply counter atomic within PostgreSQL. */
 @Service
 public class CommentPersistenceService {
 
@@ -31,20 +31,20 @@ public class CommentPersistenceService {
 
     private final ICommentRepository comments;
     private final PostService posts;
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final NotificationService notifications;
-    private final MongoTransactionRetryExecutor transactionRetryExecutor;
+    private final PostgresTransactionRetryExecutor transactionRetryExecutor;
 
     @Autowired
     public CommentPersistenceService(
             ICommentRepository comments,
             PostService posts,
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             NotificationService notifications,
-            MongoTransactionRetryExecutor transactionRetryExecutor) {
+            PostgresTransactionRetryExecutor transactionRetryExecutor) {
         this.comments = comments;
         this.posts = posts;
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.notifications = notifications;
         this.transactionRetryExecutor = transactionRetryExecutor;
     }
@@ -53,9 +53,9 @@ public class CommentPersistenceService {
     public CommentPersistenceService(
             ICommentRepository comments,
             PostService posts,
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             NotificationService notifications) {
-        this(comments, posts, mongo, notifications, null);
+        this(comments, posts, documentStore, notifications, null);
     }
 
     public Comment create(
@@ -128,7 +128,7 @@ public class CommentPersistenceService {
 
         if (parent != null) {
             if (countersApplied) {
-                mongo.updateFirst(
+                documentStore.updateFirst(
                         Query.query(Criteria.where("_id").is(parent.getId())),
                         new Update().inc("replyCount", 1),
                         Comment.class);
@@ -148,7 +148,7 @@ public class CommentPersistenceService {
     /**
      * Replaces an approved comment with a pending edit without leaving public counters inflated
      * while the edited content is hidden from everyone except its author. A write conflict retries
-     * in a new Mongo transaction, just like comment creation and deletion.
+     * in a new PostgreSQL transaction, just like comment creation and deletion.
      */
     public Comment updatePendingForModeration(Comment comment, String normalizedContent) {
         if (transactionRetryExecutor == null) {
@@ -179,13 +179,13 @@ public class CommentPersistenceService {
                 .unset("moderationFailureReason")
                 .set("notifyAfterModeration", false);
         if (publiclyCounted) update.set("moderationCountersApplied", false);
-        if (mongo.updateFirst(unchanged, update, Comment.class).getMatchedCount() == 0) {
+        if (documentStore.updateFirst(unchanged, update, Comment.class).getMatchedCount() == 0) {
             throw new BadRequestException("Bình luận vừa thay đổi. Hãy tải lại trước khi sửa.");
         }
         if (publiclyCounted) {
             posts.adjustCommentCount(comment.getPostId(), -1);
             if (comment.getParentCommentId() != null && !comment.getParentCommentId().isBlank()) {
-                mongo.updateFirst(Query.query(Criteria.where("_id").is(comment.getParentCommentId())),
+                documentStore.updateFirst(Query.query(Criteria.where("_id").is(comment.getParentCommentId())),
                         new Update().inc("replyCount", -1), Comment.class);
             }
         }

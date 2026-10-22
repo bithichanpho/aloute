@@ -8,6 +8,7 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
+      schema: ${DB_SCHEMA:public}
 
       # Keep this below the connection allowance of the PostgreSQL/Supabase pooler.
       # Ten connections per replica is a safer production starting point than five;
@@ -29,8 +30,6 @@ spring:
           time_zone: UTC
 
         default_schema: ${DB_SCHEMA:public}
-  mongodb:
-    uri: ${MONGO_URI}
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}

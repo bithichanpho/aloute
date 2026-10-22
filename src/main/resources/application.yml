@@ -57,6 +57,8 @@ spring:
 
   datasource:
     hikari:
+      # Keep raw JDBC queries (JSONB document store) on the same schema as Flyway/JPA.
+      schema: ${DB_SCHEMA:public}
       maximum-pool-size: ${DB_POOL_MAX:15}
       minimum-idle: ${DB_POOL_MIN:3}
       connection-timeout: 20000
@@ -65,9 +67,6 @@ spring:
       keepalive-time: 120000
 
   data:
-    mongodb:
-      # Production indexes are created by the explicit Mongo migration runner.
-      auto-index-creation: ${MONGO_AUTO_INDEX_CREATION:false}
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
 
@@ -75,7 +74,6 @@ spring:
     import:
       - optional:file:.env[.properties]
       - application-db.yml
-      - application-mongo.yml
       - application-jwt.yml
       - application-mail.yml
       - application-cloudinary.yml
@@ -109,9 +107,6 @@ app:
   host:
     username: ${APP_HOST_USERNAME:}
     bootstrap-enabled: ${APP_HOST_BOOTSTRAP_ENABLED:false}
-  mongo:
-    # Prefer deploy/migrations/mongo-indexes.js as an explicit deployment step.
-    run-index-migrations: ${MONGO_RUN_INDEX_MIGRATIONS:false}
   security:
     cookie-secure: ${APP_SECURITY_COOKIE_SECURE:false}
     refresh-token-days: ${APP_REFRESH_TOKEN_DAYS:30}

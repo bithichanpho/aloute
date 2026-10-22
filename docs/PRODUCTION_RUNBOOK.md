@@ -5,10 +5,10 @@
 1. Pin the exact Git commit or container image to deploy and keep the previous known-good version available.
 2. Run `./mvnw --batch-mode clean verify` on Java 21.
 3. Validate Compose without printing resolved secrets: `docker compose config --quiet`.
-4. Back up PostgreSQL and MongoDB with `deploy/backup-datastores.sh`, copy the artifacts off the application host, and verify their checksums.
+4. Back up PostgreSQL with `deploy/backup-sql.sh`, copy the artifacts off the application host, and verify their checksums.
 5. Review every new Flyway migration. Migrations must remain additive and compatible with both the new and immediately previous application version.
-6. Apply `deploy/migrations/mongo-indexes.js` once against the target MongoDB database. Keep `MONGO_AUTO_INDEX_CREATION=false` in production.
-7. Confirm Redis, RabbitMQ/STOMP, MongoDB replica-set health, PostgreSQL capacity and the public TURN address before scaling application replicas.
+6. Flyway applies PostgreSQL JSONB document-store indexes with the rest of the database schema; no separate document database/index step is required.
+7. Confirm Redis, RabbitMQ/STOMP, PostgreSQL capacity and the public TURN address before scaling application replicas.
 
 Required production values are documented in `.env.example`. Do not reuse the example values. Keep `.env` and the Firebase Admin service-account file outside Git.
 
@@ -31,7 +31,7 @@ After startup, verify these paths with test accounts on different application re
 - notification outbox delivery after temporarily interrupting Firebase access;
 - upload moderation and media cleanup.
 
-Monitor HTTP latency/error rate, Hikari pool usage, Mongo/Redis/RabbitMQ connection errors, outbox retry growth and moderation retry growth.
+Monitor HTTP latency/error rate, Hikari pool usage, PostgreSQL/Redis/RabbitMQ connection errors, outbox retry growth and moderation retry growth.
 
 ## Application rollback
 
@@ -44,7 +44,7 @@ Monitor HTTP latency/error rate, Hikari pool usage, Mongo/Redis/RabbitMQ connect
 ## Data recovery
 
 - PostgreSQL: inspect an artifact first with `pg_restore --list`, then restore into a new database and validate it before switching the application connection.
-- MongoDB: restore the archive into a new database/cluster with `mongorestore`, then run the explicit index migration and validate document counts.
+- PostgreSQL: restore the custom-format archive into a new database with `pg_restore`, apply Flyway migrations, and validate row counts for both relational tables and `app_document_records`.
 - Redis is an acceleration/coordination layer, not the system of record for posts, accounts or chat history. Losing Redis invalidates cache, presence and active call state; restart traffic only after rate limiting is healthy.
 - RabbitMQ carries real-time delivery. Durable notification intent remains in PostgreSQL, but clients must reconnect for transient chat/presence messages after a broker outage.
 

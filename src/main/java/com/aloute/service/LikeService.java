@@ -6,16 +6,16 @@ import com.aloute.dto.response.ReactionResponse;
 import com.aloute.model.document.Like;
 import com.aloute.model.document.Post;
 import com.aloute.repository.ILikeRepository;
-import com.mongodb.client.result.DeleteResult;
+import com.aloute.persistence.postgres.document.DeleteResult;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.stereotype.Service;
 import com.aloute.common.util.TransactionCommitHooks;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -31,22 +31,22 @@ public class LikeService {
     private final ILikeRepository likeRepository;
     private final PostService postService;
     private final NotificationService notificationService;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
     private final FeedCacheInvalidator feedCacheInvalidator;
-    private final MongoTransactionRetryExecutor transactionRetryExecutor;
+    private final PostgresTransactionRetryExecutor transactionRetryExecutor;
 
     @Autowired
     public LikeService(
             ILikeRepository likeRepository,
             PostService postService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             FeedCacheInvalidator feedCacheInvalidator,
-            MongoTransactionRetryExecutor transactionRetryExecutor) {
+            PostgresTransactionRetryExecutor transactionRetryExecutor) {
         this.likeRepository = likeRepository;
         this.postService = postService;
         this.notificationService = notificationService;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
         this.feedCacheInvalidator = feedCacheInvalidator;
         this.transactionRetryExecutor = transactionRetryExecutor;
     }
@@ -56,9 +56,9 @@ public class LikeService {
             ILikeRepository likeRepository,
             PostService postService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             FeedCacheInvalidator feedCacheInvalidator) {
-        this(likeRepository, postService, notificationService, mongoTemplate, feedCacheInvalidator, null);
+        this(likeRepository, postService, notificationService, documentStore, feedCacheInvalidator, null);
     }
 
     /** Compatibility constructor used by focused unit tests. */
@@ -66,8 +66,8 @@ public class LikeService {
             ILikeRepository likeRepository,
             PostService postService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate) {
-        this(likeRepository, postService, notificationService, mongoTemplate, null, null);
+            PostgresDocumentStore documentStore) {
+        this(likeRepository, postService, notificationService, documentStore, null, null);
     }
 
     public LikeResponse setLike(String postId, Long currentUserId, boolean desiredLiked) {
@@ -170,7 +170,7 @@ public class LikeService {
     private void removeReaction(String postId, Like existing) {
         Query query = Query.query(
                 Criteria.where("postId").is(postId).and("userId").is(existing.getUserId()));
-        DeleteResult result = mongoTemplate.remove(query, Like.class);
+        DeleteResult result = documentStore.remove(query, Like.class);
         if (result.getDeletedCount() > 0) {
             postService.adjustReactionCount(postId, existing.getReactionType(), -1);
         }
@@ -182,13 +182,13 @@ public class LikeService {
                 Long ownerId = Long.valueOf(post.getUserId());
                 notificationService.notify(ownerId, reactorId, "LIKE", post.getId(), "đã thích bài viết của bạn");
             } catch (RuntimeException notificationFailure) {
-                // This runs after Mongo commits. Never let notification failure make the caller
+                // This runs after PostgreSQL commits. Never let notification failure make the caller
                 // retry an already-committed reaction transaction.
                 log.warn("Like notification enqueue failed (cause={})",
                         notificationFailure.getClass().getSimpleName());
             }
         };
-        // NotificationService writes to PostgreSQL. Publish only after Mongo commits.
+        // NotificationService writes to PostgreSQL. Publish only after PostgreSQL commits.
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { notification.run(); }

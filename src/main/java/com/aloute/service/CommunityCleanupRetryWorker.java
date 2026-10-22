@@ -10,7 +10,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-/** Processes durable PostgreSQL cleanup intents and retries transient Mongo/media failures. */
+/** Processes durable PostgreSQL cleanup intents and retries transient PostgreSQL/media failures. */
 @Service
 public class CommunityCleanupRetryWorker {
     private static final Logger log = LoggerFactory.getLogger(CommunityCleanupRetryWorker.class);

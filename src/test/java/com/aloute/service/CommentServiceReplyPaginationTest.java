@@ -24,15 +24,15 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 class CommentServiceReplyPaginationTest {
     private ICommentRepository comments;
     private IUserRepository users;
-    private MongoTemplate mongo;
+    private PostgresDocumentStore documentStore;
     private ContentAccessService access;
     private CommentService service;
 
@@ -40,13 +40,13 @@ class CommentServiceReplyPaginationTest {
     void setUp() {
         comments = mock(ICommentRepository.class);
         users = mock(IUserRepository.class);
-        mongo = mock(MongoTemplate.class);
+        documentStore = mock(PostgresDocumentStore.class);
         access = mock(ContentAccessService.class);
         service = new CommentService(
                 comments,
                 mock(PostService.class),
                 users,
-                mongo,
+                documentStore,
                 mock(CommentPersistenceService.class),
                 access,
                 mock(ModerationService.class),
@@ -75,7 +75,7 @@ class CommentServiceReplyPaginationTest {
         when(users.findAllById(org.mockito.ArgumentMatchers.<Long>anyIterable()))
                 .thenReturn(List.of(user(2L, "parent-author"), user(3L, "reply-author")));
         when(access.visibleUserIds(eq(1L), any())).thenReturn(Set.of(2L, 3L));
-        when(mongo.find(any(Query.class), eq(Comment.class)))
+        when(documentStore.find(any(Query.class), eq(Comment.class)))
                 .thenReturn(List.of(first, second, third))
                 .thenReturn(List.of(third));
 

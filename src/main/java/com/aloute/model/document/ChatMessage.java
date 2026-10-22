@@ -1,41 +1,19 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
-@Document(collection = "chat_messages")
-@org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "conversation_sent_index",
-            def = "{'conversationId': 1, 'sentAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "chat_unread_sender",
-            def = "{'receiverId': 1, 'read': 1, 'senderId': 1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "chat_sender_sent",
-            def = "{'senderId': 1, 'sentAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "chat_receiver_sent",
-            def = "{'receiverId': 1, 'sentAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "chat_group_sent",
-            def = "{'groupId': 1, 'sentAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "chat_sender_client_id_unique",
-            def = "{'senderId': 1, 'clientId': 1}",
-            unique = true,
-            partialFilter = "{'clientId': {'$type': 'string'}}")
-})
+@PgDocument(collection = "chat_messages")
 public class ChatMessage {
 
     @Id private String id;
 
-    @Indexed private String conversationId;
+    private String conversationId;
 
     private String senderId;
     private String receiverId;

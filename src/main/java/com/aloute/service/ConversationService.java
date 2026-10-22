@@ -23,13 +23,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.bson.Document;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.aggregation.AggregationOperation;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.stereotype.Service;
 
 /** Read/query orchestration for the direct and group conversation inbox. */
@@ -44,7 +41,7 @@ public class ConversationService {
     private final GroupService groupService;
     private final FriendService friendService;
     private final PresenceService presenceService;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
     private final ContentAccessService access;
 
     public ConversationService(
@@ -53,14 +50,14 @@ public class ConversationService {
             GroupService groupService,
             FriendService friendService,
             PresenceService presenceService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             ContentAccessService access) {
         this.userRepository = userRepository;
         this.groupReadStatusRepository = groupReadStatusRepository;
         this.groupService = groupService;
         this.friendService = friendService;
         this.presenceService = presenceService;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
         this.access = access;
     }
 
@@ -164,27 +161,17 @@ public class ConversationService {
                 : new Criteria().orOperator(direct, Criteria.where("groupId").in(groupIds));
         Criteria visible = new Criteria().andOperator(
                 scope, Criteria.where("hiddenForUserIds").nin(userIdString));
-
-        List<AggregationOperation> operations = new ArrayList<>();
-        operations.add(Aggregation.match(visible));
-        operations.add(Aggregation.sort(Sort.by(
-                Sort.Order.desc("sentAt"), Sort.Order.desc("_id"))));
-        operations.add(Aggregation.group("conversationId")
-                .first(Aggregation.ROOT).as("latest"));
-        operations.add(Aggregation.replaceRoot("latest"));
+        Query after = new Query();
         if (cursor != null && !cursor.emptyPhase()) {
-            operations.add(Aggregation.match(new Criteria().orOperator(
+            after = Query.query(new Criteria().orOperator(
                     Criteria.where("sentAt").lt(cursor.sentAt()),
                     new Criteria().andOperator(
                             Criteria.where("sentAt").is(cursor.sentAt()),
-                            Criteria.where("_id").lt(cursor.id())))));
+                            Criteria.where("_id").lt(cursor.id()))));
         }
-        operations.add(Aggregation.sort(Sort.by(
-                Sort.Order.desc("sentAt"), Sort.Order.desc("_id"))));
-        operations.add(Aggregation.limit(limit));
-        return mongoTemplate.aggregate(
-                        Aggregation.newAggregation(operations), ChatMessage.class, ChatMessage.class)
-                .getMappedResults();
+        return documentStore.findLatestPerField(
+                Query.query(visible), "conversationId", after, ChatMessage.class,
+                Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id")), limit);
     }
 
     private List<ConversationResponse> mapLatestMessages(
@@ -274,13 +261,13 @@ public class ConversationService {
                 ? direct : new Criteria().orOperator(direct, Criteria.where("groupId").in(groupIds));
         Query query = Query.query(new Criteria().andOperator(
                 scope, Criteria.where("hiddenForUserIds").nin(userIdString)));
-        return new HashSet<>(mongoTemplate.findDistinct(
+        return new HashSet<>(documentStore.findDistinct(
                 query, "conversationId", ChatMessage.class, String.class));
     }
 
     private Set<Long> blockedPeerIds(Long userId) {
         Set<Long> blocked = new HashSet<>();
-        mongoTemplate.find(
+        documentStore.find(
                         Query.query(new Criteria().orOperator(
                                 Criteria.where("ownerId").is(userId),
                                 Criteria.where("targetId").is(userId))), UserBlock.class)
@@ -323,14 +310,12 @@ public class ConversationService {
                 blocked.stream().map(String::valueOf).toList()));
 
         Map<String, Long> raw = new HashMap<>();
-        mongoTemplate.aggregate(
-                        Aggregation.newAggregation(
-                                Aggregation.match(new Criteria().andOperator(
-                                        clauses.toArray(Criteria[]::new))),
-                                Aggregation.group("senderId").count().as("count")),
-                        ChatMessage.class, Document.class)
-                .forEach(document -> raw.put(
-                        document.getString("_id"), ((Number) document.get("count")).longValue()));
+        documentStore.countGroupedBy(
+                        Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new))),
+                        ChatMessage.class, "senderId")
+                .forEach((key, count) -> {
+                    if (!key.isEmpty() && key.get(0) != null) raw.put(key.get(0), count);
+                });
         Set<String> active = activeSenderIds(raw.keySet());
         raw.keySet().retainAll(active);
         return raw;
@@ -368,17 +353,13 @@ public class ConversationService {
                 return new Criteria().andOperator(clauses.toArray(Criteria[]::new));
             }).toArray(Criteria[]::new);
 
-            mongoTemplate.aggregate(
-                            Aggregation.newAggregation(
-                                    Aggregation.match(new Criteria().orOperator(filters)),
-                                    Aggregation.group("conversationId", "senderId")
-                                            .count().as("count")),
-                            ChatMessage.class, Document.class)
-                    .forEach(document -> {
-                        Document id = document.get("_id", Document.class);
-                        if (id != null) contributions.add(new UnreadContribution(
-                                id.getString("conversationId"), id.getString("senderId"),
-                                ((Number) document.get("count")).longValue()));
+            documentStore.countGroupedBy(
+                            Query.query(new Criteria().orOperator(filters)),
+                            ChatMessage.class, "conversationId", "senderId")
+                    .forEach((key, count) -> {
+                        if (key.size() >= 2 && key.get(0) != null && key.get(1) != null) {
+                            contributions.add(new UnreadContribution(key.get(0), key.get(1), count));
+                        }
                     });
         }
 

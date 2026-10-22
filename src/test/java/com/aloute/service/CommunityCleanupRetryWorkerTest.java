@@ -42,7 +42,7 @@ class CommunityCleanupRetryWorkerTest {
         CommunityCleanupJob job = job(8L);
         when(repository.findByNextAttemptAtLessThanEqualOrderByCreatedAtAsc(
                 any(LocalDateTime.class), any(Pageable.class))).thenReturn(List.of(job));
-        doThrow(new IllegalStateException("mongo unavailable"))
+        doThrow(new IllegalStateException("documentStore unavailable"))
                 .when(cleanup).deleteCommunityData(eq(8L), any(), any());
         LocalDateTime before = LocalDateTime.now();
 
@@ -52,7 +52,7 @@ class CommunityCleanupRetryWorkerTest {
         verify(repository).save(saved.capture());
         assertEquals(1, saved.getValue().getAttemptCount());
         assertNotNull(saved.getValue().getLastError());
-        assertTrue(saved.getValue().getLastError().contains("mongo unavailable"));
+        assertTrue(saved.getValue().getLastError().contains("documentStore unavailable"));
         assertTrue(saved.getValue().getNextAttemptAt().isAfter(before));
         verify(repository, never()).deleteById(8L);
     }

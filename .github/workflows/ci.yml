@@ -21,15 +21,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      mongo:
-        image: mongo:8
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
       redis:
         image: redis:7-alpine
         ports:
@@ -44,7 +35,6 @@ jobs:
       DB_USERNAME: aloute
       DB_PASSWORD: aloute
       DB_DDL_AUTO: create-drop
-      MONGO_URI: mongodb://localhost:27017/aloute_test
       REDIS_URL: redis://localhost:6379
       REDIS_CACHE_ENABLED: true
       RATE_LIMIT_REDIS_REQUIRED: true

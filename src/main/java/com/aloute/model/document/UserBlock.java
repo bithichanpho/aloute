@@ -1,7 +1,9 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 @lombok.Data
-@org.springframework.data.mongodb.core.mapping.Document
+@PgDocument(collection = "user_blocks")
 public class UserBlock {
     @org.springframework.data.annotation.Id private String id;
     private Long ownerId;

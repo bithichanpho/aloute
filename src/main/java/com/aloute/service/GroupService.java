@@ -226,7 +226,7 @@ public class GroupService {
         return groupRepository.findByIdIn(groupIds);
     }
 
-    /** Lightweight membership projection used by Mongo-backed inbox queries. */
+    /** Lightweight membership projection used by PostgreSQL-backed inbox queries. */
     @Transactional(readOnly = true)
     public List<Long> getAllMyGroupIds(Long userId) {
         return memberRepository.findGroupIdsByUserId(userId);

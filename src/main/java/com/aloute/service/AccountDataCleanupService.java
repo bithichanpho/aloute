@@ -19,14 +19,14 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-/** Mongo-side cleanup for account deletion. Chat history is retained but sender content/media is anonymized. */
+/** PostgreSQL-side cleanup for account deletion. Chat history is retained but sender content/media is anonymized. */
 @Service
 public class AccountDataCleanupService {
     private static final Logger log = LoggerFactory.getLogger(AccountDataCleanupService.class);
@@ -34,30 +34,30 @@ public class AccountDataCleanupService {
     private static final int COMMENT_BATCH_SIZE = 500;
     private static final int CHAT_BATCH_SIZE = 250;
 
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final MediaAssetLifecycleService mediaAssets;
-    private final MongoTransactionRetryExecutor transactions;
+    private final PostgresTransactionRetryExecutor transactions;
 
     @Autowired
     public AccountDataCleanupService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             MediaAssetLifecycleService mediaAssets,
-            MongoTransactionRetryExecutor transactions) {
-        this.mongo = mongo;
+            PostgresTransactionRetryExecutor transactions) {
+        this.documentStore = documentStore;
         this.mediaAssets = mediaAssets;
         this.transactions = transactions;
     }
 
     /** Compatibility constructor for isolated unit tests. */
-    public AccountDataCleanupService(MongoTemplate mongo, MediaAssetLifecycleService mediaAssets) {
-        this(mongo, mediaAssets, null);
+    public AccountDataCleanupService(PostgresDocumentStore documentStore, MediaAssetLifecycleService mediaAssets) {
+        this(documentStore, mediaAssets, null);
     }
 
     /** Persists cleanup work after a failed cleanup so a restart does not lose it. */
     public void enqueueRetry(Long userId, String previousAvatarUrl, String previousCoverUrl, RuntimeException failure) {
         if (userId == null) throw new IllegalArgumentException("userId is required for account cleanup");
         String jobId = String.valueOf(userId);
-        AccountCleanupJob job = mongo.findById(jobId, AccountCleanupJob.class);
+        AccountCleanupJob job = documentStore.findById(jobId, AccountCleanupJob.class);
         if (job == null) {
             job = new AccountCleanupJob();
             job.setId(jobId);
@@ -69,13 +69,13 @@ public class AccountDataCleanupService {
         job.setPreviousCoverUrl(previousCoverUrl);
         job.setLastErrorType(failure == null ? "UnknownFailure" : failure.getClass().getSimpleName());
         job.setNextAttemptAt(Instant.now());
-        mongo.save(job);
+        documentStore.save(job);
         log.warn("Persisted account cleanup retry (userId={}, cause={})", userId, job.getLastErrorType());
     }
 
     /**
      * Idempotent, bounded cleanup. Each pass only loads a small batch, so deleting an old and very
-     * active account cannot exhaust the heap or hold one oversized Mongo transaction open.
+     * active account cannot exhaust the heap or hold one oversized PostgreSQL transaction open.
      */
     public void deleteUserData(Long userId, String previousAvatarUrl, String previousCoverUrl) {
         if (userId == null) throw new IllegalArgumentException("userId is required for account cleanup");
@@ -84,16 +84,16 @@ public class AccountDataCleanupService {
         deletePostsInBatches(id);
         deleteCommentsInBatches(Criteria.where("userId").is(id));
 
-        mongo.remove(Query.query(Criteria.where("userId").is(id)), Like.class);
-        mongo.remove(Query.query(Criteria.where("userId").is(id)), Repost.class);
-        mongo.remove(Query.query(Criteria.where("userId").is(userId)), SavedPost.class);
-        mongo.remove(Query.query(Criteria.where("userId").is(userId)), CommentReaction.class);
-        mongo.remove(Query.query(new Criteria().orOperator(
+        documentStore.remove(Query.query(Criteria.where("userId").is(id)), Like.class);
+        documentStore.remove(Query.query(Criteria.where("userId").is(id)), Repost.class);
+        documentStore.remove(Query.query(Criteria.where("userId").is(userId)), SavedPost.class);
+        documentStore.remove(Query.query(Criteria.where("userId").is(userId)), CommentReaction.class);
+        documentStore.remove(Query.query(new Criteria().orOperator(
                 Criteria.where("ownerId").is(userId), Criteria.where("targetId").is(userId))), UserBlock.class);
-        mongo.remove(Query.query(new Criteria().orOperator(
+        documentStore.remove(Query.query(new Criteria().orOperator(
                 Criteria.where("followerId").is(userId), Criteria.where("targetId").is(userId))), FollowRequest.class);
-        mongo.remove(Query.query(Criteria.where("reporterId").is(userId)), ContentReport.class);
-        mongo.remove(Query.query(Criteria.where("_id").is(userId)), AccountSecurity.class);
+        documentStore.remove(Query.query(Criteria.where("reporterId").is(userId)), ContentReport.class);
+        documentStore.remove(Query.query(Criteria.where("_id").is(userId)), AccountSecurity.class);
 
         anonymizeChatInBatches(id);
         deleteIfUnreferenced(previousAvatarUrl, "avatar");
@@ -105,26 +105,26 @@ public class AccountDataCleanupService {
             Query batchQuery = Query.query(Criteria.where("userId").is(userId))
                     .with(Sort.by(Sort.Direction.ASC, "_id"))
                     .limit(POST_BATCH_SIZE);
-            List<Post> posts = mongo.find(batchQuery, Post.class);
+            List<Post> posts = documentStore.find(batchQuery, Post.class);
             if (posts.isEmpty()) return;
 
             List<String> postIds = posts.stream().map(Post::getId).filter(Objects::nonNull).toList();
             if (postIds.isEmpty()) {
-                mongo.remove(batchQuery, Post.class);
+                documentStore.remove(batchQuery, Post.class);
                 continue;
             }
 
             deleteCommentsInBatches(Criteria.where("postId").in(postIds));
-            inMongoTransaction(() -> {
+            inDatabaseTransaction(() -> {
                 Query byPost = Query.query(Criteria.where("postId").in(postIds));
-                mongo.remove(byPost, Like.class);
-                mongo.remove(byPost, Repost.class);
-                mongo.remove(byPost, SavedPost.class);
-                mongo.remove(byPost, PostRevision.class);
-                mongo.remove(Query.query(new Criteria().andOperator(
+                documentStore.remove(byPost, Like.class);
+                documentStore.remove(byPost, Repost.class);
+                documentStore.remove(byPost, SavedPost.class);
+                documentStore.remove(byPost, PostRevision.class);
+                documentStore.remove(Query.query(new Criteria().andOperator(
                         Criteria.where("targetType").is("POST"),
                         Criteria.where("targetId").in(postIds))), ContentReport.class);
-                mongo.remove(Query.query(Criteria.where("_id").in(postIds)), Post.class);
+                documentStore.remove(Query.query(Criteria.where("_id").in(postIds)), Post.class);
                 posts.forEach(mediaAssets::queuePostMediaDeletion);
                 return null;
             });
@@ -136,19 +136,19 @@ public class AccountDataCleanupService {
             Query batchQuery = Query.query(criteria)
                     .with(Sort.by(Sort.Direction.ASC, "_id"))
                     .limit(COMMENT_BATCH_SIZE);
-            List<Comment> comments = mongo.find(batchQuery, Comment.class);
+            List<Comment> comments = documentStore.find(batchQuery, Comment.class);
             if (comments.isEmpty()) return;
             List<String> ids = comments.stream().map(Comment::getId).filter(Objects::nonNull).toList();
             if (ids.isEmpty()) {
-                mongo.remove(batchQuery, Comment.class);
+                documentStore.remove(batchQuery, Comment.class);
                 continue;
             }
-            inMongoTransaction(() -> {
-                mongo.remove(Query.query(Criteria.where("commentId").in(ids)), CommentReaction.class);
-                mongo.remove(Query.query(new Criteria().andOperator(
+            inDatabaseTransaction(() -> {
+                documentStore.remove(Query.query(Criteria.where("commentId").in(ids)), CommentReaction.class);
+                documentStore.remove(Query.query(new Criteria().andOperator(
                         Criteria.where("targetType").is("COMMENT"),
                         Criteria.where("targetId").in(ids))), ContentReport.class);
-                mongo.remove(Query.query(Criteria.where("_id").in(ids)), Comment.class);
+                documentStore.remove(Query.query(Criteria.where("_id").in(ids)), Comment.class);
                 return null;
             });
         }
@@ -162,14 +162,14 @@ public class AccountDataCleanupService {
             Query batchQuery = Query.query(authoredWithMedia)
                     .with(Sort.by(Sort.Direction.ASC, "_id"))
                     .limit(CHAT_BATCH_SIZE);
-            List<ChatMessage> messages = mongo.find(batchQuery, ChatMessage.class);
+            List<ChatMessage> messages = documentStore.find(batchQuery, ChatMessage.class);
             if (messages.isEmpty()) break;
             List<String> messageIds = messages.stream().map(ChatMessage::getId).filter(Objects::nonNull).toList();
             if (messageIds.isEmpty()) {
-                mongo.updateMulti(batchQuery, new Update().unset("mediaUrl"), ChatMessage.class);
+                documentStore.updateMulti(batchQuery, new Update().unset("mediaUrl"), ChatMessage.class);
                 continue;
             }
-            mongo.updateMulti(Query.query(Criteria.where("_id").in(messageIds)),
+            documentStore.updateMulti(Query.query(Criteria.where("_id").in(messageIds)),
                     new Update().set("content", "Tin nhắn từ tài khoản đã xóa")
                             .unset("mediaUrl").unset("mediaType").unset("mediaName").unset("mediaSize"),
                     ChatMessage.class);
@@ -178,7 +178,7 @@ public class AccountDataCleanupService {
                     .forEach(url -> deleteIfUnreferenced(url, "chat message"));
         }
 
-        mongo.updateMulti(Query.query(Criteria.where("senderId").is(senderId)),
+        documentStore.updateMulti(Query.query(Criteria.where("senderId").is(senderId)),
                 new Update().set("content", "Tin nhắn từ tài khoản đã xóa")
                         .unset("mediaUrl").unset("mediaType").unset("mediaName").unset("mediaSize"),
                 ChatMessage.class);
@@ -194,7 +194,7 @@ public class AccountDataCleanupService {
         }
     }
 
-    private <T> T inMongoTransaction(java.util.function.Supplier<T> work) {
+    private <T> T inDatabaseTransaction(java.util.function.Supplier<T> work) {
         return transactions == null ? work.get() : transactions.execute(work);
     }
 }

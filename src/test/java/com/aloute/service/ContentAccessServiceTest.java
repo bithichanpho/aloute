@@ -9,19 +9,19 @@ import com.aloute.model.entity.User;
 import com.aloute.repository.*;
 
 import org.junit.jupiter.api.*;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 import java.util.Optional;
 
 class ContentAccessServiceTest {
-    MongoTemplate mongo = mock(MongoTemplate.class);
+    PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     IUserRepository users = mock(IUserRepository.class);
     IFriendRepository friends = mock(IFriendRepository.class);
     ICommunityRepository communities = mock(ICommunityRepository.class);
     ICommunityMemberRepository members = mock(ICommunityMemberRepository.class);
     ContentAccessService access =
-            new ContentAccessService(mongo, users, friends, communities, members);
+            new ContentAccessService(documentStore, users, friends, communities, members);
     User author;
     Post post;
 
@@ -43,7 +43,7 @@ class ContentAccessServiceTest {
 
     @Test
     void blockedViewersCannotReadPublicPosts() {
-        when(mongo.exists(any(Query.class), eq(UserBlock.class))).thenReturn(true);
+        when(documentStore.exists(any(Query.class), eq(UserBlock.class))).thenReturn(true);
         assertFalse(access.canRead(post, 2L));
     }
 
@@ -89,7 +89,7 @@ class ContentAccessServiceTest {
         repost.setUserId("3");
         repost.setRepostOfId("post");
         post.setVisibility(PostVisibility.ONLY_ME);
-        when(mongo.findById("post", Post.class)).thenReturn(post);
+        when(documentStore.findById("post", Post.class)).thenReturn(post);
         assertFalse(access.canRead(repost, 2L));
     }
 
@@ -108,7 +108,7 @@ class ContentAccessServiceTest {
         assertThrows(
                 com.aloute.common.exception.ResourceNotFoundException.class,
                 () -> {
-                    when(mongo.findById("post", Post.class)).thenReturn(post);
+                    when(documentStore.findById("post", Post.class)).thenReturn(post);
                     access.requirePost("post", 2L);
                 });
 

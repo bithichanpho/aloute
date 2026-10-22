@@ -62,7 +62,7 @@ class MediaUploadModerationServiceTest {
 
     @Test
     void rejectedCleanupStillHasOnlyOneLifecycleOwnerWhenItFails() {
-        doThrow(new IllegalStateException("Mongo unavailable"))
+        doThrow(new IllegalStateException("PostgreSQL unavailable"))
                 .when(mediaAssets).deleteRejectedUpload(uploaded);
 
         service.deleteQuietly(uploaded);

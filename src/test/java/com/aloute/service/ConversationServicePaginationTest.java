@@ -16,12 +16,10 @@ import com.aloute.model.document.UserBlock;
 import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.repository.IUserRepository;
 import java.util.List;
-import org.bson.Document;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.aggregation.AggregationResults;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 class ConversationServicePaginationTest {
     private final IUserRepository users = mock(IUserRepository.class);
@@ -30,10 +28,10 @@ class ConversationServicePaginationTest {
     private final GroupService groups = mock(GroupService.class);
     private final FriendService friends = mock(FriendService.class);
     private final PresenceService presence = mock(PresenceService.class);
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final ContentAccessService access = mock(ContentAccessService.class);
     private final ConversationService service = new ConversationService(
-            users, readStatuses, groups, friends, presence, mongo, access);
+            users, readStatuses, groups, friends, presence, documentStore, access);
 
     @Test
     void rejectsMalformedConversationCursorBeforeRunningQueries() {
@@ -46,10 +44,9 @@ class ConversationServicePaginationTest {
 
     @Test
     void unreadDirectOnlyChecksStatusOfUsersWhoActuallySentUnreadMessages() {
-        when(mongo.find(any(Query.class), eq(UserBlock.class))).thenReturn(List.of());
-        Document unreadBySender = new Document("_id", "2").append("count", 4L);
-        when(mongo.aggregate(any(Aggregation.class), eq(ChatMessage.class), eq(Document.class)))
-                .thenReturn(new AggregationResults<>(List.of(unreadBySender), new Document()));
+        when(documentStore.find(any(Query.class), eq(UserBlock.class))).thenReturn(List.of());
+        when(documentStore.countGroupedBy(any(Query.class), eq(ChatMessage.class), any(String[].class)))
+                .thenReturn(Map.of(List.of("2"), 4L));
         when(users.findActiveIdsByIdIn(anyCollection())).thenReturn(List.of(2L));
 
         assertEquals(4L, service.countUnreadDirect(1L));
@@ -60,10 +57,10 @@ class ConversationServicePaginationTest {
 
     @Test
     void unreadGroupsUseOnlyMembershipIdsAndScopedReadTimes() {
-        when(mongo.find(any(Query.class), eq(UserBlock.class))).thenReturn(List.of());
+        when(documentStore.find(any(Query.class), eq(UserBlock.class))).thenReturn(List.of());
         when(readStatuses.findReadTimes(eq(1L), anyCollection())).thenReturn(List.of());
-        when(mongo.aggregate(any(Aggregation.class), eq(ChatMessage.class), eq(Document.class)))
-                .thenReturn(new AggregationResults<>(List.of(), new Document()));
+        when(documentStore.countGroupedBy(any(Query.class), eq(ChatMessage.class), any(String[].class)))
+                .thenReturn(Map.of());
 
         assertEquals(0L, service.countUnreadGroupsByIds(List.of(10L, 11L), 1L));
 

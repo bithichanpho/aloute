@@ -7,7 +7,7 @@ import com.aloute.repository.IFriendRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.springframework.stereotype.Service;
-import org.springframework.data.mongodb.core.MongoTemplate;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.CacheEvict;
@@ -21,7 +21,7 @@ public class FriendService {
 
     private final ContentAccessService access;
 
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final IUserRepository users;
     private final IFriendRepository friendRepository;
     private final NotificationService notificationService;
@@ -32,11 +32,11 @@ public class FriendService {
             IFriendRepository friendRepository,
             NotificationService notificationService,
             ContentAccessService access,
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IUserRepository users,
             FeedCacheInvalidator feedCacheInvalidator) {
         this.access = access;
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.users = users;
         this.friendRepository = friendRepository;
         this.notificationService = notificationService;
@@ -48,9 +48,9 @@ public class FriendService {
             IFriendRepository friendRepository,
             NotificationService notificationService,
             ContentAccessService access,
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IUserRepository users) {
-        this(friendRepository, notificationService, access, mongo, users, null);
+        this(friendRepository, notificationService, access, documentStore, users, null);
     }
 
     @Caching(evict = {
@@ -64,14 +64,14 @@ public class FriendService {
                 && users.findById(targetUserId).orElseThrow().isPrivateAccount()
                 && !friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId)) {
             String id = currentUserId + ":" + targetUserId;
-            var pending = mongo.findById(id, FollowRequest.class);
-            if (pending != null) mongo.remove(pending);
+            var pending = documentStore.findById(id, FollowRequest.class);
+            if (pending != null) documentStore.remove(pending);
             else {
                 var request = new FollowRequest();
                 request.setId(id);
                 request.setFollowerId(currentUserId);
                 request.setTargetId(targetUserId);
-                mongo.save(request);
+                documentStore.save(request);
             }
             return false;
         }
@@ -112,9 +112,9 @@ public class FriendService {
         access.requireProfile(currentUserId, targetUserId);
         if (friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId))
             return "FOLLOWING";
-        return mongo.exists(
-                        org.springframework.data.mongodb.core.query.Query.query(
-                                org.springframework.data.mongodb.core.query.Criteria.where("_id")
+        return documentStore.exists(
+                        com.aloute.persistence.postgres.document.Query.query(
+                                com.aloute.persistence.postgres.document.Criteria.where("_id")
                                         .is(currentUserId + ":" + targetUserId)),
                         FollowRequest.class)
                 ? "PENDING"
@@ -127,9 +127,9 @@ public class FriendService {
                 || currentUserId.equals(targetUserId)) {
             return false;
         }
-        return mongo.exists(
-                org.springframework.data.mongodb.core.query.Query.query(
-                        org.springframework.data.mongodb.core.query.Criteria.where("_id")
+        return documentStore.exists(
+                com.aloute.persistence.postgres.document.Query.query(
+                        com.aloute.persistence.postgres.document.Criteria.where("_id")
                                 .is(currentUserId + ":" + targetUserId)),
                 FollowRequest.class);
     }

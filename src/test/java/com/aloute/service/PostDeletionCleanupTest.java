@@ -23,8 +23,8 @@ import com.aloute.repository.IUserRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 class PostDeletionCleanupTest {
     @Test
@@ -32,7 +32,7 @@ class PostDeletionCleanupTest {
         IPostRepository posts = mock(IPostRepository.class);
         IUserRepository users = mock(IUserRepository.class);
         ILikeRepository likes = mock(ILikeRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
         ICommentRepository comments = mock(ICommentRepository.class);
         INotificationRepository notifications = mock(INotificationRepository.class);
         INotificationOutboxRepository outbox = mock(INotificationOutboxRepository.class);
@@ -47,11 +47,11 @@ class PostDeletionCleanupTest {
         Comment comment = new Comment();
         comment.setId("comment-1");
         when(posts.findById("post-1")).thenReturn(Optional.of(post));
-        when(mongo.find(any(Query.class), eq(Comment.class))).thenReturn(List.of(comment));
+        when(documentStore.find(any(Query.class), eq(Comment.class))).thenReturn(List.of(comment));
 
         PostService service = new PostService(
                 posts, users, likes, mock(ModerationService.class),
-                mock(NotificationService.class), mongo, comments, notifications, reposts,
+                mock(NotificationService.class), documentStore, comments, notifications, reposts,
                 mock(ContentAccessService.class), mock(RepostPresentationService.class),
                 mock(PostResponseMapper.class), mock(PostModerationCoordinator.class), media,
                 cache, null, mock(IFriendRepository.class), outbox);
@@ -61,10 +61,10 @@ class PostDeletionCleanupTest {
         verify(likes).deleteByPostId("post-1");
         verify(comments).deleteByPostId("post-1");
         verify(reposts).deleteByPostId("post-1");
-        verify(mongo).remove(any(Query.class), eq(CommentReaction.class));
-        verify(mongo).remove(any(Query.class), eq(SavedPost.class));
-        verify(mongo).remove(any(Query.class), eq(PostRevision.class));
-        verify(mongo, org.mockito.Mockito.atLeastOnce())
+        verify(documentStore).remove(any(Query.class), eq(CommentReaction.class));
+        verify(documentStore).remove(any(Query.class), eq(SavedPost.class));
+        verify(documentStore).remove(any(Query.class), eq(PostRevision.class));
+        verify(documentStore, org.mockito.Mockito.atLeastOnce())
                 .remove(any(Query.class), eq(ContentReport.class));
         verify(posts).delete(post);
         verify(media).queuePostMediaDeletion(post);

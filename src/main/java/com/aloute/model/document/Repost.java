@@ -1,20 +1,12 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
-@Document(collection = "reposts")
-@org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @CompoundIndex(
-            name = "repost_user_post_unique",
-            def = "{'userId': 1, 'postId': 1}",
-            unique = true),
-    @CompoundIndex(name = "repost_post_created", def = "{'postId': 1, 'createdAt': -1}"),
-    @CompoundIndex(name = "repost_user_created", def = "{'userId': 1, 'createdAt': -1}")
-})
+@PgDocument(collection = "reposts")
 public class Repost {
 
     @Id private String id;

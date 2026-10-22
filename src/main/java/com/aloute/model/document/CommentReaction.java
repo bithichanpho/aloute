@@ -1,11 +1,9 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 @lombok.Data
-@org.springframework.data.mongodb.core.mapping.Document
-@org.springframework.data.mongodb.core.index.CompoundIndex(
-        name = "comment_reaction_unique",
-        def = "{'commentId': 1, 'userId': 1}",
-        unique = true)
+@PgDocument(collection = "comment_reactions")
 public class CommentReaction {
     @org.springframework.data.annotation.Id private String id;
     private String commentId;

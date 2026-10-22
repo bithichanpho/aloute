@@ -5,10 +5,10 @@ import com.aloute.model.document.ModerationStatus;
 import com.aloute.model.document.Post;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -17,10 +17,10 @@ import java.time.LocalDateTime;
 @Service
 public class ModerationDispatchRecoveryService {
     private static final Logger log = LoggerFactory.getLogger(ModerationDispatchRecoveryService.class);
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
 
-    public ModerationDispatchRecoveryService(MongoTemplate mongo) {
-        this.mongo = mongo;
+    public ModerationDispatchRecoveryService(PostgresDocumentStore documentStore) {
+        this.documentStore = documentStore;
     }
 
     public void rollbackRejectedPost(String postId, LocalDateTime claimedAt, RuntimeException failure) {
@@ -49,7 +49,7 @@ public class ModerationDispatchRecoveryService {
     private void rollbackClaim(String id, LocalDateTime claimedAt, Class<?> type,
             String label, RuntimeException failure) {
         if (id == null || claimedAt == null) return;
-        var result = mongo.updateFirst(
+        var result = documentStore.updateFirst(
                 Query.query(new Criteria().andOperator(
                         Criteria.where("_id").is(id),
                         Criteria.where("moderationStatus").is(ModerationStatus.PENDING),

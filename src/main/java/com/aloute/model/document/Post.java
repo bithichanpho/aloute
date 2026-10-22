@@ -1,44 +1,17 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.TextIndexed;
 
 import java.time.LocalDateTime;
 
-@Document(collection = "posts", language = "none")
-@org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_created_desc",
-            def = "{'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_user_created",
-            def = "{'userId': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_community_created",
-            def = "{'communityId': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_community_review_created",
-            def = "{'communityId': 1, 'communityPostStatus': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_repost_origin_created",
-            def = "{'repostOfId': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_hashtag_created",
-            def = "{'hashtags': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_mention_created",
-            def = "{'mentions': 1, 'createdAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(
-            name = "posts_hidden_media_cleanup",
-            def = "{'moderationStatus': 1, 'mediaCleanupQueuedAt': 1, 'createdAt': 1, '_id': 1}")
-})
+@PgDocument(collection = "posts")
 public class Post {
 
     @Id private String id;
 
     private String userId;
-    @TextIndexed
     private String content;
 
     @lombok.Getter @lombok.Setter
@@ -76,7 +49,7 @@ public class Post {
 
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
     private double toxicityScore = 0.0;
-    // Mongo-backed lease allows retry/recovery after queue rejection or process restart.
+    // PostgreSQL-backed lease allows retry/recovery after queue rejection or process restart.
     private LocalDateTime moderationLeaseUntil;
     private LocalDateTime moderationLastAttemptAt;
     private int moderationAttempts;

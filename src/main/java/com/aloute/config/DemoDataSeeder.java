@@ -228,7 +228,7 @@ public class DemoDataSeeder implements CommandLineRunner {
         };
         String[] descriptions = {
             "Chia sẻ công nghệ, tài liệu và kinh nghiệm học tập tại UTE.",
-            "Java, Spring Boot, JPA, SQL, MongoDB và các bài tập web.",
+            "Java, Spring Boot, JPA, SQL, PostgreSQL và các bài tập web.",
             "Thiết kế giao diện, UX research, Figma và front-end.",
             "Ảnh campus, street photo, mobile photography và hậu kỳ.",
             "Review phim, playlist và những cuộc trò chuyện sau giờ học.",

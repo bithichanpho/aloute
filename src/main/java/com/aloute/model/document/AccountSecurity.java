@@ -1,7 +1,9 @@
 package com.aloute.model.document;
 
+import com.aloute.persistence.postgres.document.PgDocument;
+
 @lombok.Data
-@org.springframework.data.mongodb.core.mapping.Document
+@PgDocument(collection = "account_security")
 public class AccountSecurity {
     @org.springframework.data.annotation.Id private Long id;
     private String secret;

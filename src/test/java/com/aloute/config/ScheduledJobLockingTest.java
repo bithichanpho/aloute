@@ -30,9 +30,9 @@ class ScheduledJobLockingTest {
                     "AuthRateLimitService#cleanup", "prunes this node's in-memory fallback map",
                     "PresenceService#refreshLocalConnections", "refreshes this node's own Redis leases",
                     "CallTimeoutService#processDistributedTimeouts", "claims each timeout atomically in Redis",
-                    "PostModerationCoordinator#recoverPendingPosts", "claims work via a Mongo lease",
-                    "CommentModerationCoordinator#recoverPendingComments", "claims work via a Mongo lease",
-                    "AccountDataCleanupRetryWorker#retryDueJobs", "claims jobs via an atomic Mongo lease");
+                    "PostModerationCoordinator#recoverPendingPosts", "claims work via a PostgreSQL lease",
+                    "CommentModerationCoordinator#recoverPendingComments", "claims work via a PostgreSQL lease",
+                    "AccountDataCleanupRetryWorker#retryDueJobs", "claims jobs via an atomic PostgreSQL lease");
 
     @Test
     void everyScheduledJobIsLockedOrExplicitlyAllowed() throws Exception {

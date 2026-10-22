@@ -10,8 +10,8 @@ import com.aloute.model.document.Post;
 import com.aloute.model.entity.User;
 import com.aloute.repository.*;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,43 +20,43 @@ import java.util.Set;
 
 class FeedQueryBudgetTest {
     @Test
-    void cursorFeedUsesMongoKeysetQueryAndDoesNotFetchLegacyJpaFeedWindow() {
+    void cursorFeedUsesPostgresKeysetQueryAndDoesNotFetchLegacyJpaFeedWindow() {
         IPostRepository relationalPostRepository = mock(IPostRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
 
-        PostService service = newService(relationalPostRepository, mongo);
+        PostService service = newService(relationalPostRepository, documentStore);
         var page = service.getCursorFeed(2L, List.of(1L), "foryou", null, null, 20);
 
         assertTrue(page.items().isEmpty());
         assertFalse(page.hasMore());
-        verify(mongo, times(1)).find(any(Query.class), eq(Post.class));
+        verify(documentStore, times(1)).find(any(Query.class), eq(Post.class));
         verifyNoInteractions(relationalPostRepository);
     }
 
     @Test
     void legacyPageApiRejectsUnboundedDeepPageAndDirectsClientsToCursor() {
         IPostRepository relationalPostRepository = mock(IPostRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
-        PostService service = newService(relationalPostRepository, mongo);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
+        PostService service = newService(relationalPostRepository, documentStore);
 
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
                 () -> service.getFeed(2L, List.of(), 101, 20));
 
         assertTrue(exception.getMessage().contains("cursor"));
-        verifyNoInteractions(mongo, relationalPostRepository);
+        verifyNoInteractions(documentStore, relationalPostRepository);
     }
 
     @Test
     void legacyPageZeroDelegatesToTheSameCursorImplementation() {
         IPostRepository relationalPostRepository = mock(IPostRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
-        PostService service = newService(relationalPostRepository, mongo);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
+        PostService service = newService(relationalPostRepository, documentStore);
 
         assertTrue(service.getFeed(2L, List.of(), 0, 20).isEmpty());
-        verify(mongo, times(1)).find(any(Query.class), eq(Post.class));
+        verify(documentStore, times(1)).find(any(Query.class), eq(Post.class));
         verifyNoInteractions(relationalPostRepository);
     }
 
@@ -70,7 +70,7 @@ class FeedQueryBudgetTest {
         when(posts.requireReadablePost("post", 2L)).thenReturn(post);
         when(posts.getPostOrThrow("post")).thenReturn(post);
         LikeService service = new LikeService(
-                likes, posts, mock(NotificationService.class), mock(MongoTemplate.class));
+                likes, posts, mock(NotificationService.class), mock(PostgresDocumentStore.class));
 
         service.setReaction("post", 2L, null);
 
@@ -82,11 +82,11 @@ class FeedQueryBudgetTest {
     void followingFeedStreamsFollowIdsInBoundedJpaBatches() {
         IPostRepository relationalPostRepository = mock(IPostRepository.class);
         IFriendRepository friendRepository = mock(IFriendRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
         when(friendRepository.findFollowedIdsAfter(eq(2L), eq(0L), any()))
                 .thenReturn(List.of(10L, 11L));
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
-        PostService service = newService(relationalPostRepository, mongo, friendRepository);
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
+        PostService service = newService(relationalPostRepository, documentStore, friendRepository);
 
         var page = service.getCursorFeedForViewer(2L, "following", null, null, 20);
 
@@ -94,13 +94,13 @@ class FeedQueryBudgetTest {
         verify(friendRepository).findFollowedIdsAfter(eq(2L), eq(0L), argThat(pageable ->
                 pageable.getPageSize() == 500));
         verify(friendRepository, never()).findByFollowerId(anyLong());
-        verify(mongo).find(any(Query.class), eq(Post.class));
+        verify(documentStore).find(any(Query.class), eq(Post.class));
     }
 
     @Test
     void profileCursorMapsInteractionsForTheWholeBatchOnce() {
         IPostRepository posts = mock(IPostRepository.class);
-        MongoTemplate mongo = mock(MongoTemplate.class);
+        PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
         ContentAccessService access = mock(ContentAccessService.class);
         PostResponseMapper mapper = mock(PostResponseMapper.class);
 
@@ -118,7 +118,7 @@ class FeedQueryBudgetTest {
         PostResponse secondResponse = new PostResponse();
         secondResponse.setId("p1");
 
-        when(mongo.find(any(Query.class), eq(Post.class))).thenReturn(loaded);
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(loaded);
         when(access.forPosts(loaded, 2L)).thenReturn(permissions);
         when(mapper.toReadableResponses(loaded, 2L, permissions))
                 .thenReturn(List.of(firstResponse, secondResponse));
@@ -130,7 +130,7 @@ class FeedQueryBudgetTest {
                         mock(ILikeRepository.class),
                         mock(ModerationService.class),
                         mock(NotificationService.class),
-                        mongo,
+                        documentStore,
                         mock(ICommentRepository.class),
                         mock(INotificationRepository.class),
                         mock(IRepostRepository.class),
@@ -140,7 +140,7 @@ class FeedQueryBudgetTest {
                         mock(PostModerationCoordinator.class),
                         mock(MediaAssetLifecycleService.class),
                         mock(FeedCacheInvalidator.class),
-                        mock(MongoTransactionRetryExecutor.class),
+                        mock(PostgresTransactionRetryExecutor.class),
                         mock(IFriendRepository.class));
 
         var page = service.getPostsByUserCursor(2L, 2L, null, 20);
@@ -158,14 +158,14 @@ class FeedQueryBudgetTest {
         return post;
     }
 
-    private PostService newService(IPostRepository relationalPostRepository, MongoTemplate mongo) {
+    private PostService newService(IPostRepository relationalPostRepository, PostgresDocumentStore documentStore) {
         return new PostService(
                 relationalPostRepository,
                 mock(IUserRepository.class),
                 mock(ILikeRepository.class),
                 mock(ModerationService.class),
                 mock(NotificationService.class),
-                mongo,
+                documentStore,
                 mock(ICommentRepository.class),
                 mock(INotificationRepository.class),
                 mock(IRepostRepository.class),
@@ -178,7 +178,7 @@ class FeedQueryBudgetTest {
 
     private PostService newService(
             IPostRepository relationalPostRepository,
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IFriendRepository friendRepository) {
         return new PostService(
                 relationalPostRepository,
@@ -186,7 +186,7 @@ class FeedQueryBudgetTest {
                 mock(ILikeRepository.class),
                 mock(ModerationService.class),
                 mock(NotificationService.class),
-                mongo,
+                documentStore,
                 mock(ICommentRepository.class),
                 mock(INotificationRepository.class),
                 mock(IRepostRepository.class),
@@ -196,7 +196,7 @@ class FeedQueryBudgetTest {
                 mock(PostModerationCoordinator.class),
                 mock(MediaAssetLifecycleService.class),
                 mock(FeedCacheInvalidator.class),
-                mock(MongoTransactionRetryExecutor.class),
+                mock(PostgresTransactionRetryExecutor.class),
                 friendRepository);
     }
 }

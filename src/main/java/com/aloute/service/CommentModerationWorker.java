@@ -9,11 +9,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.CacheManager;
-import org.springframework.data.mongodb.MongoTransactionManager;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.transaction.PlatformTransactionManager;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -22,44 +22,44 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.CompletableFuture;
 
-/** Runs remote moderation outside Mongo transactions; only the atomic state/counter writes are transactional. */
+/** Runs remote moderation outside PostgreSQL transactions; only the atomic state/counter writes are transactional. */
 @Service
 public class CommentModerationWorker {
     private static final Logger log = LoggerFactory.getLogger(CommentModerationWorker.class);
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final ModerationService moderation;
     private final CacheManager cacheManager;
     private final ModerationRetryPolicy retryPolicy;
     private final NotificationService notifications;
-    private final TransactionTemplate mongoTransaction;
+    private final TransactionTemplate databaseTransaction;
 
     public CommentModerationWorker(
-            MongoTemplate mongo, ModerationService moderation, ModerationRetryPolicy retryPolicy,
+            PostgresDocumentStore documentStore, ModerationService moderation, ModerationRetryPolicy retryPolicy,
             NotificationService notifications, CacheManager cacheManager,
-            @Qualifier("mongoTransactionManager") MongoTransactionManager mongoTransactionManager) {
-        this.mongo = mongo;
+            @Qualifier("transactionManager") PlatformTransactionManager transactionManager) {
+        this.documentStore = documentStore;
         this.moderation = moderation;
         this.cacheManager = cacheManager;
         this.retryPolicy = retryPolicy;
         this.notifications = notifications;
-        this.mongoTransaction = new TransactionTemplate(mongoTransactionManager);
+        this.databaseTransaction = new TransactionTemplate(transactionManager);
     }
 
     @Async("moderationExecutor")
     public CompletableFuture<Void> moderate(String commentId) {
         Comment snapshot = null;
         try {
-            snapshot = mongo.findById(commentId, Comment.class);
+            snapshot = documentStore.findById(commentId, Comment.class);
             if (snapshot == null || snapshot.getModerationStatus() != ModerationStatus.PENDING) {
                 return CompletableFuture.completedFuture(null);
             }
 
             // IMPORTANT: the external HTTP request (up to MODERATION_TEXT_TIMEOUT) runs before
-            // opening a Mongo transaction, so slow upstream latency cannot hold a DB session.
+            // opening a PostgreSQL transaction, so slow upstream latency cannot hold a DB session.
             ModerationResult result = moderation.check(snapshot.getContent());
             ModerationStatus finalStatus = moderation.resolveStatus(result);
             Comment reviewed = snapshot;
-            mongoTransaction.executeWithoutResult(tx -> persistDecision(reviewed, finalStatus));
+            databaseTransaction.executeWithoutResult(tx -> persistDecision(reviewed, finalStatus));
         } catch (RuntimeException failure) {
             handleFailure(commentId, snapshot, failure);
         }
@@ -79,7 +79,7 @@ public class CommentModerationWorker {
             update.set("moderationCountersApplied", true).unset("notifyAfterModeration");
         }
 
-        if (mongo.updateFirst(unchanged, update, Comment.class).getModifiedCount() == 0) return;
+        if (documentStore.updateFirst(unchanged, update, Comment.class).getModifiedCount() == 0) return;
         if (applyCounters) {
             applyVisibleCounters(snapshot);
             TransactionCommitHooks.afterCommit(this::evictFeedCache);
@@ -110,7 +110,7 @@ public class CommentModerationWorker {
 
     private void handleFailure(String commentId, Comment snapshot, RuntimeException failure) {
         Comment current = snapshot;
-        if (current == null) current = mongo.findById(commentId, Comment.class);
+        if (current == null) current = documentStore.findById(commentId, Comment.class);
         if (current == null || current.getModerationStatus() != ModerationStatus.PENDING) return;
 
         boolean retryable = retryPolicy.isRetryable(failure);
@@ -124,7 +124,7 @@ public class CommentModerationWorker {
             update.set("moderationLeaseUntil",
                     LocalDateTime.now().plusSeconds(retryPolicy.delaySeconds(current.getModerationAttempts())));
         }
-        mongo.updateFirst(unchangedCommentQuery(current), update, Comment.class);
+        documentStore.updateFirst(unchangedCommentQuery(current), update, Comment.class);
         log.warn("Moderation failed for comment {}; retryable={}, attempts={}/{}, reviewRequired={}, code={}",
                 commentId, retryable, current.getModerationAttempts(), retryPolicy.maxAttempts(),
                 requireReview, failureCode);
@@ -132,10 +132,10 @@ public class CommentModerationWorker {
     }
 
     private void applyVisibleCounters(Comment comment) {
-        mongo.updateFirst(Query.query(Criteria.where("_id").is(comment.getPostId())),
+        documentStore.updateFirst(Query.query(Criteria.where("_id").is(comment.getPostId())),
                 new Update().inc("commentCount", 1), Post.class);
         if (comment.getParentCommentId() != null && !comment.getParentCommentId().isBlank()) {
-            mongo.updateFirst(Query.query(Criteria.where("_id").is(comment.getParentCommentId())),
+            documentStore.updateFirst(Query.query(Criteria.where("_id").is(comment.getParentCommentId())),
                     new Update().inc("replyCount", 1), Comment.class);
         }
     }
@@ -158,7 +158,7 @@ public class CommentModerationWorker {
             return;
         }
         if (comment.getParentCommentId() != null && !comment.getParentCommentId().isBlank()) {
-            Comment parent = mongo.findById(comment.getParentCommentId(), Comment.class);
+            Comment parent = documentStore.findById(comment.getParentCommentId(), Comment.class);
             if (parent == null || parent.getModerationStatus() != ModerationStatus.APPROVED) return;
             try {
                 Long receiverId = Long.valueOf(parent.getUserId());
@@ -171,7 +171,7 @@ public class CommentModerationWorker {
             }
             return;
         }
-        Post post = mongo.findById(comment.getPostId(), Post.class);
+        Post post = documentStore.findById(comment.getPostId(), Post.class);
         if (post == null) return;
         try {
             notifications.notify(Long.valueOf(post.getUserId()), senderId, "COMMENT", post.getId(),

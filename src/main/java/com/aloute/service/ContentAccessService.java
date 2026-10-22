@@ -8,8 +8,8 @@ import com.aloute.model.entity.User;
 import com.aloute.repository.*;
 
 
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.*;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.*;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -17,19 +17,19 @@ import java.util.stream.Collectors;
 
 @Service
 public class ContentAccessService {
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final IUserRepository users;
     private final IFriendRepository friends;
     private final ICommunityRepository communities;
     private final ICommunityMemberRepository communityMembers;
 
     public ContentAccessService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IUserRepository users,
             IFriendRepository friends,
             ICommunityRepository communities,
             ICommunityMemberRepository communityMembers) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.users = users;
         this.friends = friends;
         this.communities = communities;
@@ -94,7 +94,7 @@ public class ContentAccessService {
         Map<String, Post> originals =
                 originalIds.isEmpty()
                         ? Map.of()
-                        : mongo
+                        : documentStore
                                 .find(
                                         Query.query(Criteria.where("_id").in(originalIds)),
                                         Post.class)
@@ -173,7 +173,7 @@ public class ContentAccessService {
                                                 .is(viewer)
                                                 .and("ownerId")
                                                 .in(candidates)));
-        return mongo.find(query, UserBlock.class).stream()
+        return documentStore.find(query, UserBlock.class).stream()
                 .map(b -> viewer.equals(b.getOwnerId()) ? b.getTargetId() : b.getOwnerId())
                 .filter(id -> !viewer.equals(id))
                 .collect(Collectors.toSet());
@@ -219,7 +219,7 @@ public class ContentAccessService {
 
     public boolean blocked(Long a, Long b) {
         if (a == null || b == null || a.equals(b)) return false;
-        return mongo.exists(
+        return documentStore.exists(
                 Query.query(
                         new Criteria()
                                 .orOperator(
@@ -256,7 +256,7 @@ public class ContentAccessService {
                 && !deniedCommunityIds(viewer, List.of(post.getCommunityId())).isEmpty())
             return false;
         if (post.getRepostOfId() != null) {
-            Post original = mongo.findById(post.getRepostOfId(), Post.class);
+            Post original = documentStore.findById(post.getRepostOfId(), Post.class);
             if (original == null || original.getRepostOfId() != null || !canRead(original, viewer))
                 return false;
         }
@@ -279,7 +279,7 @@ public class ContentAccessService {
     }
 
     public Post requirePost(String id, Long viewer) {
-        Post post = mongo.findById(id, Post.class);
+        Post post = documentStore.findById(id, Post.class);
         if (!canRead(post, viewer)) throw new ResourceNotFoundException("Không tìm thấy bài viết");
         return post;
     }

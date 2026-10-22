@@ -11,21 +11,21 @@ import com.aloute.model.entity.*;
 import com.aloute.repository.*;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 import java.time.Instant;
 import java.util.*;
 
 class SocialFeatureServiceTest {
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final ContentAccessService access = mock(ContentAccessService.class);
     private final IUserRepository users = mock(IUserRepository.class);
     private final IFriendRepository friends = mock(IFriendRepository.class);
     private final ICloseFriendRepository closeFriends = mock(ICloseFriendRepository.class);
     private final SocialFeatureService service =
             new SocialFeatureService(
-                    mongo,
+                    documentStore,
                     access,
                     users,
                     friends,
@@ -42,7 +42,7 @@ class SocialFeatureServiceTest {
         user.setRole(new Role("ROLE_USER"));
         when(users.findById(1L)).thenReturn(Optional.of(user));
         assertThrows(ForbiddenException.class, () -> service.queue(1L));
-        verifyNoInteractions(mongo);
+        verifyNoInteractions(documentStore);
     }
 
     @Test
@@ -54,7 +54,7 @@ class SocialFeatureServiceTest {
         service.block(1L, 2L, true);
         verify(friends).delete(outgoing);
         verify(friends).delete(incoming);
-        verify(mongo).save(argThat((UserBlock block) -> block.getId().equals("1:2")));
+        verify(documentStore).save(argThat((UserBlock block) -> block.getId().equals("1:2")));
     }
 
     @Test
@@ -70,7 +70,7 @@ class SocialFeatureServiceTest {
 
         assertThrows(ForbiddenException.class, () -> service.edit(1L, "post-1", request));
 
-        verify(mongo, never()).updateFirst(any(), any(), eq(Post.class));
+        verify(documentStore, never()).updateFirst(any(), any(), eq(Post.class));
         assertEquals(ModerationStatus.HIDDEN, hidden.getModerationStatus());
     }
 
@@ -84,7 +84,7 @@ class SocialFeatureServiceTest {
         FollowRequest request = new FollowRequest();
         request.setTargetId(2L);
         request.setFollowerId(1L);
-        when(mongo.findById("request", FollowRequest.class)).thenReturn(request);
+        when(documentStore.findById("request", FollowRequest.class)).thenReturn(request);
         assertThrows(
                 ResourceNotFoundException.class, () -> service.decideFollow(3L, "request", true));
         verifyNoInteractions(friends);
@@ -92,16 +92,16 @@ class SocialFeatureServiceTest {
 
 
     @Test
-    void declineFollowRequestRemovesMongoRequestWithoutWritingFriendEdge() {
+    void declineFollowRequestRemovesPostgresRequestWithoutWritingFriendEdge() {
         FollowRequest request = new FollowRequest();
         request.setId("request-1");
         request.setTargetId(2L);
         request.setFollowerId(1L);
-        when(mongo.findById("request-1", FollowRequest.class)).thenReturn(request);
+        when(documentStore.findById("request-1", FollowRequest.class)).thenReturn(request);
 
         service.decideFollow(2L, "request-1", false);
 
-        verify(mongo).remove(any(org.springframework.data.mongodb.core.query.Query.class),
+        verify(documentStore).remove(any(com.aloute.persistence.postgres.document.Query.class),
                 eq(FollowRequest.class));
         verifyNoInteractions(friends);
     }
@@ -116,14 +116,14 @@ class SocialFeatureServiceTest {
                 ForbiddenException.class,
                 () -> service.edit(1L, "post", new CreatePostRequest()));
         assertThrows(ForbiddenException.class, () -> service.history(1L, "post"));
-        verifyNoInteractions(mongo);
+        verifyNoInteractions(documentStore);
     }
 
     @Test
     void hiddenOrBlockedPostCannotBeSaved() {
         doThrow(new ResourceNotFoundException("hidden")).when(access).requirePost("post", 1L);
         assertThrows(ResourceNotFoundException.class, () -> service.save(1L, "post", true));
-        verifyNoInteractions(mongo);
+        verifyNoInteractions(documentStore);
     }
 
 
@@ -134,11 +134,11 @@ class SocialFeatureServiceTest {
         admin.setActive(true);
         admin.setRole(new Role("ROLE_ADMIN"));
         when(users.findById(9L)).thenReturn(Optional.of(admin));
-        when(mongo.find(any(org.springframework.data.mongodb.core.query.Query.class), eq(ContentReport.class)))
+        when(documentStore.find(any(com.aloute.persistence.postgres.document.Query.class), eq(ContentReport.class)))
                 .thenReturn(List.of());
-        when(mongo.find(any(org.springframework.data.mongodb.core.query.Query.class), eq(Post.class)))
+        when(documentStore.find(any(com.aloute.persistence.postgres.document.Query.class), eq(Post.class)))
                 .thenReturn(List.of());
-        when(mongo.find(any(org.springframework.data.mongodb.core.query.Query.class), eq(Comment.class)))
+        when(documentStore.find(any(com.aloute.persistence.postgres.document.Query.class), eq(Comment.class)))
                 .thenReturn(List.of());
 
         Map<String, Object> queue = service.queue(9L, 2, 15);
@@ -147,10 +147,10 @@ class SocialFeatureServiceTest {
         assertEquals(15, queue.get("size"));
         assertEquals(false, queue.get("hasMore"));
         assertTrue(((List<?>) queue.get("reports")).isEmpty());
-        var queries = org.mockito.ArgumentCaptor.forClass(org.springframework.data.mongodb.core.query.Query.class);
-        verify(mongo).find(queries.capture(), eq(ContentReport.class));
-        assertTrue(queries.getAllValues().stream().allMatch(q -> q.getSkip() == 30 && q.getLimit() == 16));
-        assertTrue(queries.getAllValues().stream().allMatch(q -> !q.getSortObject().isEmpty()));
+        var queries = org.mockito.ArgumentCaptor.forClass(com.aloute.persistence.postgres.document.Query.class);
+        verify(documentStore).find(queries.capture(), eq(ContentReport.class));
+        assertTrue(queries.getAllValues().stream().allMatch(q -> q.skip() == 30 && q.limit() == 16));
+        assertTrue(queries.getAllValues().stream().allMatch(q -> q.sort().isSorted()));
     }
 
     @Test
@@ -161,16 +161,16 @@ class SocialFeatureServiceTest {
         host.setRole(new Role("ROLE_HOST"));
         when(users.findById(10L)).thenReturn(Optional.of(host));
         assertThrows(ForbiddenException.class, () -> service.queue(10L));
-        verifyNoInteractions(mongo);
+        verifyNoInteractions(documentStore);
     }
 
     @Test
     void duplicateReportDoesNotResetReviewDecision() {
         ContentReport reviewed = new ContentReport();
         reviewed.setStatus("RESOLVED");
-        when(mongo.findById("1:POST:post", ContentReport.class)).thenReturn(reviewed);
+        when(documentStore.findById("1:POST:post", ContentReport.class)).thenReturn(reviewed);
         assertSame(reviewed, service.report(1L, "POST", "post", "Spam"));
-        verify(mongo, never()).insert(any(ContentReport.class));
+        verify(documentStore, never()).insert(any(ContentReport.class));
     }
 
     @Test
@@ -185,7 +185,7 @@ class SocialFeatureServiceTest {
         older.setOwnerId(1L);
         older.setTargetId(2L);
         older.setCreatedAt(Instant.parse("2026-10-19T09:00:00Z"));
-        when(mongo.find(any(Query.class), eq(UserBlock.class)))
+        when(documentStore.find(any(Query.class), eq(UserBlock.class)))
                 .thenReturn(List.of(newest, older));
 
         var page = service.blocks(1L, null, 1);
@@ -198,7 +198,7 @@ class SocialFeatureServiceTest {
     @Test
     void socialListsRejectMalformedCursor() {
         assertThrows(BadRequestException.class, () -> service.requests(1L, "broken", 20));
-        verify(mongo, never()).find(any(Query.class), eq(FollowRequest.class));
+        verify(documentStore, never()).find(any(Query.class), eq(FollowRequest.class));
     }
 
 }

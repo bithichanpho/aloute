@@ -17,10 +17,10 @@ import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -46,7 +46,7 @@ public class ChatService {
     private final GroupService groupService;
     private final SimpMessagingTemplate messagingTemplate;
     private final FriendService friendService;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
     private final PushNotificationService pushNotificationService;
     private final ConversationService conversationService;
     private final ChatMessageMapper chatMessageMapper;
@@ -62,7 +62,7 @@ public class ChatService {
             GroupService groupService,
             SimpMessagingTemplate messagingTemplate,
             FriendService friendService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             ContentAccessService access,
             PushNotificationService pushNotificationService,
             ConversationService conversationService,
@@ -78,7 +78,7 @@ public class ChatService {
         this.groupService = groupService;
         this.messagingTemplate = messagingTemplate;
         this.friendService = friendService;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
         this.pushNotificationService = pushNotificationService;
         this.conversationService = conversationService;
         this.chatMessageMapper = chatMessageMapper;
@@ -96,27 +96,27 @@ public class ChatService {
             SimpMessagingTemplate messagingTemplate,
             FriendService friendService,
             PresenceService presenceService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             ContentAccessService access,
             PushNotificationService pushNotificationService) {
         this(chatMessageRepository, userRepository, groupReadStatusRepository, groupService,
-                messagingTemplate, friendService, mongoTemplate, access,
+                messagingTemplate, friendService, documentStore, access,
                 pushNotificationService,
                 new ConversationService(userRepository, groupReadStatusRepository, groupService,
-                        friendService, presenceService, mongoTemplate, access),
+                        friendService, presenceService, documentStore, access),
                 new ChatMessageMapper(userRepository),
                 new ChatHistoryService(chatMessageRepository, userRepository, new ChatMessageMapper(userRepository)),
                 null,
                 null);
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public ChatMessageResponse sendMessage(
             Long senderId, Long receiverId, String content, String clientId) {
         return sendMessage(senderId, receiverId, content, clientId, null, null, null, null);
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public ChatMessageResponse sendMessage(
             Long senderId,
             Long receiverId,
@@ -302,11 +302,11 @@ public class ChatService {
         if (beforeId != null && !beforeId.isBlank()) clauses.add(Criteria.where("_id").lt(beforeId));
         Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)));
         if (!mediaOnly) {
-            query.addCriteria(org.springframework.data.mongodb.core.query.TextCriteria
+            query.addCriteria(com.aloute.persistence.postgres.document.TextCriteria
                     .forDefaultLanguage().matching(term));
         }
         query.with(Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id"))).limit(size);
-        List<ChatMessage> messages = mongoTemplate.find(query, ChatMessage.class);
+        List<ChatMessage> messages = documentStore.find(query, ChatMessage.class);
         java.util.Set<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
                 .filter(java.util.Objects::nonNull)
@@ -323,7 +323,7 @@ public class ChatService {
                 .toList();
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public void markAsRead(Long currentUserId, Long otherUserId) {
         if (currentUserId == null || otherUserId == null || currentUserId.equals(otherUserId)) return;
         // Reading an existing conversation must remain possible after either side blocks the other
@@ -337,10 +337,10 @@ public class ChatService {
                 Criteria.where("hiddenForUserIds").nin(currentId),
                 new Criteria().orOperator(
                         Criteria.where("read").is(false), Criteria.where("read").exists(false)));
-        List<ChatMessage> recentUnread = mongoTemplate.find(
+        List<ChatMessage> recentUnread = documentStore.find(
                 Query.query(unreadCriteria).with(Sort.by(Sort.Direction.DESC, "sentAt")).limit(300),
                 ChatMessage.class);
-        long updated = mongoTemplate.updateMulti(Query.query(unreadCriteria),
+        long updated = documentStore.updateMulti(Query.query(unreadCriteria),
                 new Update().set("read", true), ChatMessage.class).getModifiedCount();
         if (updated == 0) return;
 
@@ -361,7 +361,7 @@ public class ChatService {
     }
 
     /** Called only after an authenticated recipient client receives a persisted WebSocket message. */
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public void markAsDelivered(Long recipientId, String messageId) {
         if (messageId == null || messageId.isBlank()) return;
         ChatMessage message = chatMessageRepository.findById(messageId)
@@ -380,7 +380,7 @@ public class ChatService {
                     .and("groupId").is(groupId)
                     .and("senderId").ne(recipient)
                     .and("deliveredToUserIds").nin(recipient));
-            var result = mongoTemplate.updateFirst(q,
+            var result = documentStore.updateFirst(q,
                     new Update().addToSet("deliveredToUserIds", recipient).set("delivered", true),
                     ChatMessage.class);
             if (result.getModifiedCount() == 0) return;
@@ -404,7 +404,7 @@ public class ChatService {
         if (message.getReceiverId() == null || !message.getReceiverId().equals(recipient)) {
             throw new ForbiddenException("Bạn không phải người nhận tin nhắn này");
         }
-        var result = mongoTemplate.updateFirst(
+        var result = documentStore.updateFirst(
                 Query.query(Criteria.where("_id").is(messageId)
                         .and("receiverId").is(recipient).and("delivered").is(false)),
                 new Update().set("delivered", true).set("deliveredAt", now), ChatMessage.class);
@@ -424,7 +424,7 @@ public class ChatService {
         });
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public ChatMessageResponse createMissedCallMessage(
             Long callerId, Long receiverId, String callId, String callType) {
         if (callerId == null || receiverId == null || callId == null || callId.isBlank()) {
@@ -478,13 +478,13 @@ public class ChatService {
         return directUnread + groupUnread;
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public ChatMessageResponse sendGroupMessage(
             Long senderId, Long groupId, String content, String clientId) {
         return sendGroupMessage(senderId, groupId, content, clientId, null, null, null, null);
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public ChatMessageResponse sendGroupMessage(
             Long senderId,
             Long groupId,
@@ -496,7 +496,7 @@ public class ChatService {
                 senderId, groupId, content, clientId, mediaUrl, mediaType, null, null);
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public ChatMessageResponse sendGroupMessage(
             Long senderId,
             Long groupId,
@@ -606,7 +606,7 @@ public class ChatService {
         Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                 .with(Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id")))
                 .limit(size + 1);
-        List<ChatMessage> messages = new java.util.ArrayList<>(mongoTemplate.find(query, ChatMessage.class));
+        List<ChatMessage> messages = new java.util.ArrayList<>(documentStore.find(query, ChatMessage.class));
         boolean hasMore = messages.size() > size;
         if (hasMore) messages.remove(messages.size() - 1);
         String nextCursor = hasMore && !messages.isEmpty()
@@ -646,10 +646,10 @@ public class ChatService {
                 Criteria.where("readByUserIds").nin(readerId));
         Query receiptQuery = Query.query(unreadForReader)
                 .with(Sort.by(Sort.Direction.DESC, "sentAt")).limit(250);
-        List<ChatMessage> receiptCandidates = mongoTemplate.find(receiptQuery, ChatMessage.class);
+        List<ChatMessage> receiptCandidates = documentStore.find(receiptQuery, ChatMessage.class);
 
         // SQL lastReadAt is the authoritative source for the unread group badge. Commit it first;
-        // update Mongo's per-message receipts and notify senders after the SQL transaction commits.
+        // update PostgreSQL's per-message receipts and notify senders after the SQL transaction commits.
         int updated = groupReadStatusRepository.updateLastReadAt(groupId, userId, readAt);
         if (updated == 0) {
             // Compatibility for memberships created before read-status initialization existed.
@@ -671,7 +671,7 @@ public class ChatService {
 
         afterCommitSafely("group read receipt", () -> {
             try {
-                mongoTemplate.updateMulti(
+                documentStore.updateMulti(
                         Query.query(unreadForReader),
                         new Update().addToSet("readByUserIds", readerId),
                         ChatMessage.class);
@@ -709,7 +709,7 @@ public class ChatService {
         return conversationService.getConversationPage(userId, cursor, size);
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public void deleteMessage(String messageId, Long currentUserId, boolean forEveryone) {
         ChatMessage message = chatMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tin nhắn không tồn tại"));
@@ -729,7 +729,7 @@ public class ChatService {
         String removedMediaUrl = message.getMediaUrl();
         chatMessageRepository.delete(message);
         if (mediaAssets != null && removedMediaUrl != null && !removedMediaUrl.isBlank()) {
-            // Persist the deletion tombstone in the same Mongo transaction as message removal.
+            // Persist the deletion tombstone in the same PostgreSQL transaction as message removal.
             // Cloudinary deletion is retried by the lifecycle worker after this transaction commits.
             mediaAssets.queueUnreferencedDeletion(removedMediaUrl);
         }

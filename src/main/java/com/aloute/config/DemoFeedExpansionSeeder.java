@@ -10,9 +10,9 @@ import com.aloute.repository.IUserRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,19 +32,19 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
     private final IUserRepository userRepository;
     private final IPostRepository postRepository;
     private final IRepostRepository repostRepository;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
 
     public DemoFeedExpansionSeeder(
             SeedProperties seedProperties,
             IUserRepository userRepository,
             IPostRepository postRepository,
             IRepostRepository repostRepository,
-            MongoTemplate mongoTemplate) {
+            PostgresDocumentStore documentStore) {
         this.enabled = seedProperties.isDemoData();
         this.userRepository = userRepository;
         this.postRepository = postRepository;
         this.repostRepository = repostRepository;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
     }
 
     @Override
@@ -83,7 +83,7 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
     private List<Post> findExpandedPosts() {
         Query q = Query.query(Criteria.where("content").regex("^\\[DEMO-EXPANSION\\]"));
         q.with(Sort.by(Sort.Direction.DESC, "createdAt"));
-        return mongoTemplate.find(q, Post.class);
+        return documentStore.find(q, Post.class);
     }
 
     private List<Post> createMorePosts(List<User> users, int amount) {
@@ -91,7 +91,7 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
 
         String[] texts = {
             "Hôm nay mình test lại feed và khả năng sắp xếp bài viết theo thời gian.",
-            "Spring Boot + PostgreSQL + MongoDB chạy cùng nhau khá thú vị.",
+            "Spring Boot + PostgreSQL + PostgreSQL chạy cùng nhau khá thú vị.",
             "Đang thử luồng reaction nhiều emoji trên ALOUTE.",
             "Một buổi tối debug WebSocket và finally mọi thứ đã chạy ổn.",
             "Chia sẻ chút kinh nghiệm làm đồ án web cho mọi người.",
@@ -99,7 +99,7 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
             "Mọi người thích feed kiểu chronological hay có gợi ý ưu tiên?",
             "Đang test community, group chat và notification cùng lúc.",
             "Một query tốt có thể giúp trang nhanh hơn rất nhiều.",
-            "Hôm nay học thêm được một mẹo nhỏ về MongoDB index."
+            "Hôm nay học thêm được một mẹo nhỏ về PostgreSQL index."
         };
 
         LocalDateTime now = LocalDateTime.now();

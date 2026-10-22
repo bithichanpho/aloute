@@ -15,8 +15,8 @@ import com.aloute.common.util.UsernamePolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 
 
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.*;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -30,7 +30,7 @@ public class AccountSecurityService {
     private static final int TOTP_MAX_ATTEMPTS = 5;
     private static final Duration TOTP_WINDOW = Duration.ofMinutes(15);
     private static final Duration TOTP_BLOCK_DURATION = Duration.ofMinutes(15);
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final IUserRepository users;
     private final PasswordEncoder passwords;
     private final TotpService totp;
@@ -51,7 +51,7 @@ public class AccountSecurityService {
 
     @Autowired
     public AccountSecurityService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IUserRepository users,
             PasswordEncoder passwords,
             TotpService totp,
@@ -69,7 +69,7 @@ public class AccountSecurityService {
             AccountDataCleanupService accountDataCleanupService,
             AuthenticationUserCache authenticationUserCache,
             FirebaseAdminService firebaseAdminService) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.users = users;
         this.passwords = passwords;
         this.totp = totp;
@@ -91,7 +91,7 @@ public class AccountSecurityService {
 
     /** Compatibility constructor retained for direct unit-test callers. */
     public AccountSecurityService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IUserRepository users,
             PasswordEncoder passwords,
             TotpService totp,
@@ -108,13 +108,13 @@ public class AccountSecurityService {
             RefreshTokenService refreshTokens,
             AccountDataCleanupService accountDataCleanupService,
             AuthenticationUserCache authenticationUserCache) {
-        this(mongo, users, passwords, totp, encryption, tokens, limits, friends, closeFriends,
+        this(documentStore, users, passwords, totp, encryption, tokens, limits, friends, closeFriends,
                 communityMembers, groupMembers, notifications, pushTokens, groupReadStatuses,
                 refreshTokens, accountDataCleanupService, authenticationUserCache, null);
     }
 
     public AccountSecurityService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             IUserRepository users,
             PasswordEncoder passwords,
             TotpService totp,
@@ -130,7 +130,7 @@ public class AccountSecurityService {
             IGroupReadStatusRepository groupReadStatuses,
             RefreshTokenService refreshTokens,
             AccountDataCleanupService accountDataCleanupService) {
-        this(mongo, users, passwords, totp, encryption, tokens, limits, friends, closeFriends,
+        this(documentStore, users, passwords, totp, encryption, tokens, limits, friends, closeFriends,
                 communityMembers, groupMembers, notifications, pushTokens, groupReadStatuses,
                 refreshTokens, accountDataCleanupService, null);
     }
@@ -167,12 +167,12 @@ public class AccountSecurityService {
     }
 
     public boolean enabled(Long user) {
-        AccountSecurity security = mongo.findById(user, AccountSecurity.class);
+        AccountSecurity security = documentStore.findById(user, AccountSecurity.class);
         return security != null && security.isEnabled();
     }
 
     public void verifyLogin(Long user, String code) {
-        AccountSecurity security = mongo.findById(user, AccountSecurity.class);
+        AccountSecurity security = documentStore.findById(user, AccountSecurity.class);
         if (security == null || !security.isEnabled()) return;
         if (code == null || code.isBlank()) throw new TwoFactorRequiredException();
         // Reserve an attempt slot BEFORE verifying so parallel guesses cannot all slip past the
@@ -189,7 +189,7 @@ public class AccountSecurityService {
                 "Quá nhiều mã xác thực sai. Tính năng xác thực 2FA tạm khóa 15 phút.");
         long step = totp.verify(encryption.decrypt(security.getSecret()), code);
         if (step >= 0
-                && mongo.updateFirst(
+                && documentStore.updateFirst(
                                         Query.query(
                                                 Criteria.where("_id")
                                                         .is(user)
@@ -207,7 +207,7 @@ public class AccountSecurityService {
             return;
         }
         if (code != null
-                && mongo.updateFirst(
+                && documentStore.updateFirst(
                                         Query.query(
                                                 Criteria.where("_id")
                                                         .is(user)
@@ -246,12 +246,12 @@ public class AccountSecurityService {
 
     public Map<String, String> setup(Long user, String password, String firebaseIdToken) {
         checkPassword(user, password, firebaseIdToken);
-        AccountSecurity security = mongo.findById(user, AccountSecurity.class);
+        AccountSecurity security = documentStore.findById(user, AccountSecurity.class);
         if (security == null) {
             security = new AccountSecurity();
             security.setId(user);
             try {
-                mongo.insert(security);
+                documentStore.insert(security);
             } catch (org.springframework.dao.DuplicateKeyException duplicate) {
                 throw new BadRequestException("Thiết lập vừa thay đổi. Hãy thử lại.");
             }
@@ -259,7 +259,7 @@ public class AccountSecurityService {
         if (security.isEnabled()) throw new BadRequestException("2FA đã được bật");
         String secret = totp.newSecret();
         long changed =
-                mongo.updateFirst(
+                documentStore.updateFirst(
                                 Query.query(
                                         Criteria.where("_id").is(user).and("enabled").is(false)),
                                 new Update()
@@ -286,7 +286,7 @@ public class AccountSecurityService {
 
     public List<String> enable(Long user, String password, String code, String firebaseIdToken) {
         checkPassword(user, password, firebaseIdToken);
-        AccountSecurity security = mongo.findById(user, AccountSecurity.class);
+        AccountSecurity security = documentStore.findById(user, AccountSecurity.class);
         if (security == null
                 || security.isEnabled()
                 || security.getPendingExpiresAt() == null
@@ -297,7 +297,7 @@ public class AccountSecurityService {
         List<String> recovery = new ArrayList<>();
         for (int i = 0; i < 8; i++) recovery.add(tokens.generateToken());
         long changed =
-                mongo.updateFirst(
+                documentStore.updateFirst(
                                 Query.query(
                                         Criteria.where("_id")
                                                 .is(user)
@@ -329,7 +329,7 @@ public class AccountSecurityService {
     public void disable(Long user, String password, String code, String firebaseIdToken) {
         checkPassword(user, password, firebaseIdToken);
         verifyLogin(user, code);
-        mongo.remove(Query.query(Criteria.where("_id").is(user)), AccountSecurity.class);
+        documentStore.remove(Query.query(Criteria.where("_id").is(user)), AccountSecurity.class);
     }
 
     @org.springframework.transaction.annotation.Transactional

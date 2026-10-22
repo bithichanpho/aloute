@@ -22,10 +22,10 @@ import com.aloute.repository.IUserRepository;
 
 
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -40,7 +40,7 @@ import java.util.Set;
 @Service
 public class SocialFeatureService {
     private static final Logger log = LoggerFactory.getLogger(SocialFeatureService.class);
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final ContentAccessService access;
     private final IUserRepository users;
     private final IFriendRepository friends;
@@ -51,10 +51,12 @@ public class SocialFeatureService {
     private final RefreshTokenService refreshTokens;
     private final AuthenticationUserCache authenticationUserCache;
     private final MediaAssetLifecycleService postMediaAssets;
+    private final ModerationService moderation;
+    private final PostModerationCoordinator moderationCoordinator;
 
     @org.springframework.beans.factory.annotation.Autowired
     public SocialFeatureService(
-            MongoTemplate mongo,
+            PostgresDocumentStore documentStore,
             ContentAccessService access,
             IUserRepository users,
             IFriendRepository friends,
@@ -67,7 +69,7 @@ public class SocialFeatureService {
             RefreshTokenService refreshTokens,
             AuthenticationUserCache authenticationUserCache,
             MediaAssetLifecycleService postMediaAssets) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.access = access;
         this.users = users;
         this.friends = friends;
@@ -78,25 +80,27 @@ public class SocialFeatureService {
         this.refreshTokens = refreshTokens;
         this.authenticationUserCache = authenticationUserCache;
         this.postMediaAssets = postMediaAssets;
+        this.moderation = moderation;
+        this.moderationCoordinator = moderationCoordinator;
     }
 
     /** Compatibility constructor retained for focused service tests. */
     public SocialFeatureService(
-            MongoTemplate mongo, ContentAccessService access, IUserRepository users,
+            PostgresDocumentStore documentStore, ContentAccessService access, IUserRepository users,
             IFriendRepository friends, ICloseFriendRepository closeFriends, PostService posts,
             ModerationService moderation, AuthRateLimitService limits, NotificationService notificationService) {
-        this(mongo, access, users, friends, closeFriends, posts, moderation, limits,
+        this(documentStore, access, users, friends, closeFriends, posts, moderation, limits,
                 notificationService, null, null, null, null);
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public void block(Long owner, Long target, boolean blocked) {
         if (owner.equals(target)) throw new BadRequestException("Không thể tự chặn chính mình");
         if (!users.existsById(target))
             throw new ResourceNotFoundException("Không tìm thấy tài khoản");
         String id = owner + ":" + target;
         if (!blocked) {
-            mongo.remove(Query.query(Criteria.where("_id").is(id)), UserBlock.class);
+            documentStore.remove(Query.query(Criteria.where("_id").is(id)), UserBlock.class);
             // Unblocking must not accidentally restore a relationship whose cleanup failed
             // during the original block operation.
             afterCommitSafely("unblock relationship cleanup", () -> removeRelationshipEdges(owner, target));
@@ -109,8 +113,8 @@ public class SocialFeatureService {
         block.setOwnerId(owner);
         block.setTargetId(target);
         block.setRelationshipsSynced(false);
-        mongo.save(block);
-        mongo.remove(
+        documentStore.save(block);
+        documentStore.remove(
                 Query.query(
                         new Criteria()
                                 .orOperator(
@@ -118,7 +122,7 @@ public class SocialFeatureService {
                                         Criteria.where("followerId").is(target).and("targetId").is(owner))),
                 FollowRequest.class);
 
-        // Mongo stores the block as the security source of truth. Remove PostgreSQL relationship
+        // PostgreSQL stores the block as the security source of truth. Remove PostgreSQL relationship
         // rows only after the block transaction commits. A scheduled reconciliation repairs this
         // cross-store cleanup if SQL becomes temporarily unavailable.
         afterCommitSafely("block relationship cleanup", () -> cleanupBlockRelationshipsAndMarkSynced(id, owner, target));
@@ -127,7 +131,7 @@ public class SocialFeatureService {
     }
 
     public List<UserBlock> blocks(Long user) {
-        return mongo.find(
+        return documentStore.find(
                 Query.query(Criteria.where("ownerId").is(user)).limit(200), UserBlock.class);
     }
 
@@ -142,7 +146,7 @@ public class SocialFeatureService {
                         Criteria.where("_id").lt(point.id()))));
         query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
                 .limit(size + 1);
-        List<UserBlock> items = new java.util.ArrayList<>(mongo.find(query, UserBlock.class));
+        List<UserBlock> items = new java.util.ArrayList<>(documentStore.find(query, UserBlock.class));
         boolean hasMore = items.size() > size;
         if (hasMore) items.subList(size, items.size()).clear();
         String next = hasMore && !items.isEmpty()
@@ -153,7 +157,7 @@ public class SocialFeatureService {
     }
 
     public List<FollowRequest> requests(Long user) {
-        return mongo.find(
+        return documentStore.find(
                 Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class);
     }
 
@@ -169,7 +173,7 @@ public class SocialFeatureService {
                         Criteria.where("_id").lt(point.id()))));
         query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
                 .limit(size + 1);
-        List<FollowRequest> items = new java.util.ArrayList<>(mongo.find(query, FollowRequest.class));
+        List<FollowRequest> items = new java.util.ArrayList<>(documentStore.find(query, FollowRequest.class));
         boolean hasMore = items.size() > size;
         if (hasMore) items.subList(size, items.size()).clear();
         String next = hasMore && !items.isEmpty()
@@ -206,23 +210,23 @@ public class SocialFeatureService {
 
     @Transactional
     public void decideFollow(Long user, String id, boolean accept) {
-        FollowRequest request = mongo.findById(id, FollowRequest.class);
+        FollowRequest request = documentStore.findById(id, FollowRequest.class);
         if (request == null || !user.equals(request.getTargetId()))
             throw new ResourceNotFoundException("Không tìm thấy yêu cầu");
         access.requireProfile(user, request.getFollowerId());
         if (!accept) {
-            // Declining only changes MongoDB. Delete directly rather than registering a Mongo
+            // Declining only changes PostgreSQL. Delete directly rather than registering a PostgreSQL
             // side effect after a PostgreSQL transaction that has no SQL write to commit.
-            mongo.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
+            documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
             return;
         }
         if (!friends.existsByFollowerIdAndFollowedId(request.getFollowerId(), user)) {
             friends.save(new Friend(request.getFollowerId(), user));
         }
-        // If this Mongo cleanup fails after the SQL commit, reconciliation observes the persisted
+        // If this PostgreSQL cleanup fails after the SQL commit, reconciliation observes the persisted
         // Friend edge and safely removes the stale FollowRequest later.
         afterCommitSafely("follow-request cleanup", () ->
-                mongo.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class));
+                documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class));
         posts.invalidateViewerFeedCache(user);
         posts.invalidateViewerFeedCache(request.getFollowerId());
     }
@@ -241,7 +245,7 @@ public class SocialFeatureService {
         switch (type) {
             case "POST" -> access.requirePost(id, user);
             case "COMMENT" -> {
-                Comment comment = mongo.findById(id, Comment.class);
+                Comment comment = documentStore.findById(id, Comment.class);
                 if (comment == null)
                     throw new ResourceNotFoundException("Không tìm thấy bình luận");
                 access.requirePost(comment.getPostId(), user);
@@ -251,13 +255,13 @@ public class SocialFeatureService {
         }
         ContentReport report = new ContentReport();
         report.setId(user + ":" + type + ":" + id);
-        ContentReport existing = mongo.findById(report.getId(), ContentReport.class);
+        ContentReport existing = documentStore.findById(report.getId(), ContentReport.class);
         if (existing != null) return existing;
         report.setReporterId(user);
         report.setTargetType(type);
         report.setTargetId(id);
         report.setReason(reason.trim());
-        return mongo.insert(report);
+        return documentStore.insert(report);
     }
 
     public void requireAdmin(Long user) {
@@ -299,7 +303,7 @@ public class SocialFeatureService {
 
     private <T> QueueSlice<T> queueSlice(Query base, Class<T> type, Sort sort, long offset, int size) {
         base.with(sort).skip(offset).limit(size + 1);
-        List<T> found = mongo.find(base, type);
+        List<T> found = documentStore.find(base, type);
         boolean hasMore = found.size() > size;
         if (hasMore) found = found.subList(0, size);
         return new QueueSlice<>(List.copyOf(found), hasMore);
@@ -309,8 +313,8 @@ public class SocialFeatureService {
 
     public Object reviewContent(Long user, String type, String id) {
         requireAdmin(user);
-        if (type.equals("POST")) return mongo.findById(id, Post.class);
-        if (type.equals("COMMENT")) return mongo.findById(id, Comment.class);
+        if (type.equals("POST")) return documentStore.findById(id, Post.class);
+        if (type.equals("COMMENT")) return documentStore.findById(id, Comment.class);
         if (type.equals("USER"))
             return users.findById(Long.valueOf(id))
                     .map(
@@ -331,7 +335,7 @@ public class SocialFeatureService {
         if (!Set.of("APPROVE", "HIDE", "DISMISS").contains(decision))
             throw new BadRequestException("Quyết định không hợp lệ");
         ContentReport report =
-                reportId == null ? null : mongo.findById(reportId, ContentReport.class);
+                reportId == null ? null : documentStore.findById(reportId, ContentReport.class);
         if (reportId != null
                 && (report == null
                         || !type.equals(report.getTargetType())
@@ -342,12 +346,12 @@ public class SocialFeatureService {
                     decision.equals("HIDE") ? ModerationStatus.HIDDEN : ModerationStatus.APPROVED;
             switch (type) {
                 case "POST" -> {
-                    Post current = mongo.findById(id, Post.class);
+                    Post current = documentStore.findById(id, Post.class);
                     if (current == null) throw new ResourceNotFoundException("Không tìm thấy nội dung");
                     if (status == ModerationStatus.APPROVED && postMediaAssets != null) {
                         postMediaAssets.assertCanApprove(current);
                     }
-                    var updated = mongo.updateFirst(
+                    var updated = documentStore.updateFirst(
                             Query.query(new Criteria().andOperator(
                                     Criteria.where("_id").is(id),
                                     Criteria.where("moderationStatus")
@@ -406,19 +410,19 @@ public class SocialFeatureService {
         report.setReviewedBy(user);
         report.setReviewedAt(Instant.now());
         report.setDecision(decision);
-        mongo.save(report);
+        documentStore.save(report);
         if (!decision.equals("DISMISS")) posts.invalidateAllFeedCache();
     }
 
     private void reviewComment(String commentId, ModerationStatus targetStatus, String decision) {
-        Comment current = mongo.findById(commentId, Comment.class);
+        Comment current = documentStore.findById(commentId, Comment.class);
         if (current == null) throw new ResourceNotFoundException("Không tìm thấy nội dung");
 
         // New async comments do not affect public counters until approved. Older documents default
         // moderationCountersApplied=true so an admin approval does not count them twice.
         if ("APPROVE".equals(decision) && !current.isModerationCountersApplied()) {
             boolean notifyOwner = current.isNotifyAfterModeration();
-            var result = mongo.updateFirst(
+            var result = documentStore.updateFirst(
                     Query.query(new Criteria().andOperator(
                             Criteria.where("_id").is(commentId),
                             Criteria.where("moderationCountersApplied").is(false))),
@@ -428,12 +432,12 @@ public class SocialFeatureService {
                             .unset("moderationFailureReason")
                             .unset("notifyAfterModeration"), Comment.class);
             if (result.getModifiedCount() == 0) return; // Another admin action already finalized it.
-            mongo.updateFirst(Query.query(Criteria.where("_id").is(current.getPostId())),
+            documentStore.updateFirst(Query.query(Criteria.where("_id").is(current.getPostId())),
                     new Update().inc("commentCount", 1), Post.class);
             if (current.getParentCommentId() != null && !current.getParentCommentId().isBlank()) {
-                mongo.updateFirst(Query.query(Criteria.where("_id").is(current.getParentCommentId())),
+                documentStore.updateFirst(Query.query(Criteria.where("_id").is(current.getParentCommentId())),
                         new Update().inc("replyCount", 1), Comment.class);
-                Comment parent = mongo.findById(current.getParentCommentId(), Comment.class);
+                Comment parent = documentStore.findById(current.getParentCommentId(), Comment.class);
                 if (notifyOwner && parent != null && !parent.getUserId().equals(current.getUserId())) {
                     com.aloute.common.util.TransactionCommitHooks.afterCommit(() ->
                             notificationService.notify(Long.valueOf(parent.getUserId()),
@@ -441,7 +445,7 @@ public class SocialFeatureService {
                                     "đã trả lời bình luận của bạn"));
                 }
             } else if (notifyOwner) {
-                Post post = mongo.findById(current.getPostId(), Post.class);
+                Post post = documentStore.findById(current.getPostId(), Post.class);
                 if (post != null) {
                     com.aloute.common.util.TransactionCommitHooks.afterCommit(() ->
                             notificationService.notify(Long.valueOf(post.getUserId()),
@@ -454,15 +458,15 @@ public class SocialFeatureService {
         var update = new Update().set("moderationStatus", targetStatus)
                 .unset("moderationLeaseUntil").unset("notifyAfterModeration");
         if (targetStatus == ModerationStatus.APPROVED) update.unset("moderationFailureReason");
-        var result = mongo.updateFirst(Query.query(Criteria.where("_id").is(commentId)), update, Comment.class);
+        var result = documentStore.updateFirst(Query.query(Criteria.where("_id").is(commentId)), update, Comment.class);
         if (result.getMatchedCount() == 0) throw new ResourceNotFoundException("Không tìm thấy nội dung");
     }
 
-    @Transactional(transactionManager = "mongoTransactionManager")
+    @Transactional
     public void save(Long user, String postId, boolean saved) {
         String id = user + ":" + postId;
         if (!saved) {
-            mongo.remove(Query.query(Criteria.where("_id").is(id)), SavedPost.class);
+            documentStore.remove(Query.query(Criteria.where("_id").is(id)), SavedPost.class);
             return;
         }
         access.requirePost(postId, user);
@@ -470,12 +474,12 @@ public class SocialFeatureService {
         item.setId(id);
         item.setUserId(user);
         item.setPostId(postId);
-        mongo.save(item);
+        documentStore.save(item);
     }
 
     public List<PostResponse> saved(Long user, int page) {
         List<SavedPost> items =
-                mongo.find(
+                documentStore.find(
                         Query.query(Criteria.where("userId").is(user))
                                 .with(Sort.by(Sort.Direction.DESC, "createdAt"))
                                 .skip(Math.max(0, page) * 20L)
@@ -510,7 +514,13 @@ public class SocialFeatureService {
             postMediaAssets.validatePostMediaUrl(request.getImageUrl(), post.getImageUrl(), post.getUserId());
             postMediaAssets.validatePostMediaUrl(request.getVideoUrl(), post.getVideoUrl(), post.getUserId());
         }
-        ModerationStatus targetStatus = ModerationStatus.APPROVED;
+        // Only a change to what moderators actually review (text or media) needs a new decision.
+        // A visibility-only edit must neither re-approve nor "un-flag" a post.
+        boolean reviewedContentChanged =
+                !java.util.Objects.equals(post.getContent(), request.getContent())
+                        || !java.util.Objects.equals(post.getImageUrl(), request.getImageUrl())
+                        || !java.util.Objects.equals(post.getVideoUrl(), request.getVideoUrl());
+        boolean moderationRequired = moderation != null && moderation.isEnabled();
         var update = new Update()
                 .set("content", request.getContent())
                 .set("imageUrl", request.getImageUrl())
@@ -518,16 +528,22 @@ public class SocialFeatureService {
                 .set("visibility", request.getVisibility())
                 .set("hashtags", ContentTagService.extract(request.getContent(), '#'))
                 .set("mentions", ContentTagService.extract(request.getContent(), '@'))
-                .set("moderationStatus", targetStatus)
-                .set("toxicityScore", 0.0)
-                .set("moderationAttempts", 0)
-                .unset("moderationLastAttemptAt")
-                .unset("moderationFailureReason")
-                .unset("moderationLeaseUntil")
-                .set("notifyMentionsAfterModeration", false)
                 .push("editHistory").slice(-100).each(revision)
                 .set("updatedAt", java.time.LocalDateTime.now());
-        var updated = mongo.updateFirst(
+        if (reviewedContentChanged) {
+            // Edited content goes back to the queue (fail closed). Without this an author could
+            // publish harmless text, then edit it into violating text that stays APPROVED.
+            // Demo mode (moderation disabled) cannot process the queue, so it keeps APPROVED.
+            update.set("moderationStatus",
+                            moderationRequired ? ModerationStatus.PENDING : ModerationStatus.APPROVED)
+                    .set("toxicityScore", 0.0)
+                    .set("moderationAttempts", 0)
+                    .unset("moderationLastAttemptAt")
+                    .unset("moderationFailureReason")
+                    .unset("moderationLeaseUntil")
+                    .set("notifyMentionsAfterModeration", moderationRequired);
+        }
+        var updated = documentStore.updateFirst(
                 Query.query(Criteria.where("_id").is(id)
                         .and("updatedAt").is(post.getUpdatedAt())
                         .and("content").is(post.getContent())
@@ -545,6 +561,21 @@ public class SocialFeatureService {
             } catch (RuntimeException trackingFailure) {
                 log.warn("Post edit media attachment tracking deferred (postId={}, cause={})",
                         id, trackingFailure.getClass().getSimpleName());
+            }
+        }
+        if (reviewedContentChanged && moderationRequired) {
+            // The post just left every other viewer's feed; drop their cached pages too.
+            posts.invalidateAllFeedCache();
+            if (moderationCoordinator != null) {
+                TransactionCommitHooks.afterCommit(() -> {
+                    try {
+                        moderationCoordinator.submit(id);
+                    } catch (RuntimeException dispatchFailure) {
+                        // Scheduled recovery claims PENDING posts, so the edit is still reviewed.
+                        log.warn("Edited post moderation dispatch deferred (postId={}, cause={})",
+                                id, dispatchFailure.getClass().getSimpleName());
+                    }
+                });
             }
         }
         posts.invalidateViewerFeedCache(user);
@@ -566,7 +597,7 @@ public class SocialFeatureService {
         removeRelationshipEdges(owner, target);
         // Mark only after all SQL edge removals succeed. If this update fails, the scheduled
         // reconciliation is allowed to repeat the idempotent SQL cleanup.
-        mongo.updateFirst(
+        documentStore.updateFirst(
                 Query.query(Criteria.where("_id").is(id)),
                 new Update().set("relationshipsSynced", true),
                 UserBlock.class);

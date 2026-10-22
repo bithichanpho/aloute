@@ -6,10 +6,10 @@ This repository is maintained as source code on the current Git branch. It is no
 
 - Java 21 and Spring Boot 4.1.1.
 - PostgreSQL schema managed by Flyway through `V20261101`.
-- MongoDB indexes managed idempotently by `deploy/migrations/mongo-indexes.js`.
+- PostgreSQL JSONB indexes managed through Flyway migrations.
 - Redis used for cache, distributed rate limiting, presence and call state according to environment policy.
-- Mongo replica-set transactions used where document deletion and durable media tombstones must commit together.
-- PostgreSQL outbox jobs used for cleanup that crosses PostgreSQL, MongoDB and Cloudinary.
+- PostgreSQL/JPA/JDBC transactions cover relational records and JSONB-backed aggregate rows.
+- PostgreSQL outbox jobs coordinate cleanup across PostgreSQL and Cloudinary.
 
 ## Main remediation areas
 

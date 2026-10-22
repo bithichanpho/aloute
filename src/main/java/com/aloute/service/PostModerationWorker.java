@@ -8,10 +8,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 public class PostModerationWorker {
     private static final Logger log = LoggerFactory.getLogger(PostModerationWorker.class);
 
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final ModerationService moderation;
     private final ModerationRetryPolicy retryPolicy;
     private final CacheManager cacheManager;
@@ -33,11 +33,11 @@ public class PostModerationWorker {
     private final MediaAssetLifecycleService postMediaAssets;
 
     @Autowired
-    public PostModerationWorker(MongoTemplate mongo, ModerationService moderation,
+    public PostModerationWorker(PostgresDocumentStore documentStore, ModerationService moderation,
             ModerationRetryPolicy retryPolicy, CacheManager cacheManager,
             IUserRepository users, ContentAccessService access, NotificationService notifications,
             MediaAssetLifecycleService postMediaAssets) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.moderation = moderation;
         this.retryPolicy = retryPolicy;
         this.cacheManager = cacheManager;
@@ -48,17 +48,17 @@ public class PostModerationWorker {
     }
 
     /** Compatibility constructor for isolated service tests. */
-    public PostModerationWorker(MongoTemplate mongo, ModerationService moderation,
+    public PostModerationWorker(PostgresDocumentStore documentStore, ModerationService moderation,
             ModerationRetryPolicy retryPolicy, CacheManager cacheManager,
             IUserRepository users, ContentAccessService access, NotificationService notifications) {
-        this(mongo, moderation, retryPolicy, cacheManager, users, access, notifications, null);
+        this(documentStore, moderation, retryPolicy, cacheManager, users, access, notifications, null);
     }
 
     @Async("moderationExecutor")
     public CompletableFuture<Void> moderate(String postId) {
         Post snapshot = null;
         try {
-            snapshot = mongo.findById(postId, Post.class);
+            snapshot = documentStore.findById(postId, Post.class);
             if (snapshot == null || snapshot.getModerationStatus() != ModerationStatus.PENDING) {
                 return CompletableFuture.completedFuture(null);
             }
@@ -91,7 +91,7 @@ public class PostModerationWorker {
                     .unset("moderationLeaseUntil")
                     .unset("moderationFailureReason")
                     .unset("notifyMentionsAfterModeration");
-            if (mongo.updateFirst(unchanged, result, Post.class).getModifiedCount() > 0) {
+            if (documentStore.updateFirst(unchanged, result, Post.class).getModifiedCount() > 0) {
                 snapshot.setModerationStatus(finalStatus);
                 snapshot.setToxicityScore(text.getScore());
                 if (finalStatus == ModerationStatus.APPROVED && snapshot.isNotifyMentionsAfterModeration()) {
@@ -131,7 +131,7 @@ public class PostModerationWorker {
 
     private void handleFailure(String postId, Post snapshot, RuntimeException failure) {
         Post current = snapshot;
-        if (current == null) current = mongo.findById(postId, Post.class);
+        if (current == null) current = documentStore.findById(postId, Post.class);
         if (current == null || current.getModerationStatus() != ModerationStatus.PENDING) return;
 
         boolean retryable = retryPolicy.isRetryable(failure);
@@ -146,7 +146,7 @@ public class PostModerationWorker {
             update.set("moderationLeaseUntil",
                     now.plusSeconds(retryPolicy.delaySeconds(current.getModerationAttempts())));
         }
-        mongo.updateFirst(unchangedPostQuery(current), update, Post.class);
+        documentStore.updateFirst(unchangedPostQuery(current), update, Post.class);
         log.warn("Moderation failed for post {}; retryable={}, attempts={}/{}, reviewRequired={}, code={}",
                 postId, retryable, current.getModerationAttempts(), retryPolicy.maxAttempts(),
                 requireReview, failureCode);

@@ -18,8 +18,8 @@ import com.aloute.repository.HostCommunityStatsProjection;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -28,10 +28,10 @@ import java.util.List;
 class HostDashboardServiceTest {
     private final IUserRepository users = mock(IUserRepository.class);
     private final ICommunityRepository communities = mock(ICommunityRepository.class);
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final PresenceService presence = mock(PresenceService.class);
     private final HostDashboardService service =
-            new HostDashboardService(users, communities, mongo, presence, "Asia/Bangkok");
+            new HostDashboardService(users, communities, documentStore, presence, "Asia/Bangkok");
 
     private HostUserStatsProjection userStats;
     private HostCommunityStatsProjection communityStats;
@@ -62,9 +62,9 @@ class HostDashboardServiceTest {
         when(userStats.getNewUsersToday()).thenReturn(3L);
         when(communityStats.getTotalCommunities()).thenReturn(14L);
         when(communityStats.getNewCommunitiesToday()).thenReturn(1L);
-        when(mongo.count(any(Query.class), eq(Post.class))).thenReturn(500L);
-        when(mongo.count(any(Query.class), eq(Comment.class))).thenReturn(900L);
-        when(mongo.count(any(Query.class), eq(ContentReport.class))).thenReturn(6L);
+        when(documentStore.count(any(Query.class), eq(Post.class))).thenReturn(500L);
+        when(documentStore.count(any(Query.class), eq(Comment.class))).thenReturn(900L);
+        when(documentStore.count(any(Query.class), eq(ContentReport.class))).thenReturn(6L);
         when(presence.countOnlineUsers()).thenReturn(11L);
 
         var result = service.load(today.minusDays(6), today);

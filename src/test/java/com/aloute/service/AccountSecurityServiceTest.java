@@ -9,12 +9,12 @@ import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.model.document.AccountSecurity;
 import com.aloute.model.entity.User;
 import com.aloute.repository.IUserRepository;
-import com.mongodb.client.result.UpdateResult;
+import com.aloute.persistence.postgres.document.UpdateResult;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Duration;
@@ -22,7 +22,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 class AccountSecurityServiceTest {
-    private final MongoTemplate mongo = mock(MongoTemplate.class);
+    private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final IUserRepository users = mock(IUserRepository.class);
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final TotpService totp = new TotpService();
@@ -30,7 +30,7 @@ class AccountSecurityServiceTest {
     private final AuthRateLimitService limits = mock(AuthRateLimitService.class);
     private final AccountSecurityService service =
             new AccountSecurityService(
-                    mongo,
+                    documentStore,
                     users,
                     passwords,
                     totp,
@@ -54,11 +54,11 @@ class AccountSecurityServiceTest {
         security.setId(1L);
         security.setEnabled(true);
         security.setSecret(encryption.encrypt(secret));
-        when(mongo.findById(1L, AccountSecurity.class)).thenReturn(security);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
+        when(documentStore.findById(1L, AccountSecurity.class)).thenReturn(security);
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
                 .thenReturn(
-                        UpdateResult.acknowledged(1, 1L, null),
-                        UpdateResult.acknowledged(0, 0L, null));
+                        new UpdateResult(1L, 1L),
+                        new UpdateResult(0L, 0L));
         String code = totp.code(secret, Instant.now().getEpochSecond() / 30);
         assertDoesNotThrow(() -> service.verifyLogin(1L, code));
         assertThrows(UnauthorizedException.class, () -> service.verifyLogin(1L, code));
@@ -69,9 +69,9 @@ class AccountSecurityServiceTest {
         validPassword();
         AccountSecurity security = new AccountSecurity();
         security.setEnabled(true);
-        when(mongo.findById(1L, AccountSecurity.class)).thenReturn(security);
+        when(documentStore.findById(1L, AccountSecurity.class)).thenReturn(security);
         assertThrows(BadRequestException.class, () -> service.setup(1L, "password"));
-        verify(mongo, never())
+        verify(documentStore, never())
                 .updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class));
     }
 
@@ -83,45 +83,45 @@ class AccountSecurityServiceTest {
         security.setId(1L);
         security.setPendingSecret(encryption.encrypt(secret));
         security.setPendingExpiresAt(Instant.now().plusSeconds(600));
-        when(mongo.findById(1L, AccountSecurity.class)).thenReturn(security);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
-                .thenReturn(UpdateResult.acknowledged(0, 0L, null));
+        when(documentStore.findById(1L, AccountSecurity.class)).thenReturn(security);
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
+                .thenReturn(new UpdateResult(0L, 0L));
         String code = totp.code(secret, Instant.now().getEpochSecond() / 30);
         assertThrows(BadRequestException.class, () -> service.enable(1L, "password", code));
-        verify(mongo, never()).save(any(AccountSecurity.class));
+        verify(documentStore, never()).save(any(AccountSecurity.class));
     }
 
     @Test
     void successfulTotpGivesTheFailureBudgetBack() {
-        String code = enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        String code = enabledTwoFactorWithUpdateResults(new UpdateResult(1L, 1L));
         assertDoesNotThrow(() -> service.verifyLogin(1L, code));
         verify(limits).reset("TOTP", "1");
     }
 
     @Test
     void failedTotpKeepsConsumingTheFailureBudget() {
-        enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(0, 0L, null));
+        enabledTwoFactorWithUpdateResults(new UpdateResult(0L, 0L));
         assertThrows(UnauthorizedException.class, () -> service.verifyLogin(1L, "000000"));
         verify(limits, never()).reset(anyString(), anyString());
     }
 
     @Test
     void validRecoveryCodeAlsoGivesTheFailureBudgetBack() {
-        enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        enabledTwoFactorWithUpdateResults(new UpdateResult(1L, 1L));
         assertDoesNotThrow(() -> service.verifyLogin(1L, "recovery-code"));
         verify(limits).reset("TOTP", "1");
     }
 
     @Test
     void limiterOutageAfterAValidCodeDoesNotFailTheLogin() {
-        String code = enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        String code = enabledTwoFactorWithUpdateResults(new UpdateResult(1L, 1L));
         doThrow(new IllegalStateException("redis down")).when(limits).reset(anyString(), anyString());
         assertDoesNotThrow(() -> service.verifyLogin(1L, code));
     }
 
     @Test
     void twoFactorAttemptsAreLimitedToFivePerFifteenMinutes() {
-        String code = enabledTwoFactorWithUpdateResults(UpdateResult.acknowledged(1, 1L, null));
+        String code = enabledTwoFactorWithUpdateResults(new UpdateResult(1L, 1L));
         service.verifyLogin(1L, code);
         verify(limits).checkAndRecord(
                 eq("TOTP"), eq("1"), eq(5), eq(Duration.ofMinutes(15)), eq(Duration.ofMinutes(15)),
@@ -135,8 +135,8 @@ class AccountSecurityServiceTest {
         security.setId(1L);
         security.setEnabled(true);
         security.setSecret(encryption.encrypt(secret));
-        when(mongo.findById(1L, AccountSecurity.class)).thenReturn(security);
-        when(mongo.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
+        when(documentStore.findById(1L, AccountSecurity.class)).thenReturn(security);
+        when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(AccountSecurity.class)))
                 .thenReturn(first, rest);
         return totp.code(secret, Instant.now().getEpochSecond() / 30);
     }

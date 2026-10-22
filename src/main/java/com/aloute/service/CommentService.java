@@ -12,10 +12,10 @@ import com.aloute.model.document.ModerationStatus;
 import com.aloute.repository.ICommentRepository;
 import com.aloute.repository.IUserRepository;
 
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -33,29 +33,29 @@ public class CommentService {
     private final ICommentRepository commentRepository;
     private final PostService postService;
     private final IUserRepository userRepository;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
     private final CommentPersistenceService commentPersistenceService;
     private final AuthRateLimitService rateLimitService;
-    private final MongoTransactionRetryExecutor transactionRetryExecutor;
+    private final PostgresTransactionRetryExecutor transactionRetryExecutor;
 
     @org.springframework.beans.factory.annotation.Autowired
     public CommentService(
             ICommentRepository commentRepository,
             PostService postService,
             IUserRepository userRepository,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             CommentPersistenceService commentPersistenceService,
             ContentAccessService access,
             ModerationService moderationService,
             AuthRateLimitService rateLimitService,
             CommentModerationCoordinator moderationCoordinator,
-            MongoTransactionRetryExecutor transactionRetryExecutor) {
+            PostgresTransactionRetryExecutor transactionRetryExecutor) {
         this.access = access;
 
         this.commentRepository = commentRepository;
         this.postService = postService;
         this.userRepository = userRepository;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
         this.commentPersistenceService = commentPersistenceService;
         this.rateLimitService = rateLimitService;
         this.transactionRetryExecutor = transactionRetryExecutor;
@@ -66,13 +66,13 @@ public class CommentService {
             ICommentRepository commentRepository,
             PostService postService,
             IUserRepository userRepository,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             CommentPersistenceService commentPersistenceService,
             ContentAccessService access,
             ModerationService moderationService,
             AuthRateLimitService rateLimitService,
             CommentModerationCoordinator moderationCoordinator) {
-        this(commentRepository, postService, userRepository, mongoTemplate, commentPersistenceService,
+        this(commentRepository, postService, userRepository, documentStore, commentPersistenceService,
                 access, moderationService, rateLimitService, moderationCoordinator, null);
     }
 
@@ -81,12 +81,12 @@ public class CommentService {
             ICommentRepository commentRepository,
             PostService postService,
             IUserRepository userRepository,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             CommentPersistenceService commentPersistenceService,
             ContentAccessService access,
             ModerationService moderationService,
             AuthRateLimitService rateLimitService) {
-        this(commentRepository, postService, userRepository, mongoTemplate, commentPersistenceService,
+        this(commentRepository, postService, userRepository, documentStore, commentPersistenceService,
                 access, moderationService, rateLimitService, null, null);
     }
 
@@ -139,7 +139,7 @@ public class CommentService {
                 .with(org.springframework.data.domain.PageRequest.of(
                         Math.max(0, page), pageSize,
                         Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("_id"))));
-        return toResponses(mongoTemplate.find(query, Comment.class));
+        return toResponses(documentStore.find(query, Comment.class));
     }
 
     /**
@@ -172,7 +172,7 @@ public class CommentService {
         Query query = Query.query(criteria)
                 .with(Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("_id")))
                 .limit(size + 1);
-        List<Comment> fetched = mongoTemplate.find(query, Comment.class);
+        List<Comment> fetched = documentStore.find(query, Comment.class);
         boolean hasMore = fetched.size() > size;
         List<Comment> consumed = fetched.subList(0, Math.min(size, fetched.size()));
         String nextCursor = consumed.isEmpty() ? "" : encodeReplyCursor(consumed.get(consumed.size() - 1));
@@ -223,7 +223,7 @@ public class CommentService {
     private record ReplyCursor(LocalDateTime createdAt, String id) {}
 
     private void adjustReplyCount(String parentId, int delta) {
-        mongoTemplate.updateFirst(
+        documentStore.updateFirst(
                 Query.query(Criteria.where("_id").is(parentId)),
                 new Update().inc("replyCount", delta),
                 Comment.class);
@@ -296,18 +296,18 @@ public class CommentService {
         }
 
         if (commentRepository.countByParentCommentId(commentId) > 0) {
-            mongoTemplate.updateFirst(
+            documentStore.updateFirst(
                     Query.query(Criteria.where("_id").is(commentId)),
                     new Update().set("content", "Bình luận đã bị xóa"),
                     Comment.class);
             return;
         }
         long deleted =
-                mongoTemplate
+                documentStore
                         .remove(Query.query(Criteria.where("_id").is(commentId)), Comment.class)
                         .getDeletedCount();
         if (deleted == 0) return;
-        mongoTemplate.remove(Query.query(Criteria.where("commentId").is(commentId)),
+        documentStore.remove(Query.query(Criteria.where("commentId").is(commentId)),
                 com.aloute.model.document.CommentReaction.class);
         if (comment.isModerationCountersApplied()) {
             if (comment.getParentCommentId() != null)
@@ -351,7 +351,7 @@ public class CommentService {
         }
         String id = commentId + ":" + currentUserId;
         if (type == null || type.isBlank()) {
-            mongoTemplate.remove(Query.query(Criteria.where("_id").is(id)),
+            documentStore.remove(Query.query(Criteria.where("_id").is(id)),
                     com.aloute.model.document.CommentReaction.class);
         } else {
             com.aloute.model.document.CommentReaction reaction =
@@ -360,19 +360,15 @@ public class CommentService {
             reaction.setCommentId(commentId);
             reaction.setUserId(currentUserId);
             reaction.setType(type.toUpperCase());
-            mongoTemplate.save(reaction);
+            documentStore.save(reaction);
         }
-        var rows = mongoTemplate.aggregate(
-                org.springframework.data.mongodb.core.aggregation.Aggregation.newAggregation(
-                        org.springframework.data.mongodb.core.aggregation.Aggregation.match(
-                                Criteria.where("commentId").is(commentId)),
-                        org.springframework.data.mongodb.core.aggregation.Aggregation.group("type")
-                                .count().as("count")),
-                com.aloute.model.document.CommentReaction.class,
-                org.bson.Document.class).getMappedResults();
         java.util.Map<String, Long> counts = new java.util.HashMap<>();
-        rows.forEach(row -> counts.put(
-                String.valueOf(row.get("_id")), ((Number) row.get("count")).longValue()));
+        documentStore.countGroupedBy(
+                Query.query(Criteria.where("commentId").is(commentId)),
+                com.aloute.model.document.CommentReaction.class, "type")
+                .forEach((key, count) -> {
+                    if (!key.isEmpty() && key.get(0) != null) counts.put(key.get(0), count);
+                });
         return java.util.Map.of("reaction", type == null ? "" : type.toUpperCase(), "counts", counts);
     }
 

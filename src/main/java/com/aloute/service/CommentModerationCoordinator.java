@@ -7,10 +7,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 @Service
 public class CommentModerationCoordinator {
     private static final Logger log = LoggerFactory.getLogger(CommentModerationCoordinator.class);
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final CommentModerationWorker worker;
     private final ModerationService moderation;
     private final ModerationRetryPolicy retryPolicy;
@@ -29,14 +29,14 @@ public class CommentModerationCoordinator {
     private final long leaseSeconds;
     private final int scanLimit;
 
-    public CommentModerationCoordinator(MongoTemplate mongo, CommentModerationWorker worker,
+    public CommentModerationCoordinator(PostgresDocumentStore documentStore, CommentModerationWorker worker,
             ModerationService moderation, ModerationRetryPolicy retryPolicy, CacheManager cacheManager,
             ModerationDispatchRecoveryService dispatchRecovery,
             @Value("${app.moderation.lease-seconds:300}") long leaseSeconds,
             @Value("${app.moderation.scan-limit:100}") int requestedScanLimit,
             @Value("${app.moderation.executor.max-size:16}") int configuredMaxWorkers,
             @Value("${app.moderation.executor.queue-capacity:100}") int configuredQueueCapacity) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.worker = worker;
         this.moderation = moderation;
         this.retryPolicy = retryPolicy;
@@ -64,7 +64,7 @@ public class CommentModerationCoordinator {
                 .set("moderationLeaseUntil", now.plusSeconds(leaseSeconds))
                 .set("moderationLastAttemptAt", now)
                 .inc("moderationAttempts", 1);
-        if (mongo.updateFirst(claim, lease, Comment.class).getModifiedCount() != 1) return;
+        if (documentStore.updateFirst(claim, lease, Comment.class).getModifiedCount() != 1) return;
         try {
             worker.moderate(commentId).whenComplete((ignored, failure) -> {
                 if (failure != null) {
@@ -91,7 +91,7 @@ public class CommentModerationCoordinator {
                         leaseExpired(now)))
                 .with(Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
                 .limit(scanLimit);
-        for (Comment comment : mongo.find(query, Comment.class)) {
+        for (Comment comment : documentStore.find(query, Comment.class)) {
             if (retryPolicy.exhausted(comment.getModerationAttempts())) {
                 flagForReview(comment, "MAX_RETRIES_EXCEEDED");
             } else {
@@ -112,7 +112,7 @@ public class CommentModerationCoordinator {
 
     private void flagForReview(Comment comment, String reason) {
         LocalDateTime now = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
-        var result = mongo.updateFirst(Query.query(new Criteria().andOperator(
+        var result = documentStore.updateFirst(Query.query(new Criteria().andOperator(
                         Criteria.where("_id").is(comment.getId()),
                         Criteria.where("moderationStatus").is(ModerationStatus.PENDING),
                         Criteria.where("moderationAttempts").gte(retryPolicy.maxAttempts()),

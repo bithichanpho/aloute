@@ -4,7 +4,7 @@
 
 - PostgreSQL schema changes are versioned as Flyway migrations under `src/main/resources/db/migration`.
 - Keep Hibernate `ddl-auto=validate` for the production profile; do not silently mutate a shared database through Hibernate.
-- MongoDB document field additions should remain backward compatible with existing documents unless a dedicated migration/backfill is supplied.
+- JSONB document-field changes should remain backward compatible unless a dedicated Flyway backfill is supplied. All query-critical JSONB indexes belong in versioned PostgreSQL migrations.
 - Do not repair orphan relationships by bulk-deleting user data. Audit and reconcile references explicitly.
 
 ## Fresh-schema test
@@ -21,4 +21,4 @@ The script only accepts a disposable database on loopback and deletes its tempor
 
 ## Version note
 
-Versioned PostgreSQL migrations in this source currently extend through `V20261101__account_administration_audit.sql`. The latest migration stores the immutable ADMIN account-action history; `V20261031` provides the durable community-cleanup outbox. The Mongo index script also contains the idempotent `20261031-hidden-post-media-reconciliation-v1` migration. Release sign-off should include a fresh-schema run and a schema diff against a sanitized production dump.
+Versioned PostgreSQL migrations in this source extend through `V20261102__postgres_jsonb_document_store.sql`. The migration creates the JSONB table and query-critical indexes used by the JDBC document adapter; previous migrations maintain relational entities and outbox workflows. Release sign-off should include a fresh-schema run and a schema diff against a sanitized production dump.

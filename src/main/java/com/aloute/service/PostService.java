@@ -30,11 +30,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.TextCriteria;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.TextCriteria;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DuplicateKeyException;
@@ -65,15 +65,17 @@ public class PostService {
     private final IUserRepository userRepository;
     private final ILikeRepository likeRepository;
     private final NotificationService notificationService;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
     private final ICommentRepository commentRepository;
     private final INotificationRepository notificationRepository;
     private final IRepostRepository repostRepository;
     private final MediaAssetLifecycleService postMediaAssets;
     private final FeedCacheInvalidator feedCacheInvalidator;
-    private final MongoTransactionRetryExecutor transactionRetryExecutor;
+    private final PostgresTransactionRetryExecutor transactionRetryExecutor;
     private final IFriendRepository friendRepository;
     private final INotificationOutboxRepository notificationOutboxRepository;
+    private final ModerationService moderation;
+    private final PostModerationCoordinator moderationCoordinator;
 
     @Autowired
     public PostService(
@@ -82,7 +84,7 @@ public class PostService {
             ILikeRepository likeRepository,
             ModerationService moderationService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
             IRepostRepository repostRepository,
@@ -92,7 +94,7 @@ public class PostService {
             PostModerationCoordinator moderationCoordinator,
             MediaAssetLifecycleService postMediaAssets,
             FeedCacheInvalidator feedCacheInvalidator,
-            MongoTransactionRetryExecutor transactionRetryExecutor,
+            PostgresTransactionRetryExecutor transactionRetryExecutor,
             IFriendRepository friendRepository,
             INotificationOutboxRepository notificationOutboxRepository) {
         this.access = access;
@@ -100,7 +102,7 @@ public class PostService {
         this.userRepository = userRepository;
         this.likeRepository = likeRepository;
         this.notificationService = notificationService;
-        this.mongoTemplate = mongoTemplate;
+        this.documentStore = documentStore;
         this.commentRepository = commentRepository;
         this.notificationRepository = notificationRepository;
         this.repostRepository = repostRepository;
@@ -111,6 +113,8 @@ public class PostService {
         this.transactionRetryExecutor = transactionRetryExecutor;
         this.friendRepository = friendRepository;
         this.notificationOutboxRepository = notificationOutboxRepository;
+        this.moderation = moderationService;
+        this.moderationCoordinator = moderationCoordinator;
     }
 
     /** Compatibility constructor retained for tests and callers predating notification outbox cleanup. */
@@ -120,7 +124,7 @@ public class PostService {
             ILikeRepository likeRepository,
             ModerationService moderationService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
             IRepostRepository repostRepository,
@@ -130,10 +134,10 @@ public class PostService {
             PostModerationCoordinator moderationCoordinator,
             MediaAssetLifecycleService postMediaAssets,
             FeedCacheInvalidator feedCacheInvalidator,
-            MongoTransactionRetryExecutor transactionRetryExecutor,
+            PostgresTransactionRetryExecutor transactionRetryExecutor,
             IFriendRepository friendRepository) {
         this(postRepository, userRepository, likeRepository, moderationService, notificationService,
-                mongoTemplate, commentRepository, notificationRepository, repostRepository, access,
+                documentStore, commentRepository, notificationRepository, repostRepository, access,
                 repostPresentationService, postResponseMapper, moderationCoordinator, postMediaAssets,
                 feedCacheInvalidator, transactionRetryExecutor, friendRepository, null);
     }
@@ -145,7 +149,7 @@ public class PostService {
             ILikeRepository likeRepository,
             ModerationService moderationService,
             NotificationService notificationService,
-            MongoTemplate mongoTemplate,
+            PostgresDocumentStore documentStore,
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
             IRepostRepository repostRepository,
@@ -155,7 +159,7 @@ public class PostService {
             PostModerationCoordinator moderationCoordinator,
             MediaAssetLifecycleService postMediaAssets) {
         this(postRepository, userRepository, likeRepository, moderationService, notificationService,
-                mongoTemplate, commentRepository, notificationRepository, repostRepository, access,
+                documentStore, commentRepository, notificationRepository, repostRepository, access,
                 repostPresentationService, postResponseMapper, moderationCoordinator, postMediaAssets,
                 null, null, null);
     }
@@ -191,13 +195,18 @@ public class PostService {
             CreatePostRequest request,
             String communityId,
             CommunityPostStatus communityPostStatus) {
-        // Timeline posts publish immediately. Community approval is represented separately by
-        // communityPostStatus and is decided only by that community's OWNER/MANAGER.
         if (postMediaAssets != null) {
             postMediaAssets.validatePostMediaUrl(request.getImageUrl(), null, String.valueOf(currentUserId));
             postMediaAssets.validatePostMediaUrl(request.getVideoUrl(), null, String.valueOf(currentUserId));
         }
-        ModerationStatus initialStatus = ModerationStatus.APPROVED;
+        // Fail closed: while moderation is enabled a new post is PENDING (visible only to its
+        // author) until PostModerationWorker records a decision. Skipping this step would let any
+        // user publish unreviewed text/media. Only the explicit local/demo switch
+        // (MODERATION_ENABLED=false) publishes directly, because the queue is a no-op in that mode.
+        // Community approval (communityPostStatus) is a separate, independent gate.
+        boolean moderationRequired = isModerationRequired();
+        ModerationStatus initialStatus =
+                moderationRequired ? ModerationStatus.PENDING : ModerationStatus.APPROVED;
 
         Post post = new Post();
         post.setUserId(String.valueOf(currentUserId));
@@ -211,14 +220,33 @@ public class PostService {
         post.setToxicityScore(0.0);
         post.setCommunityId(communityId);
         post.setCommunityPostStatus(communityPostStatus);
-        post.setNotifyMentionsAfterModeration(false);
+        // Mentions are delivered by the worker only if the post is approved.
+        post.setNotifyMentionsAfterModeration(moderationRequired);
 
         Post saved = postRepository.save(post);
         markPostMediaAttached(saved.getId(), String.valueOf(currentUserId), saved.getImageUrl(), saved.getVideoUrl());
+        if (moderationRequired) {
+            dispatchModeration(saved.getId());
+        }
+        // Skips PENDING/HIDDEN posts, so mentions are only sent immediately in demo mode.
         notifyReadableMentions(saved, currentUserId);
         PostResponse response = toResponse(saved, currentUserId);
         invalidateViewerFeedCache(currentUserId);
         return response;
+    }
+
+    private boolean isModerationRequired() {
+        return moderation != null && moderation.isEnabled();
+    }
+
+    /**
+     * Queues the post once the surrounding transaction (if any) has committed. A failed or
+     * skipped dispatch is safe: PostModerationCoordinator#recoverPendingPosts claims every PENDING
+     * post whose lease is unset, so the post is never approved by default.
+     */
+    private void dispatchModeration(String postId) {
+        if (moderationCoordinator == null) return;
+        afterCommitSafely("post moderation dispatch", () -> moderationCoordinator.submit(postId));
     }
 
     void notifyReadableMentions(Post saved, Long authorId) {
@@ -360,7 +388,7 @@ public class PostService {
     }
 
     /**
-     * Traverses SQL follow edges in keyset batches and keeps only the newest Mongo candidates.
+     * Traverses SQL follow edges in keyset batches and keeps only the newest PostgreSQL candidates.
      * Memory usage is bounded by roughly two feed batches regardless of follow count.
      */
     private List<Post> loadFollowingFeedBatch(
@@ -383,7 +411,7 @@ public class PostService {
             if (!chunk.isEmpty()) {
                 List<Criteria> clauses = new ArrayList<>(baseClauses);
                 clauses.add(Criteria.where("userId").in(chunk));
-                newest.addAll(mongoTemplate.find(
+                newest.addAll(documentStore.find(
                         Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                                 .with(sort).limit(limit),
                         Post.class));
@@ -401,7 +429,7 @@ public class PostService {
     }
 
     /**
-     * Keeps Mongo {@code $in} predicates bounded for accounts following many users. Each chunk is
+     * Keeps PostgreSQL {@code $in} predicates bounded for accounts following many users. Each chunk is
      * index-backed and returns only the requested window; the small sorted windows are then merged.
      */
     private List<Post> loadFeedBatch(List<Criteria> baseClauses, List<String> followed, int limit) {
@@ -409,14 +437,14 @@ public class PostService {
         if (followed == null || followed.isEmpty()) {
             Query query = Query.query(new Criteria().andOperator(baseClauses.toArray(Criteria[]::new)))
                     .with(sort).limit(limit);
-            return mongoTemplate.find(query, Post.class);
+            return documentStore.find(query, Post.class);
         }
 
         final int inClauseSize = 500;
         if (followed.size() <= inClauseSize) {
             List<Criteria> clauses = new ArrayList<>(baseClauses);
             clauses.add(Criteria.where("userId").in(followed));
-            return mongoTemplate.find(
+            return documentStore.find(
                     Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                             .with(sort).limit(limit),
                     Post.class);
@@ -427,7 +455,7 @@ public class PostService {
             List<Criteria> clauses = new ArrayList<>(baseClauses);
             clauses.add(Criteria.where("userId").in(
                     followed.subList(start, Math.min(start + inClauseSize, followed.size()))));
-            candidates.addAll(mongoTemplate.find(
+            candidates.addAll(documentStore.find(
                     Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                             .with(sort).limit(limit),
                     Post.class));
@@ -551,12 +579,12 @@ public class PostService {
                 && decision != CommunityPostStatus.REJECTED) {
             throw new BadRequestException("Quyết định duyệt bài không hợp lệ");
         }
-        Post saved = mongoTemplate.findAndModify(
+        Post saved = documentStore.findAndModify(
                 Query.query(Criteria.where("_id").is(postId)
                         .and("communityId").is(communityId)
                         .and("communityPostStatus").is(CommunityPostStatus.PENDING)),
                 new Update().set("communityPostStatus", decision),
-                org.springframework.data.mongodb.core.FindAndModifyOptions.options().returnNew(true),
+                com.aloute.persistence.postgres.document.FindAndModifyOptions.options().returnNew(true),
                 Post.class);
         if (saved == null) {
             throw new BadRequestException(
@@ -571,7 +599,7 @@ public class PostService {
     }
 
     public List<PostResponse> getPostsByUser(Long userId, Long currentUserId, int page, int size) {
-        // Permission checks may reject rows after Mongo reads them. Page over the visible
+        // Permission checks may reject rows after PostgreSQL reads them. Page over the visible
         // sequence, not the raw sequence, so invisible rows cannot shorten pages.
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(50, size));
@@ -584,7 +612,7 @@ public class PostService {
         while (rawPage * chunk < maxScan) {
             Pageable batch = PageRequest.of(rawPage++, chunk,
                     Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")));
-            List<Post> raw = mongoTemplate.find(ownTimelineQuery(userId, batch), Post.class);
+            List<Post> raw = documentStore.find(ownTimelineQuery(userId, batch), Post.class);
             if (raw.isEmpty()) return output;
             for (PostResponse readable : toResponses(raw, currentUserId)) {
                 if (skipVisible > 0) { skipVisible--; continue; }
@@ -618,7 +646,7 @@ public class PostService {
             Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                     .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
                     .limit(batchSize);
-            List<Post> loaded = mongoTemplate.find(query, Post.class);
+            List<Post> loaded = documentStore.find(query, Post.class);
             if (loaded.isEmpty()) {
                 hasMore = false;
                 break;
@@ -699,7 +727,7 @@ public class PostService {
                                             Sort.Order.desc("createdAt"),
                                             Sort.Order.desc("_id")))
                             .limit(batchSize);
-            List<Repost> loaded = mongoTemplate.find(query, Repost.class);
+            List<Repost> loaded = documentStore.find(query, Repost.class);
             if (loaded.isEmpty()) {
                 hasMore = false;
                 break;
@@ -770,13 +798,13 @@ public class PostService {
             // Hashtags are already materialized and indexed; avoid a full-content regex scan.
             query = Query.query(Criteria.where("hashtags").is(tag));
         } else {
-            // Uses the MongoDB text index on Post.content instead of an unanchored regex scan.
+            // Uses the PostgreSQL text index on Post.content instead of an unanchored regex scan.
             query = Query.query(TextCriteria.forLanguage("none").matching(search));
         }
         query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
                 .skip((long) boundedPage * boundedLimit)
                 .limit(boundedLimit);
-        return toResponses(mongoTemplate.find(query, Post.class), currentUserId);
+        return toResponses(documentStore.find(query, Post.class), currentUserId);
     }
 
     public long countPostsByUser(Long userId) {
@@ -791,7 +819,7 @@ public class PostService {
                         .and("moderationStatus")
                         .ne(ModerationStatus.HIDDEN)
                         .orOperator(Criteria.where("repostOfId").is(null), hasOwnCaption);
-        return mongoTemplate.count(new Query(new Criteria().andOperator(criteria,
+        return documentStore.count(new Query(new Criteria().andOperator(criteria,
                 Criteria.where("visibility").is(com.aloute.model.document.PostVisibility.PUBLIC))), Post.class);
     }
 
@@ -837,33 +865,33 @@ public class PostService {
             throw new ResourceNotFoundException("Không tìm thấy bài viết trong cộng đồng này");
         }
 
-        // All Mongo collections that make up the post are deleted in one Mongo transaction.
+        // All PostgreSQL document collections that make up the post are deleted in one PostgreSQL transaction.
         // PostgreSQL notifications and Cloudinary cleanup are external side effects, so defer
-        // them until Mongo commits; this avoids deleting external state if the local transaction
+        // them until PostgreSQL commits; this avoids deleting external state if the local transaction
         // rolls back. These stores still require reconciliation/outbox handling for hard failures.
         likeRepository.deleteByPostId(postId);
-        java.util.List<String> commentIds = mongoTemplate.find(
+        java.util.List<String> commentIds = documentStore.find(
                 Query.query(Criteria.where("postId").is(postId)),
                 com.aloute.model.document.Comment.class).stream()
                 .map(com.aloute.model.document.Comment::getId).toList();
         if (!commentIds.isEmpty()) {
-            mongoTemplate.remove(Query.query(Criteria.where("commentId").in(commentIds)),
+            documentStore.remove(Query.query(Criteria.where("commentId").in(commentIds)),
                     com.aloute.model.document.CommentReaction.class);
-            mongoTemplate.remove(Query.query(new Criteria().andOperator(
+            documentStore.remove(Query.query(new Criteria().andOperator(
                     Criteria.where("targetType").is("COMMENT"),
                     Criteria.where("targetId").in(commentIds))), ContentReport.class);
         }
         commentRepository.deleteByPostId(postId);
         repostRepository.deleteByPostId(postId);
         Query byPost = Query.query(Criteria.where("postId").is(postId));
-        mongoTemplate.remove(byPost, SavedPost.class);
-        mongoTemplate.remove(byPost, PostRevision.class);
-        mongoTemplate.remove(Query.query(new Criteria().andOperator(
+        documentStore.remove(byPost, SavedPost.class);
+        documentStore.remove(byPost, PostRevision.class);
+        documentStore.remove(Query.query(new Criteria().andOperator(
                 Criteria.where("targetType").is("POST"),
                 Criteria.where("targetId").is(postId))), ContentReport.class);
         postRepository.delete(post);
         if (postMediaAssets != null) {
-            // The tombstone is committed with the Mongo deletion. A process crash after commit can
+            // The tombstone is committed with the PostgreSQL deletion. A process crash after commit can
             // no longer lose the Cloudinary cleanup request.
             postMediaAssets.queuePostMediaDeletion(post);
         }
@@ -884,7 +912,7 @@ public class PostService {
 
     public RepostResponse repost(Long currentUserId, String originalPostId, RepostRequest request) {
         try {
-            RepostResponse response = executeMongoTransaction(
+            RepostResponse response = executeDatabaseTransaction(
                     () -> repostInTransaction(currentUserId, originalPostId, request));
             invalidateViewerFeedCache(currentUserId);
             return response;
@@ -892,7 +920,7 @@ public class PostService {
             // A second concurrent insert for the unique (userId, postId) pair is an already
             // completed repost, not a server error. Resolve it after the failed transaction rolls back.
             if (request != null && Boolean.FALSE.equals(request.getReposted())) {
-                RepostResponse reconciled = executeMongoTransaction(
+                RepostResponse reconciled = executeDatabaseTransaction(
                         () -> repostInTransaction(currentUserId, originalPostId, request));
                 invalidateViewerFeedCache(currentUserId);
                 return reconciled;
@@ -975,7 +1003,7 @@ public class PostService {
                 interactionPostId, cursor, size, original.getRepostCount());
     }
 
-    private <T> T executeMongoTransaction(java.util.function.Supplier<T> work) {
+    private <T> T executeDatabaseTransaction(java.util.function.Supplier<T> work) {
         return transactionRetryExecutor == null ? work.get() : transactionRetryExecutor.execute(work);
     }
 
@@ -1021,7 +1049,7 @@ public class PostService {
     private RepostSummary syncRepostSummary(String postId) {
         int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(postId));
         List<String> recentReposterIds = repostPresentationService.recentReposterIds(postId);
-        mongoTemplate.updateFirst(
+        documentStore.updateFirst(
                 Query.query(Criteria.where("_id").is(postId)),
                 new Update()
                         .set("repostCount", count)
@@ -1048,13 +1076,13 @@ public class PostService {
 
     public void adjustLikeCount(String postId, int delta) {
         Query query = Query.query(Criteria.where("_id").is(postId));
-        mongoTemplate.updateFirst(query, new Update().inc("likeCount", delta), Post.class);
+        documentStore.updateFirst(query, new Update().inc("likeCount", delta), Post.class);
     }
 
     public void adjustReactionCount(String postId, String reactionType, int delta) {
         String type = ReactionType.normalize(reactionType);
         Query query = Query.query(Criteria.where("_id").is(postId));
-        mongoTemplate.updateFirst(
+        documentStore.updateFirst(
                 query,
                 new Update().inc("reactionCounts." + type, delta).inc("likeCount", delta),
                 Post.class);
@@ -1062,7 +1090,7 @@ public class PostService {
 
     public void adjustCommentCount(String postId, int delta) {
         Query query = Query.query(Criteria.where("_id").is(postId));
-        mongoTemplate.updateFirst(query, new Update().inc("commentCount", delta), Post.class);
+        documentStore.updateFirst(query, new Update().inc("commentCount", delta), Post.class);
     }
 
 

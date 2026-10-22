@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>Only methods that also carry {@code @SchedulerLock} are locked. Jobs that are intentionally
  * per-node (in-memory cleanup, presence lease refresh) or that already claim work through a
- * Mongo lease (moderation queues, account-cleanup retries) are left alone on purpose.
+ * PostgreSQL lease (moderation queues, account-cleanup retries) are left alone on purpose.
  *
  * <p>PostgreSQL is used as the lock store because it is always present, including when the
  * {@code no-redis} profile is active. {@code usingDbTime()} makes the database clock the single

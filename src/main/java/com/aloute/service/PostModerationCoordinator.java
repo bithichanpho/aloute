@@ -7,20 +7,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
-/** Mongo-backed, lease-based queue with a bounded retry policy. */
+/** PostgreSQL-backed, lease-based queue with a bounded retry policy. */
 @Service
 public class PostModerationCoordinator {
     private static final Logger log = LoggerFactory.getLogger(PostModerationCoordinator.class);
-    private final MongoTemplate mongo;
+    private final PostgresDocumentStore documentStore;
     private final PostModerationWorker worker;
     private final ModerationService moderation;
     private final ModerationRetryPolicy retryPolicy;
@@ -29,14 +29,14 @@ public class PostModerationCoordinator {
     private final long leaseSeconds;
     private final int scanLimit;
 
-    public PostModerationCoordinator(MongoTemplate mongo, PostModerationWorker worker,
+    public PostModerationCoordinator(PostgresDocumentStore documentStore, PostModerationWorker worker,
             ModerationService moderation, ModerationRetryPolicy retryPolicy, CacheManager cacheManager,
             ModerationDispatchRecoveryService dispatchRecovery,
             @Value("${app.moderation.lease-seconds:300}") long leaseSeconds,
             @Value("${app.moderation.scan-limit:100}") int requestedScanLimit,
             @Value("${app.moderation.executor.max-size:16}") int configuredMaxWorkers,
             @Value("${app.moderation.executor.queue-capacity:100}") int configuredQueueCapacity) {
-        this.mongo = mongo;
+        this.documentStore = documentStore;
         this.worker = worker;
         this.moderation = moderation;
         this.retryPolicy = retryPolicy;
@@ -64,7 +64,7 @@ public class PostModerationCoordinator {
                 .set("moderationLeaseUntil", now.plusSeconds(leaseSeconds))
                 .set("moderationLastAttemptAt", now)
                 .inc("moderationAttempts", 1);
-        if (mongo.updateFirst(claim, lease, Post.class).getModifiedCount() != 1) return;
+        if (documentStore.updateFirst(claim, lease, Post.class).getModifiedCount() != 1) return;
         try {
             worker.moderate(postId).whenComplete((ignored, failure) -> {
                 if (failure != null) {
@@ -91,7 +91,7 @@ public class PostModerationCoordinator {
                         leaseExpired(now)))
                 .with(Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
                 .limit(scanLimit);
-        for (Post post : mongo.find(query, Post.class)) {
+        for (Post post : documentStore.find(query, Post.class)) {
             if (retryPolicy.exhausted(post.getModerationAttempts())) {
                 flagForReview(post, "MAX_RETRIES_EXCEEDED");
             } else {
@@ -112,7 +112,7 @@ public class PostModerationCoordinator {
 
     private void flagForReview(Post post, String reason) {
         LocalDateTime now = LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
-        var result = mongo.updateFirst(Query.query(new Criteria().andOperator(
+        var result = documentStore.updateFirst(Query.query(new Criteria().andOperator(
                         Criteria.where("_id").is(post.getId()),
                         Criteria.where("moderationStatus").is(ModerationStatus.PENDING),
                         Criteria.where("moderationAttempts").gte(retryPolicy.maxAttempts()),
