@@ -1,94 +1,66 @@
 <!DOCTYPE html>
-<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<html lang="vi" data-bs-theme="dark" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <script th:src="@{/js/theme-init.js?v=20261019-global-theme-v1}"></script>
   <title>Xác thực email / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/auth-form-feedback.css?v=20261025-focus-v1}">
+  <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261025-otp-message-v2}">
+  <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}" defer></script>
 </head>
 <body class="auth-body">
+  <button type="button" class="auth-theme-toggle" data-theme-toggle aria-label="Chuyển giao diện sáng/tối" title="Chuyển giao diện sáng/tối">
+    <i class="bi bi-moon-stars theme-icon theme-icon--to-dark" aria-hidden="true"></i>
+    <i class="bi bi-sun theme-icon theme-icon--to-light" aria-hidden="true"></i>
+  </button>
 
   <div class="auth-shell">
-    <div class="auth-card">
+    <div class="auth-card auth-error-focus">
       <div class="auth-card__logo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
         </svg>
       </div>
       <h1 class="auth-card__title">Xác thực email</h1>
+      <p style="text-align:center;color:var(--text-secondary);font-size:14.5px;margin-top:-8px;margin-bottom:18px;">
+        Nhập mã OTP gồm 6 chữ số đã được gửi tới email của bạn.
+      </p>
 
-      <div id="verifyPending" style="text-align:center;color:var(--text-secondary);font-size:14.5px;">
-        Đang xác thực email của bạn...
-      </div>
       <div id="verifySuccess" class="form-success" style="display:none;">
-        Xác thực email thành công! Bây giờ bạn có thể sử dụng đầy đủ tính năng của ALOUTE.
+        Xác thực email thành công! Bây giờ bạn có thể đăng nhập và sử dụng đầy đủ tính năng của ALOUTE.
       </div>
       <div id="verifyError" class="form-error" style="display:none;"></div>
 
-      <div id="resendBox" style="display:none;margin-top:14px;">
+      <form id="verifyForm" novalidate>
         <div class="field">
-          <input type="text" id="resendIdentifier" placeholder="Email hoặc tên đăng nhập">
+          <input type="email" id="email" name="email" placeholder="Email đã đăng ký" autocomplete="email" maxlength="254" th:value="${email}" required>
         </div>
-        <button type="button" class="btn-outline" id="resendBtn">
-          Gửi lại email xác thực
-        </button>
+        <div class="field">
+          <input type="text" id="code" name="code" placeholder="Mã OTP 6 chữ số" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" style="letter-spacing:6px;text-align:center;font-size:20px;" required>
+        </div>
+        <button type="submit" class="btn-primary" id="submitBtn">Xác thực</button>
+      </form>
+
+      <div id="resendBox" style="margin-top:14px;text-align:center;">
+        <button type="button" class="btn-outline" id="resendBtn">Gửi lại mã OTP</button>
         <div id="resendMessage" style="margin-top:10px;font-size:13.5px;"></div>
       </div>
 
       <p class="auth-switch">
-        <a th:href="@{/feed}">Về trang chủ</a> · <a th:href="@{/login}">Đăng nhập</a>
+        <a th:href="@{/register}">Đăng ký lại</a> · <a th:href="@{/login}">Đăng nhập</a>
       </p>
     </div>
   </div>
 
-  <script th:src="@{/js/app.js}"></script>
-  <script th:inline="javascript">
-    const token = /*[[${token}]]*/ null;
-    const pendingBox = document.getElementById('verifyPending');
-    const successBox = document.getElementById('verifySuccess');
-    const errorBox = document.getElementById('verifyError');
-    const resendBox = document.getElementById('resendBox');
-
-    document.getElementById('resendBtn').addEventListener('click', async function () {
-      const identifier = document.getElementById('resendIdentifier').value.trim();
-      const message = document.getElementById('resendMessage');
-      if (!identifier) {
-        message.textContent = 'Vui lòng nhập email hoặc tên đăng nhập.';
-        return;
-      }
-      this.disabled = true;
-      try {
-        const result = await Aloute.api('/api/auth/resend-verification', {
-          method: 'POST',
-          body: JSON.stringify({ identifier })
-        });
-        message.textContent = result?.message || 'Nếu tài khoản hợp lệ, email mới đã được gửi.';
-      } catch (err) {
-        message.textContent = err.message || 'Không thể gửi lại email.';
-      } finally {
-        this.disabled = false;
-      }
-    });
-
-    (async function () {
-      if (!token) {
-        pendingBox.style.display = 'none';
-        errorBox.textContent = 'Thiếu mã xác thực trong đường dẫn.';
-        errorBox.style.display = 'block';
-        resendBox.style.display = 'block';
-        return;
-      }
-      try {
-        await Aloute.api('/api/auth/verify-email?token=' + encodeURIComponent(token), { method: 'GET' });
-        pendingBox.style.display = 'none';
-        successBox.style.display = 'block';
-      } catch (err) {
-        pendingBox.style.display = 'none';
-        errorBox.textContent = err.message || 'Xác thực thất bại, đường dẫn có thể đã hết hạn hoặc được dùng rồi.';
-        errorBox.style.display = 'block';
-        resendBox.style.display = 'block';
-      }
-    })();
-  </script>
+  <script th:src="@{/js/app.js?v=20261017-moderation-toast-v2}"></script>
+  <script th:src="@{/js/auth-form-feedback.js?v=20261025-otp-message-v2}"></script>
+  <script th:src="@{/js/auth-otp.js?v=20261025-input-retry-v3}"></script>
+  <script th:src="@{/js/auth-verify.js?v=20261025-otp-message-v2}"></script>
 </body>
 </html>
+

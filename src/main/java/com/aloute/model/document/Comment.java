@@ -1,31 +1,34 @@
 package com.aloute.model.document;
 
-import java.time.LocalDateTime;
+import com.aloute.persistence.postgres.document.PgDocument;
 
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "comments")
-@org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_post_created", def = "{'postId': 1, 'createdAt': 1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "comments_parent_created", def = "{'parentCommentId': 1, 'createdAt': 1}")
-})
+import java.time.LocalDateTime;
+
+@PgDocument(collection = "comments")
 public class Comment {
 
-    @Id
-    private String id;
+    @Id private String id;
 
     private String postId;
     private String userId;
     private String content;
 
-    /** null = bình luận gốc (trả lời trực tiếp bài viết). Có giá trị = đang trả lời một bình luận khác (reply lồng nhau kiểu Threads). */
     private String parentCommentId;
 
-    /** Số lượt reply trực tiếp vào bình luận này (denormalized, cập nhật bởi CommentService). */
     private int replyCount = 0;
 
     private ModerationStatus moderationStatus = ModerationStatus.APPROVED;
+    private LocalDateTime moderationLeaseUntil;
+    private LocalDateTime moderationLastAttemptAt;
+    private int moderationAttempts;
+    /** Safe machine-readable reason when automatic moderation needs administrator review. */
+    private String moderationFailureReason;
+    // Defaults true for legacy documents whose counter increments predate this field.
+    private boolean moderationCountersApplied = true;
+    /** Only newly-created pending comments send a notification after moderator approval. */
+    private boolean notifyAfterModeration;
 
     private LocalDateTime createdAt;
 
@@ -88,6 +91,19 @@ public class Comment {
     public void setModerationStatus(ModerationStatus moderationStatus) {
         this.moderationStatus = moderationStatus;
     }
+
+    public LocalDateTime getModerationLeaseUntil() { return moderationLeaseUntil; }
+    public void setModerationLeaseUntil(LocalDateTime value) { this.moderationLeaseUntil = value; }
+    public LocalDateTime getModerationLastAttemptAt() { return moderationLastAttemptAt; }
+    public void setModerationLastAttemptAt(LocalDateTime value) { this.moderationLastAttemptAt = value; }
+    public int getModerationAttempts() { return moderationAttempts; }
+    public void setModerationAttempts(int value) { this.moderationAttempts = Math.max(0, value); }
+    public String getModerationFailureReason() { return moderationFailureReason; }
+    public void setModerationFailureReason(String value) { this.moderationFailureReason = value; }
+    public boolean isModerationCountersApplied() { return moderationCountersApplied; }
+    public void setModerationCountersApplied(boolean value) { this.moderationCountersApplied = value; }
+    public boolean isNotifyAfterModeration() { return notifyAfterModeration; }
+    public void setNotifyAfterModeration(boolean value) { this.notifyAfterModeration = value; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

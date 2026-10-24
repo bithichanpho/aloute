@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Chỉnh sửa trang cá nhân — ALOUTE</title></head>
 <body>
@@ -24,7 +25,7 @@
 
     <form id="profileEditForm">
       <div class="field">
-        <input type="text" id="editFullName" placeholder="Họ và tên" th:value="${profileUser.fullName}">
+        <input type="text" id="editFullName" placeholder="Họ và tên" th:value="${profileUser.fullName}" maxlength="100" required>
       </div>
 
       <div class="field">
@@ -44,7 +45,7 @@
         <label class="switch-row" for="editPrivateAccount">
           <span class="switch-row__text">
             <strong>Tài khoản riêng tư</strong>
-            <small>Khi bật, chỉ người theo dõi lẫn nhau với bạn mới nhắn tin được. Khi tắt, ai cũng có thể nhắn tin cho bạn.</small>
+            <small>Khi bật, người theo dõi mới cần bạn duyệt trước khi xem bài viết; chỉ bạn bè theo dõi lẫn nhau được nhắn tin. Người đã theo dõi vẫn được giữ quyền truy cập.</small>
           </span>
           <input type="checkbox" id="editPrivateAccount" th:checked="${profileUser.privateAccount}">
           <span class="switch-row__track" aria-hidden="true"><span class="switch-row__thumb"></span></span>
@@ -66,10 +67,10 @@
         <input type="password" id="currentPassword" placeholder="Mật khẩu hiện tại" autocomplete="current-password" required>
       </div>
       <div class="field">
-        <input type="password" id="newPassword" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" autocomplete="new-password" minlength="6" required>
+        <input type="password" id="newPassword" placeholder="8–72 ký tự, có hoa, thường, số và ký tự đặc biệt" autocomplete="new-password" minlength="8" maxlength="72" required>
       </div>
       <div class="field">
-        <input type="password" id="confirmNewPassword" placeholder="Xác nhận mật khẩu mới" autocomplete="new-password" minlength="6" required>
+        <input type="password" id="confirmNewPassword" placeholder="Xác nhận mật khẩu mới" autocomplete="new-password" minlength="8" maxlength="72" required>
       </div>
       <button type="submit" class="btn-outline" style="width:auto; padding:10px 20px;">Đổi mật khẩu</button>
     </form>

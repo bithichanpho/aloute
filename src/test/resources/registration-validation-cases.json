@@ -1,0 +1,19 @@
+[
+  {"id":"deleted-prefix","field":"username","value":"deleted_123","valid":false},
+  {"id":"deleted-prefix-case","field":"username","value":"DELETED_123","valid":false},
+  {"id":"allowed-deleted-word","field":"username","value":"my_deleted_123","valid":true},
+  {"id":"separator-edge","field":"username","value":"-invalid","valid":false},
+  {"id":"unicode-password","field":"password","value":"MậtKhẩu١!","valid":true},
+  {"id":"unicode-uppercase","field":"password","value":"Ấabcdef1!","valid":true},
+  {"id":"unicode-numeral-special","field":"password","value":"Ⅷabcde١x","valid":true},
+  {"id":"nbsp-special","field":"password","value":"Abcdef1\u00a0","valid":true},
+  {"id":"java-whitespace-not-special","field":"password","value":"Abcdef1\u001c","valid":false},
+  {"id":"missing-uppercase","field":"password","value":"abcdefg1!","valid":false},
+  {"id":"bcrypt-ascii-72","field":"password","prefix":"Aa1!","repeat":"a","times":68,"valid":true},
+  {"id":"bcrypt-ascii-73","field":"password","prefix":"Aa1!","repeat":"a","times":69,"valid":false},
+  {"id":"bcrypt-utf8-overflow","field":"password","prefix":"Aa1!","repeat":"ấ","times":24,"valid":false},
+  {"id":"international-email","field":"email","value":"nguyễn@example.com","valid":true},
+  {"id":"local-domain-email","field":"email","value":"name@localhost","valid":true},
+  {"id":"malformed-email","field":"email","value":"name@","valid":false},
+  {"id":"email-over-100","field":"email","prefix":"person@","repeat":"a","times":60,"suffix":".another-label-with-more-than-forty-characters.example.invalid","valid":true}
+]

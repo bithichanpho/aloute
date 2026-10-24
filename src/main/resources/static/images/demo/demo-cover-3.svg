@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="ALOUTE demo cover 3">
+<defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stop-color="#43e97b"/><stop offset="100%" stop-color="#38f9d7"/></linearGradient></defs>
+<rect width="1200" height="360" fill="url(#g)"/>
+<circle cx="1030" cy="-20" r="230" fill="white" fill-opacity=".10"/>
+<circle cx="1130" cy="300" r="180" fill="white" fill-opacity=".08"/>
+<path d="M0 290 Q300 180 560 300 T1200 210 V360 H0Z" fill="black" fill-opacity=".08"/>
+<text x="64" y="118" fill="white" font-family="Arial, sans-serif" font-size="46" font-weight="700">ALOUTE</text>
+<text x="64" y="174" fill="white" fill-opacity=".92" font-family="Arial, sans-serif" font-size="28">Demo Cover · Quang</text>
+</svg>

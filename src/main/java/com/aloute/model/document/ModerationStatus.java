@@ -1,7 +1,9 @@
 package com.aloute.model.document;
 
+/** PENDING content is visible only to its author until asynchronous moderation completes. */
 public enum ModerationStatus {
-	APPROVED,
-	FLAGGED,
-	HIDDEN
+    PENDING,
+    APPROVED,
+    FLAGGED,
+    HIDDEN
 }

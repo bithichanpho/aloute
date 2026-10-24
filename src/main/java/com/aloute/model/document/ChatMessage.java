@@ -1,53 +1,53 @@
 package com.aloute.model.document;
 
-import java.time.LocalDateTime;
+import com.aloute.persistence.postgres.document.PgDocument;
 
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "chat_messages")
-@org.springframework.data.mongodb.core.index.CompoundIndexes({
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "conversation_sent_index", def = "{'conversationId': 1, 'sentAt': -1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "chat_unread_sender", def = "{'receiverId': 1, 'read': 1, 'senderId': 1}"),
-    @org.springframework.data.mongodb.core.index.CompoundIndex(name = "chat_sender_sent", def = "{'senderId': 1, 'sentAt': -1}")
-})
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
+
+@PgDocument(collection = "chat_messages")
 public class ChatMessage {
 
-    @Id
-    private String id;
+    @Id private String id;
 
-    @Indexed
-    private String conversationId; // ghép 2 userId theo thứ tự cố định, vd "3_10"
+    private String conversationId;
 
     private String senderId;
-    private String receiverId; // null nếu đây là tin nhắn nhóm
-    private Long groupId;      // null nếu đây là tin nhắn 1-1
+    private String receiverId;
+    /** Client-generated idempotency key, persisted for retry-safe WebSocket sends. */
+    private String clientId;
+    private Long groupId;
     private String content;
     private String mediaUrl;
-    private String mediaType; // image | video | file
+    private String mediaType;
     private String mediaName;
     private Long mediaSize;
 
-    // Tin nhắn đặc biệt cho cuộc gọi: CALL / MISSED / ANSWERED / REJECTED
-    private String messageType; // TEXT | CALL
+    private String messageType;
     private String callId;
-    private String callType; // audio | video
-    private String callStatus; // MISSED | REJECTED | ANSWERED
+    private String callType;
+    private String callStatus;
 
     private boolean read = false;
+    private boolean delivered = false;
+    private LocalDateTime deliveredAt;
+    // Per-member receipts for group chats; direct chats use delivered/read booleans.
+    private Set<String> deliveredToUserIds = new HashSet<>();
+    private Set<String> readByUserIds = new HashSet<>();
     private LocalDateTime sentAt;
+    private Set<String> hiddenForUserIds = new HashSet<>();
 
     public ChatMessage() {
         this.sentAt = LocalDateTime.now();
     }
 
-    /** Sinh conversationId cho tin nhắn NHÓM, tách biệt khỏi id user để không đụng nhau. */
     public static String buildGroupConversationId(Long groupId) {
         return "group_" + groupId;
     }
 
-    /** Sinh conversationId ổn định giữa 2 user, không phụ thuộc thứ tự truyền vào. */
     public static String buildConversationId(String userId1, String userId2) {
         long a = Long.parseLong(userId1);
         long b = Long.parseLong(userId2);
@@ -86,6 +86,14 @@ public class ChatMessage {
         this.receiverId = receiverId;
     }
 
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
+    }
+
     public Long getGroupId() {
         return groupId;
     }
@@ -118,7 +126,6 @@ public class ChatMessage {
         this.mediaType = mediaType;
     }
 
-
     public String getMediaName() {
         return mediaName;
     }
@@ -135,18 +142,37 @@ public class ChatMessage {
         this.mediaSize = mediaSize;
     }
 
+    public String getMessageType() {
+        return messageType;
+    }
 
-    public String getMessageType() { return messageType; }
-    public void setMessageType(String messageType) { this.messageType = messageType; }
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
 
-    public String getCallId() { return callId; }
-    public void setCallId(String callId) { this.callId = callId; }
+    public String getCallId() {
+        return callId;
+    }
 
-    public String getCallType() { return callType; }
-    public void setCallType(String callType) { this.callType = callType; }
+    public void setCallId(String callId) {
+        this.callId = callId;
+    }
 
-    public String getCallStatus() { return callStatus; }
-    public void setCallStatus(String callStatus) { this.callStatus = callStatus; }
+    public String getCallType() {
+        return callType;
+    }
+
+    public void setCallType(String callType) {
+        this.callType = callType;
+    }
+
+    public String getCallStatus() {
+        return callStatus;
+    }
+
+    public void setCallStatus(String callStatus) {
+        this.callStatus = callStatus;
+    }
 
     public boolean isRead() {
         return read;
@@ -156,11 +182,42 @@ public class ChatMessage {
         this.read = read;
     }
 
+    public boolean isDelivered() { return delivered; }
+    public void setDelivered(boolean delivered) { this.delivered = delivered; }
+
+    public LocalDateTime getDeliveredAt() { return deliveredAt; }
+    public void setDeliveredAt(LocalDateTime deliveredAt) { this.deliveredAt = deliveredAt; }
+
+    public Set<String> getDeliveredToUserIds() {
+        if (deliveredToUserIds == null) deliveredToUserIds = new HashSet<>();
+        return deliveredToUserIds;
+    }
+    public void setDeliveredToUserIds(Set<String> deliveredToUserIds) {
+        this.deliveredToUserIds = deliveredToUserIds == null ? new HashSet<>() : deliveredToUserIds;
+    }
+
+    public Set<String> getReadByUserIds() {
+        if (readByUserIds == null) readByUserIds = new HashSet<>();
+        return readByUserIds;
+    }
+    public void setReadByUserIds(Set<String> readByUserIds) {
+        this.readByUserIds = readByUserIds == null ? new HashSet<>() : readByUserIds;
+    }
+
     public LocalDateTime getSentAt() {
         return sentAt;
     }
 
     public void setSentAt(LocalDateTime sentAt) {
         this.sentAt = sentAt;
+    }
+
+    public Set<String> getHiddenForUserIds() {
+        if (hiddenForUserIds == null) hiddenForUserIds = new HashSet<>();
+        return hiddenForUserIds;
+    }
+
+    public void setHiddenForUserIds(Set<String> hiddenForUserIds) {
+        this.hiddenForUserIds = hiddenForUserIds == null ? new HashSet<>() : hiddenForUserIds;
     }
 }

@@ -1,21 +1,21 @@
 package com.aloute.model.document;
 
-import java.time.LocalDateTime;
+import com.aloute.persistence.postgres.document.PgDocument;
 
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "likes")
-@CompoundIndex(name = "post_user_unique", def = "{'postId': 1, 'userId': 1}", unique = true)
+import java.time.LocalDateTime;
+
+@PgDocument(collection = "likes")
 public class Like {
 
-    @Id
-    private String id;
+    @Id private String id;
 
     private String postId;
     private String userId;
     private LocalDateTime createdAt;
+
+    private String reactionType;
 
     public Like() {
         this.createdAt = LocalDateTime.now();
@@ -24,6 +24,14 @@ public class Like {
     public Like(String postId, String userId) {
         this.postId = postId;
         this.userId = userId;
+        this.reactionType = "LIKE";
+        this.createdAt = LocalDateTime.now();
+    }
+
+    public Like(String postId, String userId, String reactionType) {
+        this.postId = postId;
+        this.userId = userId;
+        this.reactionType = reactionType == null ? "LIKE" : reactionType;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -57,5 +65,13 @@ public class Like {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getReactionType() {
+        return reactionType == null ? "LIKE" : reactionType;
+    }
+
+    public void setReactionType(String reactionType) {
+        this.reactionType = reactionType;
     }
 }

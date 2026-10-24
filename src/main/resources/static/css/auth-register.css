@@ -1,0 +1,78 @@
+/* Lucian UX/UI Prompt #244 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#244 */
+.u244 {
+  --ux-surface: var(--bg-panel);
+  --ux-surface-2: var(--bg-pill);
+  --ux-ink: var(--text-primary);
+  --ux-ink-2: var(--text-secondary);
+  --ux-ink-3: var(--text-tertiary);
+  --ux-line: var(--border);
+  --ux-accent: var(--accent);
+  --ux-danger: var(--danger);
+  --ux-danger-ink: color-mix(in srgb, var(--danger) 78%, var(--text-primary));
+  --ux-mint: var(--online);
+  position: relative;
+  width: 100%;
+  max-width: 410px;
+  padding: 0;
+  border: 0;
+  border-radius: 32px;
+  overflow: hidden;
+  background: var(--ux-surface);
+  box-shadow: 0 0 0 1px var(--ux-line), var(--shadow-md);
+  color: var(--ux-ink);
+  backdrop-filter: none;
+  letter-spacing: -.01em;
+  overflow-wrap: anywhere;
+}
+.u244, .u244 *, .u244 *::before, .u244 *::after { box-sizing: border-box; }
+.u244 [hidden] { display: none !important; }
+.u244 .u244-sc { max-height: calc(100dvh - 100px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 24px 20px 26px; }
+.u244 .u244-sc::-webkit-scrollbar { display: none; }
+.u244 .auth-card__logo { margin-bottom: 16px; }
+.u244 h1 { margin: 0; font-size: 20px; font-weight: 900; letter-spacing: -.035em; }
+.u244 .u244-intro { margin: 3px 0 0; font-size: 11px; font-weight: 650; color: var(--ux-ink-2); }
+.u244 .u244-sm { display: grid; grid-template-rows: 0fr; margin-top: 0; transition: grid-template-rows .4s cubic-bezier(.3,1,.4,1), margin .4s; }
+.u244 .u244-sm > div { min-height: 0; overflow: hidden; }
+.u244.is-err .u244-sm { grid-template-rows: 1fr; margin-top: 14px; }
+.u244 .u244-sb { padding: 11px 13px; border-radius: 13px; background: color-mix(in srgb, var(--ux-danger) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-danger) 30%, transparent); }
+.u244 .u244-sb b { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 850; color: var(--ux-danger-ink); }
+.u244 .u244-sb b i { flex: none; width: 16px; height: 16px; border-radius: 50%; background: var(--ux-danger); color: #fff; font-style: normal; font-size: 10px; font-weight: 900; display: grid; place-items: center; }
+.u244 .u244-sb ul { margin: 6px 0 0; padding: 0 0 0 22px; font-size: 11px; font-weight: 700; }
+.u244 .u244-sb li { margin-top: 2px; transition: opacity .25s; }
+.u244 .u244-sb li.is-fixed { opacity: .4; text-decoration: line-through; }
+.u244 .u244-sb a { color: var(--ux-danger-ink); text-underline-offset: 2px; cursor: pointer; }
+.u244 .u244-fd { margin-top: 14px; }
+.u244 .u244-fd label { display: block; font-size: 11px; font-weight: 800; color: var(--ux-ink-2); }
+.u244 .u244-bx { position: relative; margin-top: 6px; }
+.u244 .u244-in { display: block; width: 100%; min-width: 0; height: 44px; padding: 0 38px 0 13px; border: 0; border-radius: 12px; background: var(--ux-surface-2); box-shadow: inset 0 0 0 1.5px var(--ux-line); color: var(--ux-ink); font: inherit; font-size: 13px; font-weight: 700; outline: none; transition: box-shadow .2s; }
+.u244 .u244-in::placeholder { color: var(--ux-ink-3); }
+.u244 .u244-in:focus { box-shadow: inset 0 0 0 2px var(--ux-accent); }
+.u244 .u244-in:focus-visible { outline: 2px solid var(--ux-accent); outline-offset: 3px; }
+.u244 .u244-fd.is-bad .u244-in { box-shadow: inset 0 0 0 2px var(--ux-danger); }
+.u244 .u244-fd.is-good .u244-in { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ux-mint) 60%, transparent); }
+.u244 .u244-fd.is-shake .u244-bx { animation: u244-sh .4s; }
+@keyframes u244-sh { 20%,60% { transform: translateX(-5px); } 40%,80% { transform: translateX(5px); } }
+.u244 .u244-ok { position: absolute; right: 12px; top: 12px; width: 20px; height: 20px; border-radius: 50%; background: var(--ux-mint); transform: scale(0); transition: transform .35s cubic-bezier(.3,1.7,.5,1); }
+.u244 .u244-ok::after { content: ""; position: absolute; left: 7px; top: 4px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.u244 .u244-fd.is-good .u244-ok { transform: none; }
+.u244 .u244-ms { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s cubic-bezier(.3,1,.4,1); }
+.u244 .u244-ms > div { min-height: 0; overflow: hidden; font-size: 10.5px; font-weight: 750; color: var(--ux-danger-ink); }
+.u244 .u244-ms > div > span { display: block; padding-top: 5px; }
+.u244 .u244-fd.is-bad .u244-ms { grid-template-rows: 1fr; }
+.u244 .u244-help { margin: 5px 0 0; font-size: 10.5px; color: var(--ux-ink-2); }
+.u244 .u244-go { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 48px; margin-top: 20px; border: 0; border-radius: 13px; background: var(--ux-ink); color: var(--ux-surface); font: inherit; font-size: 13px; font-weight: 850; cursor: pointer; transition: background .3s; }
+.u244 .u244-go:disabled { cursor: wait; opacity: .7; }
+.u244 .u244-go.is-done { background: var(--ux-mint); color: #fff; opacity: 1; }
+.u244 button:focus-visible, .u244 a:focus-visible, .u244 [tabindex="-1"]:focus-visible { outline: 2px solid var(--ux-accent); outline-offset: 2px; }
+.u244 .u244-switch { margin: 20px 0 0; text-align: center; font-size: 12px; color: var(--ux-ink-2); }
+.u244 .u244-switch a { color: var(--ux-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.u244 .u244-server-error { margin-top: 14px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--ux-danger) 30%, transparent); border-radius: 13px; background: color-mix(in srgb, var(--ux-danger) 10%, transparent); color: var(--ux-danger-ink); font-size: 12px; }
+.u244 .u244-pending { margin-top: 12px; }
+.u244 .u244-resend { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--ux-line); border-radius: 12px; background: var(--ux-surface-2); color: var(--ux-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.u244 .u244-resend:disabled { cursor: wait; opacity: .7; }
+.u244 #resendPendingMessage { margin-top: 10px; font-size: 12px; color: var(--ux-ink-2); }
+@media (prefers-reduced-motion: reduce) {
+  .u244 .u244-sm, .u244 .u244-ms, .u244 .u244-ok, .u244 .u244-in, .u244 .u244-go, .u244 .u244-sb li { transition: none; }
+  .u244 .u244-fd.is-shake .u244-bx { animation: none; }
+  .u244 .u244-sc { scroll-behavior: auto; }
+}

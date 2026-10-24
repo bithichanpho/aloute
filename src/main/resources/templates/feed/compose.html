@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Bài viết mới — ALOUTE</title></head>
 <body>
@@ -8,31 +9,7 @@
     <h1>Bài viết mới</h1>
   </div>
 
-  <div class="feed-panel compose-page">
-    <form id="composeForm">
-      <div class="compose">
-        <img class="compose__avatar"
-             th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}"
-             src="/images/avatar_default.png" alt="avatar của tôi">
-        <div class="compose__body" style="flex-direction:column;align-items:stretch;">
-          <textarea id="composeContent" maxlength="2000" placeholder="Có gì mới?"></textarea>
-          <div id="composePreview"></div>
-        </div>
-      </div>
-
-      <div class="compose-page__footer">
-        <div class="compose-page__tools">
-          <label for="composeImageInput" aria-label="Thêm ảnh">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-4-5 4-3-2-5 4"/>
-            </svg>
-          </label>
-          <input type="file" id="composeImageInput" accept="image/*" hidden>
-        </div>
-        <button type="submit" class="btn-post" id="composeSubmit" disabled style="width:auto;padding:9px 22px;">Đăng</button>
-      </div>
-    </form>
-  </div>
+  <div th:replace="~{fragments/post-composer :: postComposer}"></div>
 
 </section>
 </body>

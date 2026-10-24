@@ -1,0 +1,24 @@
+services:
+  moderation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aloute-moderation
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in the project .env}
+      OPENAI_MODERATION_MODEL: ${OPENAI_MODERATION_MODEL:-omni-moderation-latest}
+      OPENAI_MODERATION_TIMEOUT_SECONDS: ${OPENAI_MODERATION_TIMEOUT_SECONDS:-8}
+      OPENAI_AUDIO_TIMEOUT_SECONDS: ${OPENAI_AUDIO_TIMEOUT_SECONDS:-15}
+      OPENAI_AUDIO_MODEL: ${OPENAI_AUDIO_MODEL:-gpt-4o-mini-transcribe}
+      MODERATION_API_TOKEN: ${MODERATION_API_TOKEN:?Set MODERATION_API_TOKEN in the project .env}
+      MODERATION_ALLOWED_MEDIA_HOSTS: ${MODERATION_ALLOWED_MEDIA_HOSTS:-res.cloudinary.com}
+      LOG_LEVEL: ${MODERATION_LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read()"]
+      interval: 20s
+      timeout: 4s
+      retries: 3
+      start_period: 20s

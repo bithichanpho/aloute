@@ -12,10 +12,11 @@ public class UserProfileDto {
     private long followingCount;
     private long closeFriendCount;
     private boolean isFollowedByCurrentUser;
-    private boolean mutualFriend; // true nếu 2 người đã follow lẫn nhau ("bạn bè")
-    private String closeFriendStatus = "NONE"; // NONE | PENDING_SENT | PENDING_RECEIVED | ACCEPTED
-    private boolean privateAccount;  // chủ tài khoản bật chế độ riêng tư
-    private boolean canMessage;      // người đang xem có được phép nhắn tin không
+    private boolean mutualFriend;
+    private String closeFriendStatus = "NONE";
+    private boolean privateAccount;
+    private boolean canMessage;
+    @lombok.Getter @lombok.Setter private boolean followRequestPending;
     private String suggestionReason;
 
     public Long getId() {

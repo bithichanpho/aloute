@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path .env)) {
     Copy-Item .env.example .env
-    Write-Host "Created .env from .env.example. Fill in Supabase/MongoDB/Cloudinary/Mail/JWT values, then run this script again." -ForegroundColor Yellow
+    Write-Host "Created .env from .env.example. Fill in PostgreSQL/Cloudinary/Mail/JWT values, then run this script again." -ForegroundColor Yellow
     exit 1
 }
 

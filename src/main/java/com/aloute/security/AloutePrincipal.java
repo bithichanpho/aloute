@@ -1,24 +1,20 @@
 package com.aloute.security;
 
-import java.util.Collection;
-import java.util.List;
+import com.aloute.model.entity.User;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import com.aloute.model.entity.User;
+import java.util.Collection;
+import java.util.List;
 
-/**
- * Principal tùy chỉnh thay cho org.springframework.security.core.userdetails.User mặc định.
- * Mang thêm userId để mọi Controller lấy "ai đang đăng nhập" mà không cần query DB lại theo username.
- * Được set vào SecurityContext bởi JwtAuthFilter (dựa trên JWT ở header hoặc cookie).
- */
 public class AloutePrincipal implements UserDetails {
 
     private static final long serialVersionUID = 1L;
 
     private final Long id;
+    @lombok.Getter private final java.time.Instant tokensRevokedAt;
     private final String username;
     private final String password;
     private final String fullName;
@@ -28,6 +24,7 @@ public class AloutePrincipal implements UserDetails {
 
     public AloutePrincipal(User user) {
         this.id = user.getId();
+        this.tokensRevokedAt = user.getTokensRevokedAt();
         this.username = user.getUsername();
         this.password = user.getPassword();
         this.fullName = user.getFullName();

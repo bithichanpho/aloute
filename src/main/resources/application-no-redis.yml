@@ -1,0 +1,10 @@
+# Local-only profile overlay for running the app on a workstation without Redis.
+# Do NOT activate this profile in a public production deployment: local rate limiting
+# is per JVM and Redis-backed shared cache/rate limiting will be disabled.
+app:
+  cache:
+    redis:
+      enabled: false
+  security:
+    rate-limit:
+      redis-required: false

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title>Hội nhóm - ALOUTE</title></head>
+<body>
+<section class="content-inner community-page community-page--list">
+
+  <div class="page-header">
+    <div>
+      <h1>Hội nhóm</h1>
+      <p class="page-header__sub">Khám phá cộng đồng, xem hoạt động và tham gia những chủ đề bạn quan tâm.</p>
+    </div>
+    <button type="button" class="btn-primary" id="openCreateCommunityBtn" style="width:auto; padding:10px 16px; margin:0;">+ Tạo hội nhóm</button>
+  </div>
+
+  <div class="community-explorer">
+    <div class="community-explorer__search-wrap">
+      <label class="community-search" for="communitySearchInput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+        </svg>
+        <input id="communitySearchInput" type="search" placeholder="Tìm hội nhóm..." autocomplete="off" spellcheck="false">
+        <button type="button" class="community-search__clear" id="communitySearchClear" aria-label="Xóa tìm kiếm" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </label>
+    </div>
+
+    <div class="community-search-results" id="communitySearchResults" hidden>
+      <div class="community-list-section__header">
+        <div><h2>Kết quả tìm kiếm</h2><p id="communitySearchCount"></p></div>
+      </div>
+      <div class="community-list" id="communitySearchList"></div>
+      <div class="community-search-results__state" id="communitySearchState" hidden></div>
+    </div>
+
+    <div id="communityBrowseSections">
+      <section class="community-list-section">
+        <div class="community-list-section__header">
+          <div>
+            <h2>Nhóm của bạn</h2>
+            <p>Những hội nhóm bạn đã tham gia</p>
+          </div>
+        </div>
+
+        <div class="community-list" th:if="${not #lists.isEmpty(myCommunities)}">
+          <div class="community-card" th:each="c : ${myCommunities}">
+            <a class="community-card__avatar" th:href="@{'/communities/' + ${c.id}}" aria-label="Mở hội nhóm">
+              <img th:if="${c.avatarUrl != null}" th:src="${c.avatarUrl}" alt="">
+              <span th:unless="${c.avatarUrl != null}" th:text="${#strings.substring(c.name,0,1).toUpperCase()}">H</span>
+            </a>
+            <a class="community-card__body" th:href="@{'/communities/' + ${c.id}}">
+              <strong th:text="${c.name}">Tên hội nhóm</strong>
+              <span class="community-card__meta" th:text="${c.memberCount + ' thành viên · ' + (c.privacy == 'PRIVATE' ? 'Riêng tư' : 'Công khai')}">0 thành viên</span>
+              <span class="community-card__desc" th:if="${c.description != null}" th:text="${c.description}"></span>
+            </a>
+            <span th:if="${c.admin}" class="community-card__badge">Quản trị</span>
+            <a th:unless="${c.admin}" class="btn-outline community-card__action" th:href="@{'/communities/' + ${c.id}}">Mở nhóm</a>
+          </div>
+        </div>
+        <div class="community-empty community-search-results__state" th:if="${#lists.isEmpty(myCommunities)}">
+          Bạn chưa tham gia hội nhóm nào. Khám phá danh sách bên dưới để bắt đầu.
+        </div>
+      </section>
+
+      <section class="community-list-section">
+        <div class="community-list-section__header">
+          <div>
+            <h2>Khám phá hội nhóm</h2>
+            <p>Các cộng đồng công khai đang có hoạt động</p>
+          </div>
+        </div>
+
+        <div class="community-list" th:if="${not #lists.isEmpty(discoverCommunities)}">
+          <div class="community-card" th:each="c : ${discoverCommunities}">
+            <a class="community-card__avatar" th:href="@{'/communities/' + ${c.id}}" aria-label="Mở hội nhóm">
+              <img th:if="${c.avatarUrl != null}" th:src="${c.avatarUrl}" alt="">
+              <span th:unless="${c.avatarUrl != null}" th:text="${#strings.substring(c.name,0,1).toUpperCase()}">H</span>
+            </a>
+            <a class="community-card__body" th:href="@{'/communities/' + ${c.id}}">
+              <strong th:text="${c.name}">Tên hội nhóm</strong>
+              <span class="community-card__meta" th:text="${c.memberCount + ' thành viên · ' + (c.privacy == 'PRIVATE' ? 'Riêng tư' : 'Công khai')}">0 thành viên</span>
+              <span class="community-card__desc" th:if="${c.description != null}" th:text="${c.description}"></span>
+            </a>
+            <button type="button"
+                    th:classappend="${c.member} ? 'btn-outline is-joined' : 'btn-primary'"
+                    class="community-card__action btn-community-join"
+                    th:attr="data-community-id=${c.id}"
+                    th:text="${c.member} ? 'Đã tham gia' : 'Tham gia'">Tham gia</button>
+          </div>
+        </div>
+        <div class="community-search-results__state" th:if="${#lists.isEmpty(discoverCommunities)}">
+          Chưa có hội nhóm công khai nào.
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="createCommunityModal" hidden>
+    <div class="modal-card modal-card--wide">
+      <div class="modal-card__header">
+        <h2>Tạo hội nhóm mới</h2>
+        <button type="button" class="modal-card__close" id="closeCreateCommunityBtn" aria-label="Đóng">&times;</button>
+      </div>
+      <div id="createCommunityError" class="form-error" style="display:none;"></div>
+      <form id="createCommunityForm">
+        <div class="community-create__media">
+          <div class="community-create__cover" id="newCommunityCoverPreview">
+            <label class="community-create__cover-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10.5"/><path d="m4 16 4.5-4.5a2 2 0 0 1 2.8 0L15 15l1.7-1.7a2 2 0 0 1 2.8 0L21 15"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
+              <span>Thêm ảnh bìa</span>
+              <input type="file" id="newCommunityCoverInput" accept="image/*" hidden>
+            </label>
+          </div>
+          <label class="community-create__avatar-btn" id="newCommunityAvatarPreview">
+            <img id="newCommunityAvatarImg" hidden alt="">
+            <svg id="newCommunityAvatarIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10.5"/><path d="m4 16 4.5-4.5a2 2 0 0 1 2.8 0L15 15l1.7-1.7a2 2 0 0 1 2.8 0L21 15"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
+            <input type="file" id="newCommunityAvatarInput" accept="image/*" hidden>
+          </label>
+        </div>
+        <p class="field-hint community-create__media-hint">Ảnh đại diện và ảnh bìa không bắt buộc, có thể đổi lại sau.</p>
+
+        <div class="field">
+          <input type="text" id="newCommunityName" placeholder="Tên hội nhóm" maxlength="100" required>
+        </div>
+        <div class="field">
+          <textarea id="newCommunityDescription" placeholder="Mô tả ngắn về hội nhóm (không bắt buộc)" maxlength="500" rows="3"></textarea>
+        </div>
+        <div class="field field--inline community-privacy-options">
+		    <label>
+		        <span>Công khai — ai cũng thấy và xem được bài viết</span>
+		        <input type="radio" name="newCommunityPrivacy" value="PUBLIC" checked>
+		    </label>
+
+		    <label>
+		        <span>Riêng tư — chỉ thành viên xem được bài viết</span>
+		        <input type="radio" name="newCommunityPrivacy" value="PRIVATE">
+		    </label>
+		</div>
+        <button type="submit" class="btn-primary" id="createCommunitySubmitBtn">Tạo hội nhóm</button>
+      </form>
+    </div>
+  </div>
+
+</section>
+</body>
+</html>
