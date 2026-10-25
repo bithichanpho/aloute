@@ -6,7 +6,7 @@ import com.aloute.common.response.ApiResponse;
 import com.aloute.dto.response.NotificationResponse;
 import com.aloute.dto.response.NotificationCursorPage;
 import com.aloute.security.SecurityUtils;
-import com.aloute.service.NotificationService;
+import com.aloute.notifications.api.Notifications;
 import com.aloute.service.AuthRateLimitService;
 
 import org.springframework.security.core.Authentication;
@@ -32,11 +32,11 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 public class NotificationController {
 
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
     private final AuthRateLimitService rateLimitService;
 
     public NotificationController(
-            NotificationService notificationService, AuthRateLimitService rateLimitService) {
+            Notifications notificationService, AuthRateLimitService rateLimitService) {
         this.notificationService = notificationService;
         this.rateLimitService = rateLimitService;
     }

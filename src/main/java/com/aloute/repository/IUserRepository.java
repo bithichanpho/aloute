@@ -17,6 +17,17 @@ import java.util.Optional;
 
 public interface IUserRepository extends JpaRepository<User, Long> {
 
+    interface DirectoryEntry {
+        Long getId();
+        String getUsername();
+    }
+
+    @Query("select u.username from User u where u.id = :id")
+    Optional<String> findDirectoryUsername(@Param("id") Long id);
+
+    @Query("select u.id as id, u.username as username from User u where u.id in :ids")
+    List<DirectoryEntry> findDirectoryEntries(@Param("ids") java.util.Collection<Long> ids);
+
     @Override
     @EntityGraph(attributePaths = "role")
     Page<User> findAll(Pageable pageable);
@@ -45,6 +56,12 @@ public interface IUserRepository extends JpaRepository<User, Long> {
 
     boolean existsByCoverUrl(String coverUrl);
 
+    @Modifying(clearAutomatically=true,flushAutomatically=true)
+    @Query("update User u set u.resetPasswordToken=:hash,u.resetPasswordExpiry=:expiry"
+            +" where u.id=:id and (u.resetPasswordExpiry is null or u.resetPasswordExpiry<=:cutoff)")
+    int issueResetToken(@Param("id") Long id,@Param("hash") String hash,
+            @Param("expiry") LocalDateTime expiry,@Param("cutoff") LocalDateTime cutoff);
+
     /**
      * Atomically spends a password-reset OTP: it only succeeds if the row still holds exactly this
      * OTP hash and the code has not expired, and it clears the hash in the same statement.
@@ -66,6 +83,15 @@ public interface IUserRepository extends JpaRepository<User, Long> {
             @Param("password") String password,
             @Param("revokedAt") Instant revokedAt,
             @Param("now") LocalDateTime now);
+
+    /** A browser proof authorizes exactly one issuance, even if a later six-digit code repeats. */
+    @Modifying(clearAutomatically=true,flushAutomatically=true)
+    @Query("update User u set u.password=:password,u.resetPasswordToken=null,u.resetPasswordExpiry=null,"
+            +"u.tokensRevokedAt=:revokedAt,u.updatedAt=:now where u.id=:id and u.resetPasswordToken=:tokenHash"
+            +" and u.resetPasswordExpiry=:expectedExpiry and u.resetPasswordExpiry>:now")
+    int consumeVerifiedResetToken(@Param("id") Long id,@Param("tokenHash") String tokenHash,
+            @Param("expectedExpiry") LocalDateTime expectedExpiry,@Param("password") String password,
+            @Param("revokedAt") Instant revokedAt,@Param("now") LocalDateTime now);
 
     List<User> findTop60ByOrderByIdDesc();
 

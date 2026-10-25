@@ -58,6 +58,7 @@ import jakarta.validation.constraints.Size;
 public class PostController {
 
     private final PostService postService;
+    private final com.aloute.feed.api.FeedQuery feedQuery;
     private final LikeService likeService;
     private final FriendService friendService;
     private final AuthRateLimitService rateLimitService;
@@ -75,8 +76,9 @@ public class PostController {
             ChatService chatService,
             ContentAccessService contentAccessService,
             @Value("${app.mail.frontend-base-url:http://localhost:8080}") String frontendBaseUrl,
-            ClientIpResolver clientIpResolver) {
+            ClientIpResolver clientIpResolver, com.aloute.feed.api.FeedQuery feedQuery) {
         this.postService = postService;
+        this.feedQuery = feedQuery;
         this.likeService = likeService;
         this.friendService = friendService;
         this.rateLimitService = rateLimitService;
@@ -84,6 +86,20 @@ public class PostController {
         this.contentAccessService = contentAccessService;
         this.frontendBaseUrl = frontendBaseUrl;
         this.clientIpResolver = clientIpResolver;
+    }
+
+    /** Direct construction adapter retained for existing MVC tests/callers. */
+    public PostController(
+            PostService postService,
+            LikeService likeService,
+            FriendService friendService,
+            AuthRateLimitService rateLimitService,
+            ChatService chatService,
+            ContentAccessService contentAccessService,
+            @Value("${app.mail.frontend-base-url:http://localhost:8080}") String frontendBaseUrl,
+            ClientIpResolver clientIpResolver) {
+        this(postService, likeService, friendService, rateLimitService, chatService,
+                contentAccessService, frontendBaseUrl, clientIpResolver, postService);
     }
 
     /** Compatibility constructor for focused MVC unit tests. */
@@ -130,7 +146,7 @@ public class PostController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(30) int size) {
         Long currentUserId = requireUserId(authentication);
         limitFeedReads(currentUserId);
-        return ApiResponse.success(postService.getCursorFeedForViewer(
+        return ApiResponse.success(feedQuery.getCursorFeedForViewer(
                 currentUserId, tab, hashtag, cursor, size));
     }
 
@@ -139,7 +155,7 @@ public class PostController {
         String cursor = null;
         FeedCursorPage result = null;
         for (int index = 0; index <= page; index++) {
-            result = postService.getCursorFeedForViewer(
+            result = feedQuery.getCursorFeedForViewer(
                     currentUserId, tab, null, cursor, size);
             if (index < page && !result.hasMore()) return List.of();
             cursor = result.nextCursor();

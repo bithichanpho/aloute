@@ -3,6 +3,7 @@ package com.aloute.persistence.postgres.document;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -33,8 +34,10 @@ public class PostgresDocumentStore {
     public PostgresDocumentStore(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        // Persistence of aggregates must include internal state even when API JSON hides it.
-        this.persistenceMapper = objectMapper.copy().disable(MapperFeature.USE_ANNOTATIONS);
+        // Persistence includes internal state and always writes ISO dates with nanoseconds.
+        // Only this copy changes: HTTP JSON contracts and legacy array reads stay compatible.
+        this.persistenceMapper = objectMapper.copy().disable(MapperFeature.USE_ANNOTATIONS)
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     public <T> T save(T entity) {
@@ -72,6 +75,17 @@ public class PostgresDocumentStore {
         return entity;
     }
 
+    /** Business-unique insert without aborting a PostgreSQL transaction on an expected retry. */
+    public <T> boolean insertIfAbsent(T entity) {
+        if (entity == null) throw new IllegalArgumentException("entity cannot be null");
+        Object id = readId(entity);
+        if (id == null) { id = generateId(entity); writeId(entity, id); }
+        return jdbcTemplate.update("""
+                INSERT INTO app_document_records(collection_name, document_id, payload, created_at, updated_at)
+                VALUES (?, ?, CAST(? AS jsonb), now(), now()) ON CONFLICT DO NOTHING
+                """, collectionName(entity.getClass()), id.toString(), serialize(entity)) == 1;
+    }
+
     public <T> List<T> saveAll(Iterable<T> entities) {
         List<T> saved = new ArrayList<>();
         if (entities == null) return saved;
@@ -98,10 +112,11 @@ public class PostgresDocumentStore {
         Query effective = query == null ? new Query() : query;
         List<Object> parameters = new ArrayList<>();
         String where = compileWhere(effective.criteria(), type, parameters);
+        // This is an internal model annotation validated by collectionName(), never request data.
+        // A bound collection prevents generic prepared plans from proving partial-index predicates.
         StringBuilder sql = new StringBuilder("SELECT d.payload::text FROM ").append(TABLE)
-                .append(" d WHERE d.collection_name = ? AND (").append(where).append(")");
+                .append(" d WHERE d.collection_name = '").append(collectionName(type)).append("' AND (").append(where).append(")");
         List<Object> bound = new ArrayList<>();
-        bound.add(collectionName(type));
         bound.addAll(parameters);
         String order = orderBy(effective.sort(), type, "d");
         if (!order.isEmpty()) sql.append(" ORDER BY ").append(order);
@@ -112,7 +127,12 @@ public class PostgresDocumentStore {
     public <T> List<T> findAll(Class<T> type) { return find(new Query(), type); }
 
     public <T> boolean exists(Query query, Class<T> type) {
-        return count(query, type) > 0;
+        Query effective = query == null ? new Query() : query;
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(collectionName(type));
+        String where = compileWhere(effective.criteria(), type, parameters);
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject("SELECT EXISTS (SELECT 1 FROM " + TABLE
+                + " d WHERE d.collection_name = ? AND (" + where + "))", Boolean.class, parameters.toArray()));
     }
 
     public <T> long count(Class<T> type) { return count(new Query(), type); }
@@ -274,7 +294,7 @@ public class PostgresDocumentStore {
         List<Object> afterParams = new ArrayList<>();
         String afterWhere = compileWhere(after.criteria(), type, afterParams);
         String order = orderBy(sort, type, "d");
-        if (order.isBlank()) order = "d.payload ->> 'createdAt' DESC, d.document_id DESC";
+        if (order.isBlank()) order = orderBy(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")), type, "d");
         List<Object> parameters = new ArrayList<>();
         parameters.add(collectionName(type));
         parameters.addAll(beforeParams);
@@ -351,14 +371,14 @@ public class PostgresDocumentStore {
     }
 
     private String compileWhere(Criteria criteria, Class<?> type, List<Object> parameters) {
-        return new SqlCriteriaCompiler(objectMapper, type).compile(criteria, parameters);
+        return new SqlCriteriaCompiler(persistenceMapper, type).compile(criteria, parameters);
     }
 
     private String orderBy(Sort sort, Class<?> type, String alias) {
         if (sort == null || sort.isUnsorted()) return "";
         List<String> items = new ArrayList<>();
         for (Sort.Order order : sort) {
-            String expr = new SqlCriteriaCompiler(objectMapper, type).sortExpression(order.getProperty(), alias);
+            String expr = new SqlCriteriaCompiler(persistenceMapper, type).sortExpression(order.getProperty(), alias);
             items.add(expr + (order.isIgnoreCase() ? "" : "") + " " + order.getDirection().name());
         }
         return String.join(", ", items);

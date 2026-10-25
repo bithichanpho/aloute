@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ForbiddenException;
@@ -27,7 +29,6 @@ import com.aloute.repository.IRepostRepository;
 import com.aloute.repository.IUserRepository;
 
 import org.springframework.data.domain.PageRequest;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import com.aloute.persistence.postgres.document.PostgresDocumentStore;
@@ -53,7 +54,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-public class PostService {
+public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.posts.api.PostCards {
 
     private static final Logger log = LoggerFactory.getLogger(PostService.class);
 
@@ -64,16 +65,15 @@ public class PostService {
     private final IPostRepository postRepository;
     private final IUserRepository userRepository;
     private final ILikeRepository likeRepository;
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
     private final PostgresDocumentStore documentStore;
     private final ICommentRepository commentRepository;
-    private final INotificationRepository notificationRepository;
+    private final com.aloute.notifications.api.NotificationCleanup notificationCleanup;
     private final IRepostRepository repostRepository;
     private final MediaAssetLifecycleService postMediaAssets;
     private final FeedCacheInvalidator feedCacheInvalidator;
     private final PostgresTransactionRetryExecutor transactionRetryExecutor;
-    private final IFriendRepository friendRepository;
-    private final INotificationOutboxRepository notificationOutboxRepository;
+    private final com.aloute.feed.api.FeedQuery feedQuery;
     private final ModerationService moderation;
     private final PostModerationCoordinator moderationCoordinator;
 
@@ -83,7 +83,45 @@ public class PostService {
             IUserRepository userRepository,
             ILikeRepository likeRepository,
             ModerationService moderationService,
-            NotificationService notificationService,
+            Notifications notificationService,
+            PostgresDocumentStore documentStore,
+            ICommentRepository commentRepository,
+            com.aloute.notifications.api.NotificationCleanup notificationCleanup,
+            IRepostRepository repostRepository,
+            ContentAccessService access,
+            RepostPresentationService repostPresentationService,
+            PostResponseMapper postResponseMapper,
+            PostModerationCoordinator moderationCoordinator,
+            MediaAssetLifecycleService postMediaAssets,
+            FeedCacheInvalidator feedCacheInvalidator,
+            PostgresTransactionRetryExecutor transactionRetryExecutor,
+            com.aloute.feed.api.FeedQuery feedQuery) {
+        this.access = access;
+        this.postRepository = postRepository;
+        this.userRepository = userRepository;
+        this.likeRepository = likeRepository;
+        this.notificationService = notificationService;
+        this.documentStore = documentStore;
+        this.commentRepository = commentRepository;
+        this.notificationCleanup = notificationCleanup;
+        this.repostRepository = repostRepository;
+        this.repostPresentationService = repostPresentationService;
+        this.postResponseMapper = postResponseMapper;
+        this.postMediaAssets = postMediaAssets;
+        this.feedCacheInvalidator = feedCacheInvalidator;
+        this.transactionRetryExecutor = transactionRetryExecutor;
+        this.feedQuery = feedQuery;
+        this.moderation = moderationService;
+        this.moderationCoordinator = moderationCoordinator;
+    }
+
+    /** Legacy construction adapter; production wiring only accepts the notification owner API. */
+    public PostService(
+            IPostRepository postRepository,
+            IUserRepository userRepository,
+            ILikeRepository likeRepository,
+            ModerationService moderationService,
+            Notifications notificationService,
             PostgresDocumentStore documentStore,
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
@@ -97,24 +135,18 @@ public class PostService {
             PostgresTransactionRetryExecutor transactionRetryExecutor,
             IFriendRepository friendRepository,
             INotificationOutboxRepository notificationOutboxRepository) {
-        this.access = access;
-        this.postRepository = postRepository;
-        this.userRepository = userRepository;
-        this.likeRepository = likeRepository;
-        this.notificationService = notificationService;
-        this.documentStore = documentStore;
-        this.commentRepository = commentRepository;
-        this.notificationRepository = notificationRepository;
-        this.repostRepository = repostRepository;
-        this.repostPresentationService = repostPresentationService;
-        this.postResponseMapper = postResponseMapper;
-        this.postMediaAssets = postMediaAssets;
-        this.feedCacheInvalidator = feedCacheInvalidator;
-        this.transactionRetryExecutor = transactionRetryExecutor;
-        this.friendRepository = friendRepository;
-        this.notificationOutboxRepository = notificationOutboxRepository;
-        this.moderation = moderationService;
-        this.moderationCoordinator = moderationCoordinator;
+        this(postRepository, userRepository, likeRepository, moderationService, notificationService,
+                documentStore, commentRepository,
+                new com.aloute.notifications.application.NotificationCleanupService(
+                        notificationRepository, notificationOutboxRepository),
+                repostRepository, access, repostPresentationService, postResponseMapper,
+                moderationCoordinator, postMediaAssets, feedCacheInvalidator,
+                transactionRetryExecutor,
+                new com.aloute.feed.application.FeedQueryService(
+                        new com.aloute.posts.infrastructure.PostFeedReader(documentStore, access,
+                                postResponseMapper, repostPresentationService,
+                                friendRepository == null ? (viewer, after, limit) -> List.of()
+                                        : new com.aloute.social.infrastructure.JpaFollowedAccounts(friendRepository))));
     }
 
     /** Compatibility constructor retained for tests and callers predating notification outbox cleanup. */
@@ -123,7 +155,7 @@ public class PostService {
             IUserRepository userRepository,
             ILikeRepository likeRepository,
             ModerationService moderationService,
-            NotificationService notificationService,
+            Notifications notificationService,
             PostgresDocumentStore documentStore,
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
@@ -148,7 +180,7 @@ public class PostService {
             IUserRepository userRepository,
             ILikeRepository likeRepository,
             ModerationService moderationService,
-            NotificationService notificationService,
+            Notifications notificationService,
             PostgresDocumentStore documentStore,
             ICommentRepository commentRepository,
             INotificationRepository notificationRepository,
@@ -164,21 +196,13 @@ public class PostService {
                 null, null, null);
     }
 
-    @Cacheable(
-            cacheNames = "feedPages",
-            key = "T(com.aloute.service.FeedCacheKey).createForViewer(#currentUserId, #tab, #hashtag, #encodedCursor, #requestedSize)",
-            condition = "#currentUserId != null")
     public FeedCursorPage getCursorFeedForViewer(
             Long currentUserId,
             String tab,
             String hashtag,
             String encodedCursor,
             int requestedSize) {
-        if (friendRepository == null) {
-            return getCursorFeed(currentUserId, List.of(), tab, hashtag, encodedCursor, requestedSize);
-        }
-        return readCursorFeed(
-                currentUserId, null, true, tab, hashtag, encodedCursor, requestedSize);
+        return feedQuery.getCursorFeedForViewer(currentUserId, tab, hashtag, encodedCursor, requestedSize);
     }
 
     public PostResponse createPost(Long currentUserId, CreatePostRequest request) {
@@ -285,10 +309,6 @@ public class PostService {
      * The single feed traversal implementation deliberately prioritizes stable, scalable
      * keyset scrolling and avoids a bounded in-memory ranking window.
      */
-    @Cacheable(
-            cacheNames = "feedPages",
-            key = "T(com.aloute.service.FeedCacheKey).create(#currentUserId, #followingIds, #tab, #hashtag, #encodedCursor, #requestedSize)",
-            condition = "#currentUserId != null")
     public FeedCursorPage getCursorFeed(
             Long currentUserId,
             List<Long> followingIds,
@@ -296,186 +316,11 @@ public class PostService {
             String hashtag,
             String encodedCursor,
             int requestedSize) {
-        return readCursorFeed(
-                currentUserId, followingIds, false, tab, hashtag, encodedCursor, requestedSize);
-    }
-
-    private FeedCursorPage readCursorFeed(
-            Long currentUserId,
-            List<Long> followingIds,
-            boolean streamFollowingIds,
-            String tab,
-            String hashtag,
-            String encodedCursor,
-            int requestedSize) {
-        int size = Math.max(1, Math.min(30, requestedSize));
-        boolean followingOnly = "following".equalsIgnoreCase(tab);
-        List<String> followed = followingIds == null
-                ? new ArrayList<>()
-                : followingIds.stream().filter(java.util.Objects::nonNull)
-                        .map(String::valueOf).collect(Collectors.toCollection(ArrayList::new));
-        if (currentUserId != null && !followed.contains(String.valueOf(currentUserId))) {
-            // Following feed includes the viewer's own posts as well as followed accounts.
-            followed.add(String.valueOf(currentUserId));
-        }
-        if (followingOnly && followed.isEmpty())
-            return new FeedCursorPage(List.of(), "", false);
-
-        String normalizedTag = normalizeHashtag(hashtag);
-        CursorPoint cursor = decodeFeedCursor(encodedCursor);
-        String nextCursor = encodedCursor == null ? "" : encodedCursor;
-        List<PostResponse> result = new ArrayList<>(size);
-        final int batchSize = Math.min(150, Math.max(50, size * 4));
-        boolean hasMore = false;
-        int batches = 0;
-
-        while (result.size() < size && batches < 20) {
-            List<Criteria> clauses = new ArrayList<>();
-            clauses.add(Criteria.where("moderationStatus").ne(ModerationStatus.HIDDEN));
-            clauses.add(new Criteria().orOperator(
-                    Criteria.where("repostOfId").is(null),
-                    new Criteria().andOperator(
-                            Criteria.where("repostOfId").ne(null),
-                            Criteria.where("content").nin(null, ""))));
-            if (!normalizedTag.isBlank()) clauses.add(Criteria.where("hashtags").is(normalizedTag));
-            if (cursor != null) {
-                clauses.add(new Criteria().orOperator(
-                        Criteria.where("createdAt").lt(cursor.createdAt()),
-                        new Criteria().andOperator(
-                                Criteria.where("createdAt").is(cursor.createdAt()),
-                                Criteria.where("id").lt(cursor.id()))));
-            }
-
-            List<Post> loaded = followingOnly && streamFollowingIds
-                    ? loadFollowingFeedBatch(clauses, currentUserId, batchSize)
-                    : loadFeedBatch(clauses, followingOnly ? followed : List.of(), batchSize);
-            if (loaded.isEmpty()) {
-                hasMore = false;
-                break;
-            }
-
-            ContentAccessService.AccessBatch permissions = access.forPosts(loaded, currentUserId);
-            List<Post> readable = permissions.readable(loaded);
-            Map<String, PostResponse> responsesById =
-                    toReadableResponses(readable, currentUserId, permissions).stream()
-                            .collect(Collectors.toMap(PostResponse::getId, Function.identity()));
-            boolean stoppedAtPageBoundary = false;
-            for (int i = 0; i < loaded.size(); i++) {
-                Post candidate = loaded.get(i);
-                PostResponse mapped = responsesById.get(candidate.getId());
-                if (mapped != null) result.add(mapped);
-                nextCursor = encodeFeedCursor(candidate);
-                cursor = new CursorPoint(candidate.getCreatedAt(), candidate.getId());
-                if (result.size() >= size) {
-                    // The next request starts immediately after the last consumed document.
-                    hasMore = i < loaded.size() - 1 || loaded.size() == batchSize;
-                    stoppedAtPageBoundary = true;
-                    break;
-                }
-            }
-            if (stoppedAtPageBoundary) break;
-            if (loaded.size() < batchSize) {
-                hasMore = false;
-                break;
-            }
-            hasMore = true;
-            batches++;
-        }
-        if (batches >= 20 && result.size() < size) hasMore = true;
-        if (result.isEmpty() && !hasMore) nextCursor = "";
-        repostPresentationService.attachRecentReposters(result);
-        return new FeedCursorPage(result, hasMore ? nextCursor : (result.isEmpty() ? "" : nextCursor), hasMore);
-    }
-
-    /**
-     * Traverses SQL follow edges in keyset batches and keeps only the newest PostgreSQL candidates.
-     * Memory usage is bounded by roughly two feed batches regardless of follow count.
-     */
-    private List<Post> loadFollowingFeedBatch(
-            List<Criteria> baseClauses, Long viewerId, int limit) {
-        final int relationshipBatchSize = 500;
-        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-        List<Post> newest = new ArrayList<>(limit * 2);
-        Long afterId = 0L;
-        boolean firstBatch = true;
-
-        while (true) {
-            List<Long> ids = friendRepository.findFollowedIdsAfter(
-                    viewerId, afterId, PageRequest.of(0, relationshipBatchSize));
-            List<String> chunk = ids.stream().filter(java.util.Objects::nonNull)
-                    .map(String::valueOf).collect(Collectors.toCollection(ArrayList::new));
-            if (firstBatch) {
-                chunk.add(String.valueOf(viewerId));
-                firstBatch = false;
-            }
-            if (!chunk.isEmpty()) {
-                List<Criteria> clauses = new ArrayList<>(baseClauses);
-                clauses.add(Criteria.where("userId").in(chunk));
-                newest.addAll(documentStore.find(
-                        Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
-                                .with(sort).limit(limit),
-                        Post.class));
-                newest.sort(java.util.Comparator
-                        .comparing(Post::getCreatedAt,
-                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder()))
-                        .thenComparing(Post::getId,
-                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
-                if (newest.size() > limit) newest.subList(limit, newest.size()).clear();
-            }
-            if (ids.size() < relationshipBatchSize) break;
-            afterId = ids.get(ids.size() - 1);
-        }
-        return newest;
-    }
-
-    /**
-     * Keeps PostgreSQL {@code $in} predicates bounded for accounts following many users. Each chunk is
-     * index-backed and returns only the requested window; the small sorted windows are then merged.
-     */
-    private List<Post> loadFeedBatch(List<Criteria> baseClauses, List<String> followed, int limit) {
-        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-        if (followed == null || followed.isEmpty()) {
-            Query query = Query.query(new Criteria().andOperator(baseClauses.toArray(Criteria[]::new)))
-                    .with(sort).limit(limit);
-            return documentStore.find(query, Post.class);
-        }
-
-        final int inClauseSize = 500;
-        if (followed.size() <= inClauseSize) {
-            List<Criteria> clauses = new ArrayList<>(baseClauses);
-            clauses.add(Criteria.where("userId").in(followed));
-            return documentStore.find(
-                    Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
-                            .with(sort).limit(limit),
-                    Post.class);
-        }
-
-        List<Post> candidates = new ArrayList<>();
-        for (int start = 0; start < followed.size(); start += inClauseSize) {
-            List<Criteria> clauses = new ArrayList<>(baseClauses);
-            clauses.add(Criteria.where("userId").in(
-                    followed.subList(start, Math.min(start + inClauseSize, followed.size()))));
-            candidates.addAll(documentStore.find(
-                    Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
-                            .with(sort).limit(limit),
-                    Post.class));
-        }
-        candidates.sort(java.util.Comparator
-                .comparing(Post::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder()))
-                .thenComparing(Post::getId, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
-        return candidates.size() <= limit ? candidates : new ArrayList<>(candidates.subList(0, limit));
+        return feedQuery.getCursorFeed(currentUserId, followingIds, tab, hashtag, encodedCursor, requestedSize);
     }
 
     public List<PostResponse> getPostsByHashtag(String hashtag, Long currentUserId, int size) {
         return getCursorFeed(currentUserId, List.of(), "foryou", hashtag, null, size).items();
-    }
-
-    private String normalizeHashtag(String hashtag) {
-        if (hashtag == null || hashtag.isBlank()) return "";
-        String value = hashtag.trim().replaceFirst("^#", "").toLowerCase(java.util.Locale.ROOT);
-        if (!value.matches("[\\p{L}\\p{N}_]{1,50}"))
-            throw new BadRequestException("Hashtag không hợp lệ");
-        return value;
     }
 
     private String encodeFeedCursor(Post post) {
@@ -865,10 +710,8 @@ public class PostService {
             throw new ResourceNotFoundException("Không tìm thấy bài viết trong cộng đồng này");
         }
 
-        // All PostgreSQL document collections that make up the post are deleted in one PostgreSQL transaction.
-        // PostgreSQL notifications and Cloudinary cleanup are external side effects, so defer
-        // them until PostgreSQL commits; this avoids deleting external state if the local transaction
-        // rolls back. These stores still require reconciliation/outbox handling for hard failures.
+        // JSONB documents, JPA notifications and durable media tombstones share PostgreSQL.
+        // Notification cleanup joins this transaction; Cloudinary I/O stays in its worker.
         likeRepository.deleteByPostId(postId);
         java.util.List<String> commentIds = documentStore.find(
                 Query.query(Criteria.where("postId").is(postId)),
@@ -899,12 +742,7 @@ public class PostService {
             syncRepostSummary(post.getRepostOfId());
         }
 
-        afterCommitSafely("post notification cleanup", () -> {
-            notificationRepository.deleteByReferenceId(postId);
-            if (notificationOutboxRepository != null) {
-                notificationOutboxRepository.deleteByReferenceIdIn(List.of(postId));
-            }
-        });
+        notificationCleanup.removePostReferences(List.of(postId));
         // A deleted post can be present in many viewers' cached pages, not only its author's feed.
         // This is a rare content-removal path, so invalidate globally using the SCAN-based strategy.
         invalidateAllFeedCache();

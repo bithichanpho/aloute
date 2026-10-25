@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.exception.ForbiddenException;
@@ -13,7 +15,6 @@ import com.aloute.model.document.FollowRequest;
 import com.aloute.model.document.ModerationStatus;
 import com.aloute.model.document.Post;
 import com.aloute.model.document.PostRevision;
-import com.aloute.model.document.SavedPost;
 import com.aloute.model.document.UserBlock;
 import com.aloute.model.entity.Friend;
 import com.aloute.repository.ICloseFriendRepository;
@@ -32,7 +33,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,19 +42,48 @@ public class SocialFeatureService {
     private static final Logger log = LoggerFactory.getLogger(SocialFeatureService.class);
     private final PostgresDocumentStore documentStore;
     private final ContentAccessService access;
-    private final IUserRepository users;
+    private final com.aloute.users.api.UserDirectory users;
     private final IFriendRepository friends;
     private final ICloseFriendRepository closeFriends;
     private final PostService posts;
     private final AuthRateLimitService limits;
-    private final NotificationService notificationService;
-    private final RefreshTokenService refreshTokens;
-    private final AuthenticationUserCache authenticationUserCache;
+    private final Notifications notificationService;
+    private final com.aloute.administration.api.AccountModeration accountModeration;
+    private final com.aloute.users.api.UserAccountAdministration accountAdministration;
     private final MediaAssetLifecycleService postMediaAssets;
-    private final ModerationService moderation;
-    private final PostModerationCoordinator moderationCoordinator;
+    private final com.aloute.posts.api.PostEditing postEditing;
+    private final com.aloute.posts.api.SavedPosts savedPosts;
 
     @org.springframework.beans.factory.annotation.Autowired
+    public SocialFeatureService(
+            PostgresDocumentStore documentStore,
+            ContentAccessService access,
+            com.aloute.users.api.UserDirectory users,
+            IFriendRepository friends,
+            ICloseFriendRepository closeFriends,
+            PostService posts,
+            AuthRateLimitService limits,
+            Notifications notificationService,
+            com.aloute.administration.api.AccountModeration accountModeration,
+            com.aloute.users.api.UserAccountAdministration accountAdministration,
+            MediaAssetLifecycleService postMediaAssets,
+            com.aloute.posts.api.PostEditing postEditing, com.aloute.posts.api.SavedPosts savedPosts) {
+        this.documentStore = documentStore;
+        this.access = access;
+        this.users = users;
+        this.friends = friends;
+        this.closeFriends = closeFriends;
+        this.posts = posts;
+        this.limits = limits;
+        this.notificationService = notificationService;
+        this.accountModeration = accountModeration;
+        this.accountAdministration = accountAdministration;
+        this.postMediaAssets = postMediaAssets;
+        this.postEditing = postEditing;
+        this.savedPosts = savedPosts;
+    }
+
+    /** Legacy construction adapter; production injects Posts public use cases. */
     public SocialFeatureService(
             PostgresDocumentStore documentStore,
             ContentAccessService access,
@@ -64,31 +93,35 @@ public class SocialFeatureService {
             PostService posts,
             ModerationService moderation,
             AuthRateLimitService limits,
-            NotificationService notificationService,
+            Notifications notificationService,
             PostModerationCoordinator moderationCoordinator,
             RefreshTokenService refreshTokens,
             AuthenticationUserCache authenticationUserCache,
             MediaAssetLifecycleService postMediaAssets) {
-        this.documentStore = documentStore;
-        this.access = access;
-        this.users = users;
-        this.friends = friends;
-        this.closeFriends = closeFriends;
-        this.posts = posts;
-        this.limits = limits;
-        this.notificationService = notificationService;
-        this.refreshTokens = refreshTokens;
-        this.authenticationUserCache = authenticationUserCache;
-        this.postMediaAssets = postMediaAssets;
-        this.moderation = moderation;
-        this.moderationCoordinator = moderationCoordinator;
+        this(documentStore, access, new com.aloute.users.infrastructure.JpaUserDirectory(users),
+                friends, closeFriends, posts, limits, notificationService,
+                new com.aloute.administration.application.AccountModerationService(
+                        new com.aloute.users.infrastructure.JpaUserAccountAdministration(users),
+                        new com.aloute.identity.infrastructure.LegacySessionInvalidation(refreshTokens, authenticationUserCache)),
+                new com.aloute.users.infrastructure.JpaUserAccountAdministration(users), postMediaAssets,
+                new com.aloute.posts.application.PostEditingService(documentStore,
+                        new com.aloute.posts.infrastructure.LegacyPostAccess(access), limits,
+                        moderation == null ? () -> false : moderation, moderationCoordinator, postMediaAssets,
+                        event -> {
+                            if (event instanceof com.aloute.posts.api.PostChanged changed) {
+                                if (changed.invalidateAll()) posts.invalidateAllFeedCache();
+                                posts.invalidateViewerFeedCache(changed.actorId());
+                            }
+                        }),
+                new com.aloute.posts.application.SavedPostsService(documentStore,
+                        new com.aloute.posts.infrastructure.LegacyPostAccess(access), posts));
     }
 
     /** Compatibility constructor retained for focused service tests. */
     public SocialFeatureService(
             PostgresDocumentStore documentStore, ContentAccessService access, IUserRepository users,
             IFriendRepository friends, ICloseFriendRepository closeFriends, PostService posts,
-            ModerationService moderation, AuthRateLimitService limits, NotificationService notificationService) {
+            ModerationService moderation, AuthRateLimitService limits, Notifications notificationService) {
         this(documentStore, access, users, friends, closeFriends, posts, moderation, limits,
                 notificationService, null, null, null, null);
     }
@@ -96,7 +129,7 @@ public class SocialFeatureService {
     @Transactional
     public void block(Long owner, Long target, boolean blocked) {
         if (owner.equals(target)) throw new BadRequestException("Không thể tự chặn chính mình");
-        if (!users.existsById(target))
+        if (!users.exists(target))
             throw new ResourceNotFoundException("Không tìm thấy tài khoản");
         String id = owner + ":" + target;
         if (!blocked) {
@@ -265,14 +298,7 @@ public class SocialFeatureService {
     }
 
     public void requireAdmin(Long user) {
-        if (users.findById(user)
-                .filter(
-                        u ->
-                                u.isActive()
-                                        && u.getRole() != null
-                                        && "ROLE_ADMIN".equals(u.getRole().getName()))
-                .isEmpty())
-            throw new ForbiddenException("Chỉ quản trị viên xử lý báo cáo được truy cập");
+        accountAdministration.requireAdministrator(user);
     }
 
     public Map<String, Object> queue(Long user) {
@@ -315,18 +341,10 @@ public class SocialFeatureService {
         requireAdmin(user);
         if (type.equals("POST")) return documentStore.findById(id, Post.class);
         if (type.equals("COMMENT")) return documentStore.findById(id, Comment.class);
-        if (type.equals("USER"))
-            return users.findById(Long.valueOf(id))
-                    .map(
-                            u ->
-                                    Map.of(
-                                            "username",
-                                            u.getUsername(),
-                                            "fullName",
-                                            u.getFullName(),
-                                            "active",
-                                            u.isActive()))
-                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản"));
+        if (type.equals("USER")) {
+            var account = accountAdministration.reviewAccount(user, Long.valueOf(id));
+            return Map.of("username", account.username(), "fullName", account.fullName(), "active", account.active());
+        }
         throw new BadRequestException("Loại nội dung không hợp lệ");
     }
 
@@ -373,29 +391,7 @@ public class SocialFeatureService {
                     }
                 }
                 case "COMMENT" -> reviewComment(id, status, decision);
-                case "USER" -> {
-                    var target =
-                            users.findById(Long.valueOf(id))
-                                    .orElseThrow(
-                                            () ->
-                                                    new ResourceNotFoundException(
-                                                            "Không tìm thấy tài khoản"));
-                    if (target.getId().equals(user)
-                            || Set.of("ROLE_ADMIN", "ROLE_HOST")
-                                    .contains(target.getRole().getName())) {
-                        throw new BadRequestException("Không thể khóa tài khoản quản trị được bảo vệ");
-                    }
-                    target.setActive(!decision.equals("HIDE"));
-                    target.setSelfDeactivated(false);
-                    target.setTokensRevokedAt(Instant.now());
-                    users.save(target);
-                    if (refreshTokens != null) refreshTokens.revokeAll(target.getId(), target.getTokensRevokedAt());
-                    if (authenticationUserCache != null) {
-                        String targetUsername = target.getUsername();
-                        com.aloute.common.util.TransactionCommitHooks.afterCommit(
-                                () -> authenticationUserCache.invalidate(targetUsername));
-                    }
-                }
+                case "USER" -> accountModeration.setHidden(user, Long.valueOf(id), decision.equals("HIDE"));
                 default -> throw new BadRequestException("Loại nội dung không hợp lệ");
             }
         }
@@ -464,134 +460,33 @@ public class SocialFeatureService {
 
     @Transactional
     public void save(Long user, String postId, boolean saved) {
-        String id = user + ":" + postId;
-        if (!saved) {
-            documentStore.remove(Query.query(Criteria.where("_id").is(id)), SavedPost.class);
-            return;
-        }
-        access.requirePost(postId, user);
-        SavedPost item = new SavedPost();
-        item.setId(id);
-        item.setUserId(user);
-        item.setPostId(postId);
-        documentStore.save(item);
+        savedPosts.save(user, postId, saved);
     }
 
     public List<PostResponse> saved(Long user, int page) {
-        List<SavedPost> items =
-                documentStore.find(
-                        Query.query(Criteria.where("userId").is(user))
-                                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                                .skip(Math.max(0, page) * 20L)
-                                .limit(20),
-                        SavedPost.class);
-        return posts.getPostsByIds(items.stream().map(SavedPost::getPostId).toList(), user);
+        return savedPosts.saved(user, page);
     }
 
     public void edit(Long user, String id, CreatePostRequest request) {
-        limits.checkAndRecord("POST_EDIT", String.valueOf(user), 20,
-                java.time.Duration.ofMinutes(10), java.time.Duration.ofHours(1),
-                "Bạn đã chỉnh sửa quá nhiều lần. Thử lại sau %d phút.",
-                "Tạm khóa chỉnh sửa bài viết một giờ do vượt giới hạn.");
-        Post post = access.requirePost(id, user);
-        if (!post.getUserId().equals(user.toString()))
-            throw new ForbiddenException("Chỉ tác giả được sửa bài");
-        if (post.getModerationStatus() == ModerationStatus.HIDDEN)
-            throw new ForbiddenException("Nội dung đã bị ẩn, không thể chỉnh sửa");
-        if (java.util.Objects.equals(post.getContent(), request.getContent())
-                && java.util.Objects.equals(post.getImageUrl(), request.getImageUrl())
-                && java.util.Objects.equals(post.getVideoUrl(), request.getVideoUrl())
-                && java.util.Objects.equals(post.getVisibility(), request.getVisibility())) return;
-        PostRevision revision = new PostRevision();
-        revision.setPostId(id);
-        revision.setContent(post.getContent());
-        revision.setImageUrl(post.getImageUrl());
-        revision.setVideoUrl(post.getVideoUrl());
-        revision.setEditorId(user);
-        revision.setVisibility(
-                post.getVisibility() == null ? "PUBLIC" : post.getVisibility().name());
-        if (postMediaAssets != null) {
-            postMediaAssets.validatePostMediaUrl(request.getImageUrl(), post.getImageUrl(), post.getUserId());
-            postMediaAssets.validatePostMediaUrl(request.getVideoUrl(), post.getVideoUrl(), post.getUserId());
-        }
-        // Only a change to what moderators actually review (text or media) needs a new decision.
-        // A visibility-only edit must neither re-approve nor "un-flag" a post.
-        boolean reviewedContentChanged =
-                !java.util.Objects.equals(post.getContent(), request.getContent())
-                        || !java.util.Objects.equals(post.getImageUrl(), request.getImageUrl())
-                        || !java.util.Objects.equals(post.getVideoUrl(), request.getVideoUrl());
-        boolean moderationRequired = moderation != null && moderation.isEnabled();
-        var update = new Update()
-                .set("content", request.getContent())
-                .set("imageUrl", request.getImageUrl())
-                .set("videoUrl", request.getVideoUrl())
-                .set("visibility", request.getVisibility())
-                .set("hashtags", ContentTagService.extract(request.getContent(), '#'))
-                .set("mentions", ContentTagService.extract(request.getContent(), '@'))
-                .push("editHistory").slice(-100).each(revision)
-                .set("updatedAt", java.time.LocalDateTime.now());
-        if (reviewedContentChanged) {
-            // Edited content goes back to the queue (fail closed). Without this an author could
-            // publish harmless text, then edit it into violating text that stays APPROVED.
-            // Demo mode (moderation disabled) cannot process the queue, so it keeps APPROVED.
-            update.set("moderationStatus",
-                            moderationRequired ? ModerationStatus.PENDING : ModerationStatus.APPROVED)
-                    .set("toxicityScore", 0.0)
-                    .set("moderationAttempts", 0)
-                    .unset("moderationLastAttemptAt")
-                    .unset("moderationFailureReason")
-                    .unset("moderationLeaseUntil")
-                    .set("notifyMentionsAfterModeration", moderationRequired);
-        }
-        var updated = documentStore.updateFirst(
-                Query.query(Criteria.where("_id").is(id)
-                        .and("updatedAt").is(post.getUpdatedAt())
-                        .and("content").is(post.getContent())
-                        // closes the race where an admin hides the post after the read above
-                        .and("moderationStatus").ne(ModerationStatus.HIDDEN)),
-                update, Post.class);
-        if (updated.getMatchedCount() == 0)
-            throw new BadRequestException("Bài viết vừa thay đổi. Hãy tải lại trước khi sửa.");
-        if (postMediaAssets != null) {
-            try {
-                postMediaAssets.attachPostMedia(request.getImageUrl(), post.getId(), post.getUserId());
-                if (request.getVideoUrl() == null || !request.getVideoUrl().equals(request.getImageUrl())) {
-                    postMediaAssets.attachPostMedia(request.getVideoUrl(), post.getId(), post.getUserId());
-                }
-            } catch (RuntimeException trackingFailure) {
-                log.warn("Post edit media attachment tracking deferred (postId={}, cause={})",
-                        id, trackingFailure.getClass().getSimpleName());
-            }
-        }
-        if (reviewedContentChanged && moderationRequired) {
-            // The post just left every other viewer's feed; drop their cached pages too.
-            posts.invalidateAllFeedCache();
-            if (moderationCoordinator != null) {
-                TransactionCommitHooks.afterCommit(() -> {
-                    try {
-                        moderationCoordinator.submit(id);
-                    } catch (RuntimeException dispatchFailure) {
-                        // Scheduled recovery claims PENDING posts, so the edit is still reviewed.
-                        log.warn("Edited post moderation dispatch deferred (postId={}, cause={})",
-                                id, dispatchFailure.getClass().getSimpleName());
-                    }
-                });
-            }
-        }
-        posts.invalidateViewerFeedCache(user);
+        postEditing.edit(user, id, new com.aloute.posts.api.PostEditCommand(request.getContent(),
+                request.getImageUrl(), request.getVideoUrl(), request.getVisibility().name()));
     }
 
-    public List<PostRevision> history(Long user, String post) {
-        Post target = access.requirePost(post, user);
-        if (!target.getUserId().equals(user.toString()))
-            throw new ForbiddenException("Chỉ tác giả được xem lịch sử");
-        if (target.getEditHistory() == null) return List.of();
-        return target.getEditHistory().stream()
-                .sorted(Comparator.comparing(PostRevision::getCreatedAt).reversed())
-                .limit(100)
-                .toList();
+    /** Legacy response adapter retains the old Java return type and JSON field set. */
+    public List<PostRevision> history(Long user, String postId) {
+        return postEditing.history(user, postId).stream().map(view -> {
+            PostRevision revision = new PostRevision();
+            revision.setId(view.id());
+            revision.setPostId(view.postId());
+            revision.setContent(view.content());
+            revision.setImageUrl(view.imageUrl());
+            revision.setVideoUrl(view.videoUrl());
+            revision.setVisibility(view.visibility());
+            revision.setEditorId(view.editorId());
+            revision.setCreatedAt(view.createdAt());
+            return revision;
+        }).toList();
     }
-
 
     private void cleanupBlockRelationshipsAndMarkSynced(String id, Long owner, Long target) {
         removeRelationshipEdges(owner, target);

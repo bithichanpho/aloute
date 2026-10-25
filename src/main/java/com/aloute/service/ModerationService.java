@@ -24,7 +24,7 @@ import java.util.Map;
 
 /** Fail-closed moderation: an unavailable or malformed moderator never means approved. */
 @Service
-public class ModerationService {
+public class ModerationService implements com.aloute.moderation.api.ModerationPolicy {
 
     private static final Logger log = LoggerFactory.getLogger(ModerationService.class);
     private final HttpClient httpClient;

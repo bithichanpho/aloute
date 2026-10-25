@@ -68,7 +68,7 @@ class PostDeletionCleanupTest {
                 .remove(any(Query.class), eq(ContentReport.class));
         verify(posts).delete(post);
         verify(media).queuePostMediaDeletion(post);
-        verify(notifications).deleteByReferenceId("post-1");
+        verify(notifications).deleteByReferenceIdIn(List.of("post-1"));
         verify(outbox).deleteByReferenceIdIn(List.of("post-1"));
         verify(cache).invalidateAll();
     }

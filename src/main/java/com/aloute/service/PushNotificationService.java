@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class PushNotificationService {
+public class PushNotificationService implements com.aloute.notifications.api.ReliableNotificationPush {
 
     private static final Logger log = LoggerFactory.getLogger(PushNotificationService.class);
     private final IUserPushTokenRepository tokenRepository;

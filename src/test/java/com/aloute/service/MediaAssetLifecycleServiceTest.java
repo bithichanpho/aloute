@@ -32,10 +32,36 @@ class MediaAssetLifecycleServiceTest {
 
     @BeforeEach
     void clearRepositoryDefaults() {
+        // These existing lifecycle tests explicitly exercise the physical-deletion opt-in path.
+        when(storage.physicalDeletionAllowed()).thenReturn(true);
         when(users.existsByAvatarUrl(anyString())).thenReturn(false);
         when(users.existsByCoverUrl(anyString())).thenReturn(false);
         when(communities.existsByAvatarUrl(anyString())).thenReturn(false);
         when(communities.existsByCoverUrl(anyString())).thenReturn(false);
+    }
+
+    @Test
+    void dryRunKeepsDurableTombstonePendingWithoutCallingStorageOrMarkingDeleted() throws Exception {
+        when(storage.physicalDeletionAllowed()).thenReturn(false);
+        String url = "https://res.cloudinary.com/demo/image/upload/v1/aloute/post/post-image.png";
+        ManagedMediaAsset asset = attachedAsset("image:aloute/post/post-image", url,
+                "aloute/post/post-image", "image");
+        when(storage.resolveAlouteMediaReference(url)).thenReturn(
+                Optional.of(new ImageStorageService.ManagedMediaReference("aloute/post/post-image", "image")));
+        when(documentStore.findOne(any(Query.class), eq(ManagedMediaAsset.class))).thenReturn(Optional.of(asset));
+        Post post = new Post();
+        post.setId("hidden-post");
+        post.setImageUrl(url);
+
+        service.deletePostMedia(post);
+
+        verify(storage, never()).deleteMedia(anyString(), anyString());
+        verify(documentStore, atLeastOnce()).updateFirst(any(Query.class), argThat(update ->
+                update.operations().stream().anyMatch(op -> "status".equals(op.field())
+                        && ManagedMediaAsset.DELETE_PENDING.equals(op.value()))), eq(ManagedMediaAsset.class));
+        verify(documentStore, never()).updateFirst(any(Query.class), argThat(update ->
+                update.operations().stream().anyMatch(op -> "status".equals(op.field())
+                        && ManagedMediaAsset.DELETED.equals(op.value()))), eq(ManagedMediaAsset.class));
     }
 
     @Test

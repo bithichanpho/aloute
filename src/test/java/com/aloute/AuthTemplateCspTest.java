@@ -23,6 +23,7 @@ class AuthTemplateCspTest {
                         "verify", "auth-verify.js",
                         "login", "auth-login.js",
                         "forgot-password", "auth-forgot-password.js",
+                        "verify-reset-code", "auth-verify-reset-code.js",
                         "reset-password", "auth-reset-password.js");
 
         for (var entry : scripts.entrySet()) {

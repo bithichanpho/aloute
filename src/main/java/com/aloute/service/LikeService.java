@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.util.ReactionType;
 import com.aloute.dto.response.LikeResponse;
 import com.aloute.dto.response.ReactionResponse;
@@ -30,7 +32,7 @@ public class LikeService {
 
     private final ILikeRepository likeRepository;
     private final PostService postService;
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
     private final PostgresDocumentStore documentStore;
     private final FeedCacheInvalidator feedCacheInvalidator;
     private final PostgresTransactionRetryExecutor transactionRetryExecutor;
@@ -39,7 +41,7 @@ public class LikeService {
     public LikeService(
             ILikeRepository likeRepository,
             PostService postService,
-            NotificationService notificationService,
+            Notifications notificationService,
             PostgresDocumentStore documentStore,
             FeedCacheInvalidator feedCacheInvalidator,
             PostgresTransactionRetryExecutor transactionRetryExecutor) {
@@ -55,7 +57,7 @@ public class LikeService {
     public LikeService(
             ILikeRepository likeRepository,
             PostService postService,
-            NotificationService notificationService,
+            Notifications notificationService,
             PostgresDocumentStore documentStore,
             FeedCacheInvalidator feedCacheInvalidator) {
         this(likeRepository, postService, notificationService, documentStore, feedCacheInvalidator, null);
@@ -65,7 +67,7 @@ public class LikeService {
     public LikeService(
             ILikeRepository likeRepository,
             PostService postService,
-            NotificationService notificationService,
+            Notifications notificationService,
             PostgresDocumentStore documentStore) {
         this(likeRepository, postService, notificationService, documentStore, null, null);
     }
@@ -188,7 +190,7 @@ public class LikeService {
                         notificationFailure.getClass().getSimpleName());
             }
         };
-        // NotificationService writes to PostgreSQL. Publish only after PostgreSQL commits.
+        // Notifications writes to PostgreSQL. Publish only after PostgreSQL commits.
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { notification.run(); }

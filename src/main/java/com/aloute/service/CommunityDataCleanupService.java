@@ -25,16 +25,28 @@ import org.springframework.stereotype.Service;
 public class CommunityDataCleanupService {
     private static final int POST_BATCH_SIZE = 100;
     private static final int COMMENT_BATCH_SIZE = 500;
-    private static final List<String> COMMUNITY_NOTIFICATION_TYPES = List.of(
-            "COMMUNITY_JOIN_OK", "COMMUNITY_JOIN_NO", "COMMUNITY_ROLE");
 
     private final PostgresDocumentStore documentStore;
     private final PostgresTransactionRetryExecutor transactions;
     private final MediaAssetLifecycleService mediaAssets;
-    private final INotificationRepository notifications;
-    private final INotificationOutboxRepository notificationOutbox;
+    private final com.aloute.notifications.api.NotificationCleanup notificationCleanup;
     private final FeedCacheInvalidator feedCache;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public CommunityDataCleanupService(
+            PostgresDocumentStore documentStore,
+            PostgresTransactionRetryExecutor transactions,
+            MediaAssetLifecycleService mediaAssets,
+            com.aloute.notifications.api.NotificationCleanup notificationCleanup,
+            FeedCacheInvalidator feedCache) {
+        this.documentStore = documentStore;
+        this.transactions = transactions;
+        this.mediaAssets = mediaAssets;
+        this.notificationCleanup = notificationCleanup;
+        this.feedCache = feedCache;
+    }
+
+    /** Compatibility adapter for existing direct Java callers. */
     public CommunityDataCleanupService(
             PostgresDocumentStore documentStore,
             PostgresTransactionRetryExecutor transactions,
@@ -42,12 +54,9 @@ public class CommunityDataCleanupService {
             INotificationRepository notifications,
             INotificationOutboxRepository notificationOutbox,
             FeedCacheInvalidator feedCache) {
-        this.documentStore = documentStore;
-        this.transactions = transactions;
-        this.mediaAssets = mediaAssets;
-        this.notifications = notifications;
-        this.notificationOutbox = notificationOutbox;
-        this.feedCache = feedCache;
+        this(documentStore, transactions, mediaAssets,
+                new com.aloute.notifications.application.NotificationCleanupService(notifications, notificationOutbox),
+                feedCache);
     }
 
     /**
@@ -59,9 +68,7 @@ public class CommunityDataCleanupService {
         String id = String.valueOf(communityId);
 
         deleteCommunityPostsInBatches(id);
-        notifications.deleteByReferenceIdAndTypeIn(id, COMMUNITY_NOTIFICATION_TYPES);
-        notificationOutbox.deleteByReferenceIdAndNotificationTypeIn(
-                id, COMMUNITY_NOTIFICATION_TYPES);
+        notificationCleanup.removeCommunityReferences(communityId);
 
         mediaAssets.deleteIfUnreferenced(avatarUrl);
         mediaAssets.deleteIfUnreferenced(coverUrl);
@@ -109,10 +116,8 @@ public class CommunityDataCleanupService {
     }
 
     private void deletePostBatch(List<Post> posts, List<String> postIds) {
-        // SQL notifications cannot participate in the PostgreSQL transaction. Removing them first is
-        // safe and idempotent; if PostgreSQL then fails, the durable job retries the remaining cleanup.
-        notifications.deleteByReferenceIdIn(postIds);
-        notificationOutbox.deleteByReferenceIdIn(postIds);
+        // Bounded retries are retained; only the notification owner writes notification tables.
+        notificationCleanup.removePostReferences(postIds);
         deleteCommentsInBatches(postIds);
 
         inDatabaseTransaction(() -> {

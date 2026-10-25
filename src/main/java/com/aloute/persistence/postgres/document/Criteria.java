@@ -7,7 +7,13 @@ import java.util.List;
 
 /** Small SQL-translatable criteria tree for PostgreSQL JSONB records. */
 public class Criteria {
-    public enum Operator { EQ, NE, IN, NIN, GT, GTE, LT, LTE, EXISTS, REGEX, FULL_TEXT }
+    public enum Operator { EQ, NE, IN, NIN, GT, GTE, LT, LTE, EXISTS, REGEX, FULL_TEXT, VALID_DATE_TIME, IN_READ_VIEW }
+    public record ReadView(String name, Object viewerId, Object includedValue) {
+        public ReadView {
+            if (name == null || !name.matches("aloute_read_[a-z_]+"))
+                throw new IllegalArgumentException("Only explicitly published read views are supported");
+        }
+    }
     public sealed interface Node permits LogicalNode, ComparisonNode, TextNode { }
     public record LogicalNode(boolean and, List<Node> children) implements Node { }
     public record ComparisonNode(String field, Operator operator, Object value) implements Node { }
@@ -39,6 +45,12 @@ public class Criteria {
     public Criteria lte(Object value) { add(Operator.LTE, value); return this; }
     public Criteria exists(boolean value) { add(Operator.EXISTS, value); return this; }
     public Criteria regex(String pattern) { add(Operator.REGEX, pattern); return this; }
+    /** Requires a parseable non-null temporal value without mutating legacy/corrupt payloads. */
+    public Criteria validDateTime() { add(Operator.VALID_DATE_TIME, null); return this; }
+    /** Named read contract: viewer_id -> value. Values are bound, never client-supplied SQL. */
+    public Criteria inReadView(String name, Object viewerId, Object includedValue) {
+        add(Operator.IN_READ_VIEW, new ReadView(name, viewerId, includedValue)); return this;
+    }
 
     public Criteria in(Collection<?> values) {
         add(Operator.IN, values == null ? List.of() : new ArrayList<>(values));

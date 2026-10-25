@@ -38,13 +38,13 @@ public class CacheConfig implements CachingConfigurer {
             @Value("${app.cache.ttl:2m}") Duration defaultTtl,
             @Value("${app.cache.feed-ttl:30s}") Duration feedTtl,
             @Value("${app.cache.host-dashboard-ttl:30s}") Duration hostDashboardTtl) {
-        RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig().entryTtl(defaultTtl);
+        RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig().entryTtl((key,value) -> jitter(defaultTtl));
         Map<String, RedisCacheConfiguration> cacheConfigurations = Map.of(
-                "trendingTopics", defaults.entryTtl(defaultTtl),
-                "feedPages", defaults.entryTtl(feedTtl),
-                "relationshipIds", defaults.entryTtl(Duration.ofSeconds(30)),
-                "userStatus", defaults.entryTtl(Duration.ofSeconds(15)),
-                "hostDashboard", defaults.entryTtl(hostDashboardTtl));
+                "trendingTopics", defaults,
+                "feedPages", defaults.entryTtl((key,value) -> jitter(feedTtl)),
+                "relationshipIds", defaults.entryTtl((key,value) -> jitter(Duration.ofSeconds(30))),
+                "userStatus", defaults.entryTtl((key,value) -> jitter(Duration.ofSeconds(15))),
+                "hostDashboard", defaults.entryTtl((key,value) -> jitter(hostDashboardTtl)));
         // SCAN clears cache entries in bounded batches; the default KEYS strategy can block Redis
         // while personalized feed caches grow.
         RedisCacheWriter writer = RedisCacheWriter.nonLockingRedisCacheWriter(
@@ -66,21 +66,29 @@ public class CacheConfig implements CachingConfigurer {
             @Value("${app.cache.feed-ttl:30s}") Duration feedTtl,
             @Value("${app.cache.host-dashboard-ttl:30s}") Duration hostDashboardTtl) {
         CaffeineCache trending = new CaffeineCache(
-                "trendingTopics", Caffeine.newBuilder().maximumSize(200).expireAfterWrite(defaultTtl).build());
+                "trendingTopics", Caffeine.newBuilder().recordStats().maximumSize(200).expireAfterWrite(defaultTtl).build());
         CaffeineCache feeds = new CaffeineCache(
-                "feedPages", Caffeine.newBuilder().maximumSize(1_000).expireAfterWrite(feedTtl).build());
+                "feedPages", Caffeine.newBuilder().recordStats().maximumSize(1_000).expireAfterWrite(feedTtl).build());
         CaffeineCache relationships = new CaffeineCache(
-                "relationshipIds", Caffeine.newBuilder().maximumSize(5_000)
+                "relationshipIds", Caffeine.newBuilder().recordStats().maximumSize(5_000)
                         .expireAfterWrite(Duration.ofSeconds(30)).build());
         CaffeineCache userStatus = new CaffeineCache(
-                "userStatus", Caffeine.newBuilder().maximumSize(10)
+                "userStatus", Caffeine.newBuilder().recordStats().maximumSize(10)
                         .expireAfterWrite(Duration.ofSeconds(15)).build());
         CaffeineCache hostDashboard = new CaffeineCache(
-                "hostDashboard", Caffeine.newBuilder().maximumSize(400)
+                "hostDashboard", Caffeine.newBuilder().recordStats().maximumSize(400)
                         .expireAfterWrite(hostDashboardTtl).build());
         SimpleCacheManager manager = new SimpleCacheManager();
         manager.setCaches(List.of(trending, feeds, relationships, userStatus, hostDashboard));
         return manager;
+    }
+
+    /** Spread Redis expirations without exceeding the configured freshness upper bound. */
+    static Duration jitter(Duration upperBound) {
+        long millis = upperBound.toMillis();
+        if (millis <= 1) return upperBound;
+        long spread = Math.max(1, millis / 10);
+        return Duration.ofMillis(millis - java.util.concurrent.ThreadLocalRandom.current().nextLong(spread));
     }
 
     /**

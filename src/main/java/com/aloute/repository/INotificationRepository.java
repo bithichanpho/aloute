@@ -31,13 +31,34 @@ public interface INotificationRepository extends JpaRepository<Notification, Lon
     @org.springframework.transaction.annotation.Transactional
     long deleteByReferenceId(String referenceId);
 
-    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    /** Keep the legacy long-returning API; execute one bulk statement without loading entities. */
     @org.springframework.transaction.annotation.Transactional
-    long deleteByReferenceIdIn(Collection<String> referenceIds);
+    default long deleteByReferenceIdIn(Collection<String> referenceIds) {
+        return bulkDeleteByReferenceIds(referenceIds);
+    }
 
-    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
     @org.springframework.transaction.annotation.Transactional
-    long deleteByReferenceIdAndTypeIn(String referenceId, Collection<String> types);
+    @org.springframework.data.jpa.repository.Query("delete from Notification n where n.referenceId in :referenceIds")
+    int bulkDeleteByReferenceIds(@org.springframework.data.repository.query.Param("referenceIds") Collection<String> referenceIds);
 
-    void deleteByReceiverIdOrSenderId(Long receiverId, Long senderId);
+    @org.springframework.transaction.annotation.Transactional
+    default long deleteByReferenceIdAndTypeIn(String referenceId, Collection<String> types) {
+        return bulkDeleteByReferenceAndTypes(referenceId, types);
+    }
+
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query("delete from Notification n where"
+            + " (n.referenceId = :referenceId or (:referenceId is null and n.referenceId is null)) and n.type in :types")
+    int bulkDeleteByReferenceAndTypes(@org.springframework.data.repository.query.Param("referenceId") String referenceId,
+            @org.springframework.data.repository.query.Param("types") Collection<String> types);
+
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Query(
+            "delete from Notification n where n.receiverId = :receiverId or n.senderId = :senderId")
+    void deleteByReceiverIdOrSenderId(
+            @org.springframework.data.repository.query.Param("receiverId") Long receiverId,
+            @org.springframework.data.repository.query.Param("senderId") Long senderId);
 }

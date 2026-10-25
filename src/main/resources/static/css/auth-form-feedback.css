@@ -1,0 +1,17 @@
+/* Lucian UX/UI Prompt #244 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#244 */
+.auth-error-focus .auth-field-label { display:block; margin:0 0 6px; color:var(--text-secondary); font-size:12px; font-weight:650; }
+.auth-error-focus .field.is-invalid input { border-color:var(--danger); box-shadow:inset 0 0 0 1px var(--danger); }
+.auth-error-focus .field input:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.auth-error-focus .auth-field-hint { display:grid; grid-template-rows:0fr; transition:grid-template-rows .3s cubic-bezier(.3,1,.4,1); }
+.auth-error-focus .auth-field-hint > div { min-height:0; overflow:hidden; }
+.auth-error-focus .auth-field-hint span { display:block; padding-top:5px; font-size:12px; color:color-mix(in srgb,var(--danger) 78%,var(--text-primary)); overflow-wrap:anywhere; }
+.auth-error-focus .field.is-invalid .auth-field-hint { grid-template-rows:1fr; }
+.auth-error-focus .field.is-shake input { animation:auth-feedback-shake .4s; }
+.auth-error-focus .form-error ul { padding-left:20px; margin:6px 0 0; }
+.auth-error-focus .form-error a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
+.auth-error-focus .form-error:focus-visible, .auth-error-focus .form-error a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@keyframes auth-feedback-shake { 20%,60% { transform:translateX(-5px); } 40%,80% { transform:translateX(5px); } }
+@media(prefers-reduced-motion:reduce) {
+  .auth-error-focus .auth-field-hint { transition:none; }
+  .auth-error-focus .field.is-shake input { animation:none; }
+}

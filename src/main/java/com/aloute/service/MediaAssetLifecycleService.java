@@ -35,7 +35,7 @@ import java.util.Set;
  * already written by previous builds. New records include purpose/uploader/reference metadata.
  */
 @Service
-public class MediaAssetLifecycleService {
+public class MediaAssetLifecycleService implements com.aloute.media.api.PostMediaAttachments {
     private static final Logger log = LoggerFactory.getLogger(MediaAssetLifecycleService.class);
 
     private final PostgresDocumentStore documentStore;
@@ -453,6 +453,8 @@ public class MediaAssetLifecycleService {
     }
 
     private void attemptDelete(ManagedMediaAsset asset) {
+        // A dry-run keeps the durable tombstone pending. Never report DELETED without deleting.
+        if (!storage.physicalDeletionAllowed()) return;
         try {
             storage.deleteMedia(asset.getPublicId(), asset.getResourceType());
             documentStore.updateFirst(Query.query(Criteria.where("_id").is(asset.getId())),

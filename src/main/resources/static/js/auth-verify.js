@@ -1,93 +1,54 @@
 (function () {
-  const form = document.getElementById('verifyForm');
-  const emailInput = document.getElementById('email');
-  const codeInput = document.getElementById('code');
-  const successBox = document.getElementById('verifySuccess');
-  const errorBox = document.getElementById('verifyError');
-  const submitBtn = document.getElementById('submitBtn');
-  const resendBtn = document.getElementById('resendBtn');
-  const resendBox = document.getElementById('resendBox');
-  const resendMessage = document.getElementById('resendMessage');
-  if (!form || !emailInput || !codeInput || !resendBtn || !window.Aloute) return;
-
-  const emailFromUrl = new URLSearchParams(window.location.search).get('email')?.trim() || '';
-  if (emailFromUrl) emailInput.value = emailFromUrl;
-  (emailInput.value ? codeInput : emailInput).focus();
-
-  codeInput.addEventListener('input', function () {
-    this.value = this.value.replace(/\D/g, '').slice(0, 6);
+  'use strict';
+  const form=document.getElementById('verifyForm');
+  if(!form||!window.Aloute||!window.AlouteAuthForms)return;
+  const F=AlouteAuthForms,email=document.getElementById('email'),code=document.getElementById('code');
+  const submit=document.getElementById('submitBtn'),resend=document.getElementById('resendBtn');
+  const resendMessage=document.getElementById('resendMessage'),success=document.getElementById('verifySuccess');
+  let busy=false,completed=false,cooldownUntil=0,timer,redirectTimer;
+  code.addEventListener('input',()=>{code.value=code.value.replace(/\D/g,'').slice(0,6);});
+  const feedback=F.create(form,document.getElementById('verifyError'),{
+    email:{label:'Email đã đăng ký',validate:()=>F.emailError(email.value)},
+    code:{label:'Mã OTP 6 chữ số',validate:()=>/^\d{6}$/.test(code.value.trim())?'':'Mã OTP gồm đúng 6 chữ số.'}
   });
-
-  function startCooldown() {
-    let remaining = 60;
-    resendBtn.disabled = true;
-    resendBtn.textContent = 'Gửi lại mã OTP (' + remaining + 's)';
-    const timer = setInterval(function () {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(timer);
-        resendBtn.disabled = false;
-        resendBtn.textContent = 'Gửi lại mã OTP';
-      } else {
-        resendBtn.textContent = 'Gửi lại mã OTP (' + remaining + 's)';
-      }
-    }, 1000);
+  const otp=window.AlouteOtp?.create(code);
+  if(otp){feedback.useInlineFeedback('code',otp.messageElement);feedback.setGeneralFeedbackTarget(otp.messageElement);otp.reset();}
+  const fromUrl=new URLSearchParams(location.search).get('email')?.trim();if(fromUrl)email.value=fromUrl;
+  F.focus(F.emailError(email.value)?email:code);
+  function updateButtons(){
+    const remaining=Math.max(0,Math.ceil((cooldownUntil-Date.now())/1000));
+    submit.disabled=busy||completed;resend.disabled=busy||completed||remaining>0;
+    resend.textContent=remaining?'Gửi lại mã OTP ('+remaining+'s)':'Gửi lại mã OTP';
+    if(!remaining&&timer){clearInterval(timer);timer=null;}
   }
-
-  resendBtn.addEventListener('click', async function () {
-    const identifier = emailInput.value.trim();
-    resendMessage.textContent = '';
-    if (!identifier) {
-      resendMessage.textContent = 'Vui lòng nhập email đã đăng ký.';
-      return;
-    }
-    this.disabled = true;
-    try {
-      const result = await Aloute.api('/api/auth/resend-verification', {
-        method: 'POST', body: { identifier }
-      });
-      resendMessage.textContent = result?.message
-        || 'Nếu tài khoản hợp lệ, mã OTP mới đã được gửi tới email.';
-      startCooldown();
-    } catch (err) {
-      resendMessage.textContent = err.message || 'Không thể gửi lại mã OTP.';
-      this.disabled = false;
-    }
+  function setBusy(value){busy=value;F.lock(form,value);updateButtons();}
+  resend.addEventListener('click',async()=>{
+    if(busy||completed||Date.now()<cooldownUntil)return;
+    const invalid=F.emailError(email.value);if(invalid){feedback.show(invalid,'email');return;}
+    resendMessage.textContent='';setBusy(true);
+    try{
+      await F.post('/api/auth/resend-verification',{identifier:email.value.trim()});
+      resendMessage.textContent='Nếu tài khoản tồn tại và chưa xác thực, mã OTP mới đã được gửi tới email.';
+      cooldownUntil=Date.now()+60000;clearInterval(timer);timer=setInterval(updateButtons,1000);
+    }catch(error){resendMessage.textContent=error.message||'Không thể gửi lại mã OTP.';}
+    finally{setBusy(false);}
   });
-
-  form.addEventListener('submit', async function (event) {
-    event.preventDefault();
-    errorBox.style.display = 'none';
-    const email = emailInput.value.trim();
-    const code = codeInput.value.trim();
-
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errorBox.textContent = 'Vui lòng nhập email hợp lệ.';
-      errorBox.style.display = 'block';
-      return;
-    }
-    if (!/^\d{6}$/.test(code)) {
-      errorBox.textContent = 'Mã OTP gồm đúng 6 chữ số.';
-      errorBox.style.display = 'block';
-      return;
-    }
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Đang xác thực...';
-    try {
-      await Aloute.api('/api/auth/verify-email', {
-        method: 'POST', body: { email, code }
-      });
-      form.style.display = 'none';
-      resendBox.style.display = 'none';
-      successBox.style.display = 'block';
-      setTimeout(function () { window.location.assign('/login'); }, 2000);
-    } catch (err) {
-      errorBox.textContent = err.message
-        || 'Xác thực thất bại. Vui lòng kiểm tra lại mã hoặc yêu cầu gửi lại mã OTP.';
-      errorBox.style.display = 'block';
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Xác thực';
-    }
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(busy||completed||!feedback.validate())return;
+    setBusy(true);submit.textContent='Đang xác thực...';otp?.checking();
+    try{
+      await F.post('/api/auth/verify-email',{email:email.value.trim(),code:code.value.trim()});
+      await otp?.settle();await otp?.success();
+      completed=true;form.style.display='none';document.getElementById('resendBox').style.display='none';success.style.display='block';success.tabIndex=-1;F.focus(success);
+      redirectTimer=setTimeout(()=>location.assign('/login'),2000);
+    }catch(error){
+      await otp?.settle();
+      const message=error.message||'Xác thực thất bại. Vui lòng kiểm tra lại mã hoặc yêu cầu gửi lại mã OTP.';
+      const wrongCode=message==='Mã xác thực không hợp lệ hoặc đã được dùng'||message==='Mã xác thực đã hết hạn, vui lòng yêu cầu gửi lại mã';
+      if(!wrongCode)otp?.reset();
+      feedback.show(message,wrongCode?'code':message.startsWith('Email không đúng định dạng')?'email':undefined);
+      if(wrongCode)await otp?.invalid(message);
+    }finally{if(!completed){setBusy(false);submit.textContent='Xác thực';}}
   });
+  addEventListener('pageshow',event=>{if(event.persisted&&completed){clearTimeout(redirectTimer);completed=false;form.style.display='';document.getElementById('resendBox').style.display='';success.style.display='none';setBusy(false);otp?.reset();submit.textContent='Xác thực';}});
 })();

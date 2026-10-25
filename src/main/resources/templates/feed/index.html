@@ -23,7 +23,7 @@
           <span th:if="${activeTab == 'foryou'}">Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!</span>
         </div>
 
-        <div class="post" th:each="post : ${posts}" th:id="|post-${post.id}|" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}"
+        <div class="post" th:each="post,postStat : ${posts}" th:id="|post-${post.id}|" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}"
              th:classappend="${post.repostOf != null} ? 'post--repost'"
              th:with="hasCaption=${post.content != null and !post.content.isEmpty()},
                       isRepost=${post.repostOf != null},
@@ -88,9 +88,9 @@
             <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
                th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
             <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
-                 th:src="${isRepost ? post.repostOf.imageUrl : post.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
+                 th:src="${isRepost ? post.repostOf.imageUrl : post.imageUrl}" alt="ảnh bài viết" th:loading="${postStat.first ? 'eager' : 'lazy'}" th:fetchpriority="${postStat.first ? 'high' : 'auto'}" decoding="async">
             <video class="post__video" th:if="${!isQuote and (isRepost ? post.repostOf.videoUrl : post.videoUrl) != null}"
-                   th:src="${isRepost ? post.repostOf.videoUrl : post.videoUrl}" controls preload="metadata"></video>
+                   th:src="${isRepost ? post.repostOf.videoUrl : post.videoUrl}" controls preload="none"></video>
             <div class="repost-card repost-card--deleted" th:if="${isRepost and !isQuote and post.repostOf.deleted}">
               Bài viết gốc không còn tồn tại.
             </div>
@@ -103,8 +103,8 @@
                 <span th:text="${post.repostOf.timeAgo}">6 giờ</span>
               </div>
               <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
-              <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
-              <video class="repost-card__video" th:if="${post.repostOf.videoUrl != null}" th:src="${post.repostOf.videoUrl}" controls preload="metadata"></video>
+              <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" th:loading="${postStat.first ? 'eager' : 'lazy'}" th:fetchpriority="${postStat.first ? 'high' : 'auto'}" decoding="async">
+              <video class="repost-card__video" th:if="${post.repostOf.videoUrl != null}" th:src="${post.repostOf.videoUrl}" controls preload="none"></video>
             </div>
             <div class="repost-card repost-card--deleted" th:if="${isQuote and post.repostOf.deleted}">
               Bài viết gốc không còn tồn tại.

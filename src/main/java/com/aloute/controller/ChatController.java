@@ -17,9 +17,9 @@ import com.aloute.service.ChatService;
 import com.aloute.service.FriendService;
 import com.aloute.service.PresenceService;
 import com.aloute.service.ContentAccessService;
-import com.aloute.service.NotificationService;
-import com.aloute.service.CallTimeoutService;
-import com.aloute.service.CallTimeoutService.CallInfo;
+import com.aloute.notifications.api.Notifications;
+import com.aloute.messaging.api.CallSignaling;
+import com.aloute.messaging.api.CallSignaling.Session;
 import com.aloute.service.AuthRateLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,8 +77,8 @@ public class ChatController {
     private final SimpMessagingTemplate messagingTemplate;
     private final PresenceService presenceService;
     private final FriendService friendService;
-    private final NotificationService notificationService;
-    private final CallTimeoutService callTimeoutService;
+    private final Notifications notificationService;
+    private final CallSignaling callTimeoutService;
     private final Validator validator;
     private final AuthRateLimitService rateLimitService;
 
@@ -88,8 +88,8 @@ public class ChatController {
             SimpMessagingTemplate messagingTemplate,
             PresenceService presenceService,
             FriendService friendService,
-            NotificationService notificationService,
-            CallTimeoutService callTimeoutService,
+            Notifications notificationService,
+            CallSignaling callTimeoutService,
             ContentAccessService access,
             Validator validator,
             AuthRateLimitService rateLimitService) {
@@ -438,16 +438,18 @@ public class ChatController {
         if (callId.isBlank()) return;
 
         authenticationUserCache.findByUsername(principal.getName()).ifPresent(sender -> {
-            if (sender.getId().equals(targetId) || !sender.isActive()
-                    || !access.profileVisible(sender.getId(), targetId)
-                    || !friendService.isFriend(sender.getId(), targetId)) return;
+            if (sender.getId().equals(targetId) || !sender.isActive()) return;
+            boolean peerVisible = access.profileVisible(sender.getId(), targetId)
+                    && friendService.isFriend(sender.getId(), targetId);
+            // Revocation must not strand an existing call; only its registered participants can end it.
+            if (!peerVisible && !"hangup".equals(type)) return;
             if (!allowSignal("WS_CALL_SIGNAL", sender.getId().toString(), 120,
                     java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1))) return;
 
             if ("offer".equals(type)) {
-                java.util.Optional<CallInfo> existing = callTimeoutService.findCall(callId);
+                java.util.Optional<? extends Session> existing = callTimeoutService.findCall(callId);
                 if (existing.isPresent()) {
-                    CallInfo call = existing.get();
+                    Session call = existing.get();
                     if (!sender.getId().equals(call.callerId()) || !targetId.equals(call.calleeId())) return;
                 } else if (!allowSignal("WS_CALL_OFFER_PAIR", sender.getId() + ":" + targetId, 3,
                         java.time.Duration.ofMinutes(10), java.time.Duration.ofMinutes(10))) {
@@ -455,7 +457,7 @@ public class ChatController {
                 }
             }
 
-            java.util.Optional<CallInfo> info;
+            java.util.Optional<? extends Session> info;
             switch (type) {
                 case "offer" -> {
                     // SDP is sent by the current client as `sdp`; callerUserId is never trusted.
@@ -476,7 +478,8 @@ public class ChatController {
                 default -> { return; }
             }
             if (info.isEmpty()) return;
-            CallInfo call = info.get();
+            Session call = info.get();
+            if (!peerVisible) return; // state cleanup is allowed, private signaling remains suppressed
 
             authenticationUserCache.findById(targetId).ifPresent(target -> {
                 Map<String, Object> signal = new java.util.HashMap<>();
@@ -495,20 +498,15 @@ public class ChatController {
                 signal.put("fromAvatarUrl", sender.getAvatarUrl());
                 signal.put("callType", call.callType());
                 if ("hangup".equals(type)) {
-                    signal.put("missed", !call.answered() && sender.getId().equals(call.callerId())
-                            && Boolean.TRUE.equals(payload.missed()));
+                    signal.put("missed", "MISSED".equals(call.state()));
                 }
-                messagingTemplate.convertAndSendToUser(target.getUsername(), "/queue/call", signal);
-
-                // A client cannot cancel another call by guessing a callId. The call must have
-                // existed and the actor/target pair must have matched the server registry above.
-                if ("hangup".equals(type) && !call.answered()
-                        && sender.getId().equals(call.callerId())
-                        && Boolean.TRUE.equals(payload.missed())) {
-                    notificationService.notify(
-                            targetId, sender.getId(), "CALL_MISSED", callId,
-                            "đã gọi " + ("audio".equalsIgnoreCase(callType) ? "thoại" : "video") + " cho bạn");
+                try {
+                    messagingTemplate.convertAndSendToUser(target.getUsername(), "/queue/call", signal);
+                } catch (RuntimeException unavailable) {
+                    log.warn("Call signal delivery failed (callId={}, cause={})", callId,
+                            unavailable.getClass().getSimpleName());
                 }
+                // Terminal outcome/recovery belongs to Calls; client `missed` never enqueues notifications.
             });
         });
     }

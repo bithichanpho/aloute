@@ -24,6 +24,7 @@ class GlobalThemeTemplateTest {
                 "templates/auth/verify.html",
                 "templates/auth/forgot-password.html",
                 "templates/auth/reset-password.html",
+                "templates/auth/verify-reset-code.html",
                 "templates/error/403.html",
                 "templates/error/404.html",
                 "templates/error/500.html");

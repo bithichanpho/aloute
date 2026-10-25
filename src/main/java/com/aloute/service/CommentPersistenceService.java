@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.util.TransactionCommitHooks;
@@ -32,7 +34,7 @@ public class CommentPersistenceService {
     private final ICommentRepository comments;
     private final PostService posts;
     private final PostgresDocumentStore documentStore;
-    private final NotificationService notifications;
+    private final Notifications notifications;
     private final PostgresTransactionRetryExecutor transactionRetryExecutor;
 
     @Autowired
@@ -40,7 +42,7 @@ public class CommentPersistenceService {
             ICommentRepository comments,
             PostService posts,
             PostgresDocumentStore documentStore,
-            NotificationService notifications,
+            Notifications notifications,
             PostgresTransactionRetryExecutor transactionRetryExecutor) {
         this.comments = comments;
         this.posts = posts;
@@ -54,7 +56,7 @@ public class CommentPersistenceService {
             ICommentRepository comments,
             PostService posts,
             PostgresDocumentStore documentStore,
-            NotificationService notifications) {
+            Notifications notifications) {
         this(comments, posts, documentStore, notifications, null);
     }
 

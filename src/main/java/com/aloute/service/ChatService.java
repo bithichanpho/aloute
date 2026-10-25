@@ -35,7 +35,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
-public class ChatService {
+public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
     private final ContentAccessService access;
@@ -53,6 +53,7 @@ public class ChatService {
     private final ChatHistoryService chatHistoryService;
     private final MediaUploadModerationService mediaUploadModeration;
     private final MediaAssetLifecycleService mediaAssets;
+    private final com.aloute.messaging.api.CallHistoryAuthorization callHistoryAuthorization;
 
     @Autowired
     public ChatService(
@@ -69,7 +70,8 @@ public class ChatService {
             ChatMessageMapper chatMessageMapper,
             ChatHistoryService chatHistoryService,
             MediaUploadModerationService mediaUploadModeration,
-            MediaAssetLifecycleService mediaAssets) {
+            MediaAssetLifecycleService mediaAssets, com.aloute.messaging.api.CallHistoryAuthorization callHistoryAuthorization) {
+        this.callHistoryAuthorization = callHistoryAuthorization;
         this.access = access;
 
         this.chatMessageRepository = chatMessageRepository;
@@ -85,6 +87,16 @@ public class ChatService {
         this.chatHistoryService = chatHistoryService;
         this.mediaUploadModeration = mediaUploadModeration;
         this.mediaAssets = mediaAssets;
+    }
+
+    /** Compatibility constructor; production requires the durable history policy above. */
+    public ChatService(IChatMessageRepository messages, IUserRepository users,
+            IGroupReadStatusRepository readStatus, GroupService groups, SimpMessagingTemplate messaging,
+            FriendService friends, PostgresDocumentStore documents, ContentAccessService access,
+            PushNotificationService push, ConversationService conversations, ChatMessageMapper mapper,
+            ChatHistoryService history, MediaUploadModerationService moderation, MediaAssetLifecycleService media) {
+        this(messages, users, readStatus, groups, messaging, friends, documents, access, push,
+                conversations, mapper, history, moderation, media, null);
     }
 
     /** Backward-compatible constructor for focused unit tests. Spring uses the @Autowired constructor above. */
@@ -427,12 +439,15 @@ public class ChatService {
     @Transactional
     public ChatMessageResponse createMissedCallMessage(
             Long callerId, Long receiverId, String callId, String callType) {
-        if (callerId == null || receiverId == null || callId == null || callId.isBlank()) {
-            return null;
-        }
+        if (callerId == null || receiverId == null || callerId <= 0 || receiverId <= 0
+                || callerId.equals(receiverId) || callId == null || callId.isBlank() || callId.length() > 100)
+            throw new BadRequestException("Thông tin cuộc gọi không hợp lệ");
 
+        if (callHistoryAuthorization != null && !callHistoryAuthorization.missedFor(callId, callerId, receiverId))
+            throw new ForbiddenException("Không thể ghi lịch sử cho cuộc gọi chưa được xác thực");
         var existed = chatMessageRepository.findByCallId(callId);
         if (existed.isPresent()) {
+            requireCallParticipants(existed.get(), callerId, receiverId);
             return toResponse(existed.get());
         }
 
@@ -461,7 +476,14 @@ public class ChatService {
 
         message.setRead(false);
 
-        ChatMessage saved = chatMessageRepository.save(message);
+        // The database unique callId index, not the preliminary lookup, decides the concurrent winner.
+        if (!documentStore.insertIfAbsent(message)) {
+            ChatMessage winner = chatMessageRepository.findByCallId(callId)
+                    .orElseThrow(() -> new IllegalStateException("Call history insert conflict without canonical record"));
+            requireCallParticipants(winner, callerId, receiverId);
+            return toResponse(winner);
+        }
+        ChatMessage saved = message;
         ChatMessageResponse dto = toResponse(saved, caller);
 
         afterCommitSafely("missed-call message delivery", () -> {
@@ -469,6 +491,12 @@ public class ChatService {
             messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
         });
         return dto;
+    }
+
+    private void requireCallParticipants(ChatMessage message, Long caller, Long callee) {
+        if (!"CALL".equals(message.getMessageType()) || !String.valueOf(caller).equals(message.getSenderId())
+                || !String.valueOf(callee).equals(message.getReceiverId()))
+            throw new ForbiddenException("Cuộc gọi không thuộc người tham gia này");
     }
 
     public long countUnreadTotal(Long userId) {

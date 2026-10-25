@@ -47,7 +47,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setAllowedOriginPatterns(origins)
                 .addInterceptors(new JwtHandshakeInterceptor(jwtUtil))
                 .setHandshakeHandler(new AlouteHandshakeHandler())
-                .withSockJS();
+                .withSockJS().setClientLibraryUrl("/vendor/sockjs-client/sockjs.min.js");
     }
 
     @Override
