@@ -5,6 +5,7 @@ import com.aloute.model.document.Post;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Sort;
 import com.aloute.persistence.postgres.document.PostgresDocumentStore;
@@ -25,6 +26,7 @@ public class PostModerationCoordinator {
     private final ModerationService moderation;
     private final ModerationRetryPolicy retryPolicy;
     private final CacheManager cacheManager;
+    private FeedCacheInvalidator feedCacheInvalidator;
     private final ModerationDispatchRecoveryService dispatchRecovery;
     private final long leaseSeconds;
     private final int scanLimit;
@@ -122,11 +124,24 @@ public class PostModerationCoordinator {
                         .unset("moderationLeaseUntil"), Post.class);
         if (result.getModifiedCount() > 0) {
             log.warn("Post {} exhausted moderation retries and was flagged for administrator review", post.getId());
-            evictFeedCache();
+            evictFeedCache(post.getUserId());
         }
     }
 
-    private void evictFeedCache() {
+    @Autowired(required = false)
+    void setFeedCacheInvalidator(FeedCacheInvalidator feedCacheInvalidator) {
+        this.feedCacheInvalidator = feedCacheInvalidator;
+    }
+
+    // A PENDING post is readable only by its author, so a moderation decision can change only the
+    // author's cached feed pages. Clearing every viewer's feed turned each decision into a cache flush.
+    private void evictFeedCache(String authorId) {
+        Long author = null;
+        try { author = authorId == null ? null : Long.valueOf(authorId); } catch (NumberFormatException ignored) { }
+        if (feedCacheInvalidator != null && author != null) {
+            feedCacheInvalidator.invalidateViewer(author);
+            return;
+        }
         try {
             var feedCache = cacheManager.getCache("feedPages");
             if (feedCache != null) feedCache.clear();

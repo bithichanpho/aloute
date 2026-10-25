@@ -25,7 +25,9 @@ spring:
       file-size-threshold: 2MB
 
   thymeleaf:
-    cache: ${THYMELEAF_CACHE:false}
+    # Without the cache every request re-reads and re-parses all templates and fragments.
+    # Set THYMELEAF_CACHE=false only while editing templates locally.
+    cache: ${THYMELEAF_CACHE:true}
 
   web:
     resources:
@@ -40,7 +42,9 @@ spring:
             paths: /**
       cache:
         cachecontrol:
-          max-age: ${STATIC_CACHE_MAX_AGE:0s}
+          # Asset URLs built with @{...} are content-hashed by the resource chain above, so a long
+          # max-age is safe; with 0s every page load revalidated every CSS/JS/font file.
+          max-age: ${STATIC_CACHE_MAX_AGE:7d}
           cache-public: ${STATIC_CACHE_PUBLIC:false}
 
   jpa:

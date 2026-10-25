@@ -1,6 +1,6 @@
 package com.aloute.dto.response;
 
-public class UserProfileDto {
+public class UserProfileDto implements java.io.Serializable {
 
     private Long id;
     private String username;

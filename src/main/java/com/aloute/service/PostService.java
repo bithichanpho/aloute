@@ -56,6 +56,9 @@ import java.util.stream.Collectors;
 public class PostService {
 
     private static final Logger log = LoggerFactory.getLogger(PostService.class);
+    // Each batch costs several sequential DB round trips (posts, access checks, mapping). When most
+    // candidates are unreadable, return a short page with hasMore=true and let scrolling continue.
+    private static final int MAX_FEED_BATCHES = 5;
 
     private final ContentAccessService access;
     private final RepostPresentationService repostPresentationService;
@@ -329,7 +332,7 @@ public class PostService {
         boolean hasMore = false;
         int batches = 0;
 
-        while (result.size() < size && batches < 20) {
+        while (result.size() < size && batches < MAX_FEED_BATCHES) {
             List<Criteria> clauses = new ArrayList<>();
             clauses.add(Criteria.where("moderationStatus").ne(ModerationStatus.HIDDEN));
             clauses.add(new Criteria().orOperator(
@@ -339,11 +342,7 @@ public class PostService {
                             Criteria.where("content").nin(null, ""))));
             if (!normalizedTag.isBlank()) clauses.add(Criteria.where("hashtags").is(normalizedTag));
             if (cursor != null) {
-                clauses.add(new Criteria().orOperator(
-                        Criteria.where("createdAt").lt(cursor.createdAt()),
-                        new Criteria().andOperator(
-                                Criteria.where("createdAt").is(cursor.createdAt()),
-                                Criteria.where("id").lt(cursor.id()))));
+                clauses.add(Criteria.keysetBefore("createdAt", cursor.createdAt(), "id", cursor.id()));
             }
 
             List<Post> loaded = followingOnly && streamFollowingIds
@@ -381,7 +380,7 @@ public class PostService {
             hasMore = true;
             batches++;
         }
-        if (batches >= 20 && result.size() < size) hasMore = true;
+        if (batches >= MAX_FEED_BATCHES && result.size() < size) hasMore = true;
         if (result.isEmpty() && !hasMore) nextCursor = "";
         repostPresentationService.attachRecentReposters(result);
         return new FeedCursorPage(result, hasMore ? nextCursor : (result.isEmpty() ? "" : nextCursor), hasMore);
@@ -637,11 +636,7 @@ public class PostService {
             List<Criteria> clauses = new ArrayList<>();
             clauses.add(ownTimelineCriteria(userId));
             if (cursor != null) {
-                clauses.add(new Criteria().orOperator(
-                        Criteria.where("createdAt").lt(cursor.createdAt()),
-                        new Criteria().andOperator(
-                                Criteria.where("createdAt").is(cursor.createdAt()),
-                                Criteria.where("id").lt(cursor.id()))));
+                clauses.add(Criteria.keysetBefore("createdAt", cursor.createdAt(), "id", cursor.id()));
             }
             Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                     .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
@@ -711,14 +706,7 @@ public class PostService {
             clauses.add(Criteria.where("userId").is(String.valueOf(userId)));
             if (cursor != null) {
                 clauses.add(
-                        new Criteria()
-                                .orOperator(
-                                        Criteria.where("createdAt").lt(cursor.createdAt()),
-                                        new Criteria()
-                                                .andOperator(
-                                                        Criteria.where("createdAt")
-                                                                .is(cursor.createdAt()),
-                                                        Criteria.where("_id").lt(cursor.id()))));
+                        Criteria.keysetBefore("createdAt", cursor.createdAt(), "_id", cursor.id()));
             }
             Query query =
                     Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))

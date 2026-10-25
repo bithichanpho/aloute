@@ -38,8 +38,8 @@ final class SqlCriteriaCompiler {
         if (type != null && (Number.class.isAssignableFrom(box(type)) || isNumericPrimitive(type))) {
             return "NULLIF(" + json + ", '')::numeric";
         }
-        if (type == LocalDateTime.class) return "NULLIF(" + json + ", '')::timestamp";
-        if (type == Instant.class) return "NULLIF(" + json + ", '')::timestamptz";
+        if (type == LocalDateTime.class) return "aloute_jsonb_ts(" + json + ")";
+        if (type == Instant.class) return "aloute_jsonb_tstz(" + json + ")";
         if (type == Boolean.class || type == boolean.class) return "NULLIF(" + json + ", '')::boolean";
         return json;
     }
@@ -190,12 +190,14 @@ final class SqlCriteriaCompiler {
         return "(" + String.join(" OR ", arms) + ")";
     }
 
+    // Date fields go through the IMMUTABLE aloute_jsonb_ts/tstz functions (V20261104) so that
+    // sorts and range filters match the expression indexes; a plain ::timestamp cast cannot be indexed.
     private String comparisonExpression(String json, Class<?> type) {
         if (type == null) return json;
         if (Number.class.isAssignableFrom(box(type)) || isNumericPrimitive(type)) return "NULLIF(" + json + ", '')::numeric";
         if (type == Boolean.class || type == boolean.class) return "NULLIF(" + json + ", '')::boolean";
-        if (type == LocalDateTime.class) return "NULLIF(" + json + ", '')::timestamp";
-        if (type == Instant.class) return "NULLIF(" + json + ", '')::timestamptz";
+        if (type == LocalDateTime.class) return "aloute_jsonb_ts(" + json + ")";
+        if (type == Instant.class) return "aloute_jsonb_tstz(" + json + ")";
         return json;
     }
 

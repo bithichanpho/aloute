@@ -134,11 +134,7 @@ public class RepostPresentationService {
         clauses.add(Criteria.where("postId").is(postId));
         CursorPoint point = decodeCursor(cursor);
         if (point != null) {
-            clauses.add(new Criteria().orOperator(
-                    Criteria.where("createdAt").lt(point.createdAt()),
-                    new Criteria().andOperator(
-                            Criteria.where("createdAt").is(point.createdAt()),
-                            Criteria.where("_id").lt(point.id()))));
+            clauses.add(Criteria.keysetBefore("createdAt", point.createdAt(), "_id", point.id()));
         }
 
         Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))

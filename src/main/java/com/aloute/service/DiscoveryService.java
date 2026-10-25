@@ -63,11 +63,18 @@ public class DiscoveryService {
         this.friendRepository = friendRepository;
     }
 
+    /** Size of the feed sidebar suggestion list; also part of its cache key. */
+    public static final int FEED_SUGGESTION_LIMIT = 6;
+
     public List<UserProfileDto> getSuggestedUsers(Long currentUserId, int limit) {
 
         return getSuggestedUsers(currentUserId, limit, null);
     }
 
+    // Rendered on every feed load and costs ~8 sequential queries. Cached briefly per viewer and
+    // evicted when the viewer follows/unfollows or blocks someone.
+    @Cacheable(cacheNames = "suggestedUsers", key = "#currentUserId + ':' + #limit",
+            condition = "#currentUserId != null")
     public List<UserProfileDto> getSuggestedUsers(
             Long currentUserId, int limit, List<ChatGroup> myGroups) {
         if (currentUserId == null) {
@@ -91,7 +98,10 @@ public class DiscoveryService {
 
         Map<Long, Integer> commonFriendCount = new HashMap<>();
         if (!mutualSet.isEmpty()) {
-            for (Friend edge : friendRepository.findByFollowerIdIn(mutualSet)) {
+            // Sample at most 200 mutual friends; loading every edge of every friend is unbounded.
+            Set<Long> sampledMutuals = mutualSet.stream().limit(200)
+                    .collect(Collectors.toCollection(HashSet::new));
+            for (Friend edge : friendRepository.findByFollowerIdIn(sampledMutuals)) {
                 Long candidate = edge.getFollowedId();
                 if (candidate.equals(currentUserId) || followingSet.contains(candidate)) continue;
                 commonFriendCount.merge(candidate, 1, Integer::sum);

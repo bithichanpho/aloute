@@ -25,6 +25,28 @@ public class Criteria {
         return new Criteria(field);
     }
 
+    /**
+     * Keyset predicate for a descending (field, id) sort: rows strictly before the cursor.
+     * The redundant {@code field <= value} bound lets PostgreSQL start the index scan at the
+     * cursor; the OR alone forces it to walk every newer row first.
+     */
+    public static Criteria keysetBefore(String field, Object value, String idField, Object id) {
+        return new Criteria().andOperator(
+                where(field).lte(value),
+                new Criteria().orOperator(
+                        where(field).lt(value),
+                        new Criteria().andOperator(where(field).is(value), where(idField).lt(id))));
+    }
+
+    /** Keyset predicate for an ascending (field, id) sort: rows strictly after the cursor. */
+    public static Criteria keysetAfter(String field, Object value, String idField, Object id) {
+        return new Criteria().andOperator(
+                where(field).gte(value),
+                new Criteria().orOperator(
+                        where(field).gt(value),
+                        new Criteria().andOperator(where(field).is(value), where(idField).gt(id))));
+    }
+
     public Criteria and(String field) {
         if (field == null || field.isBlank()) throw new IllegalArgumentException("field is required");
         this.currentField = field;

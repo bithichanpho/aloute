@@ -94,6 +94,7 @@ public class SocialFeatureService {
     }
 
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(cacheNames = "suggestedUsers", key = "#owner + ':' + T(com.aloute.service.DiscoveryService).FEED_SUGGESTION_LIMIT")
     public void block(Long owner, Long target, boolean blocked) {
         if (owner.equals(target)) throw new BadRequestException("Không thể tự chặn chính mình");
         if (!users.existsById(target))
@@ -139,11 +140,7 @@ public class SocialFeatureService {
         int size = Math.max(1, Math.min(100, requestedSize));
         SocialCursor point = decodeSocialCursor(cursor);
         Query query = Query.query(Criteria.where("ownerId").is(user));
-        if (point != null) query.addCriteria(new Criteria().orOperator(
-                Criteria.where("createdAt").lt(point.createdAt()),
-                new Criteria().andOperator(
-                        Criteria.where("createdAt").is(point.createdAt()),
-                        Criteria.where("_id").lt(point.id()))));
+        if (point != null) query.addCriteria(Criteria.keysetBefore("createdAt", point.createdAt(), "_id", point.id()));
         query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
                 .limit(size + 1);
         List<UserBlock> items = new java.util.ArrayList<>(documentStore.find(query, UserBlock.class));
@@ -166,11 +163,7 @@ public class SocialFeatureService {
         int size = Math.max(1, Math.min(100, requestedSize));
         SocialCursor point = decodeSocialCursor(cursor);
         Query query = Query.query(Criteria.where("targetId").is(user));
-        if (point != null) query.addCriteria(new Criteria().orOperator(
-                Criteria.where("createdAt").lt(point.createdAt()),
-                new Criteria().andOperator(
-                        Criteria.where("createdAt").is(point.createdAt()),
-                        Criteria.where("_id").lt(point.id()))));
+        if (point != null) query.addCriteria(Criteria.keysetBefore("createdAt", point.createdAt(), "_id", point.id()));
         query.with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
                 .limit(size + 1);
         List<FollowRequest> items = new java.util.ArrayList<>(documentStore.find(query, FollowRequest.class));

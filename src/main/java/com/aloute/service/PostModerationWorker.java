@@ -27,6 +27,7 @@ public class PostModerationWorker {
     private final ModerationService moderation;
     private final ModerationRetryPolicy retryPolicy;
     private final CacheManager cacheManager;
+    private FeedCacheInvalidator feedCacheInvalidator;
     private final IUserRepository users;
     private final ContentAccessService access;
     private final NotificationService notifications;
@@ -107,7 +108,7 @@ public class PostModerationWorker {
                                 postId, lifecycleFailure.getClass().getSimpleName());
                     }
                 }
-                evictFeedCache();
+                evictFeedCache(snapshot.getUserId());
             }
         } catch (RuntimeException failure) {
             handleFailure(postId, snapshot, failure);
@@ -151,7 +152,7 @@ public class PostModerationWorker {
                 postId, retryable, current.getModerationAttempts(), retryPolicy.maxAttempts(),
                 requireReview, failureCode);
         log.debug("Post moderation failure details for post {}", postId, failure);
-        if (requireReview) evictFeedCache();
+        if (requireReview) evictFeedCache(current.getUserId());
     }
 
     private void notifyReadableMentions(Post post) {
@@ -167,7 +168,20 @@ public class PostModerationWorker {
         }
     }
 
-    private void evictFeedCache() {
+    @Autowired(required = false)
+    void setFeedCacheInvalidator(FeedCacheInvalidator feedCacheInvalidator) {
+        this.feedCacheInvalidator = feedCacheInvalidator;
+    }
+
+    // A PENDING post is readable only by its author, so a moderation decision can change only the
+    // author's cached feed pages. Clearing every viewer's feed turned each decision into a cache flush.
+    private void evictFeedCache(String authorId) {
+        Long author = null;
+        try { author = authorId == null ? null : Long.valueOf(authorId); } catch (NumberFormatException ignored) { }
+        if (feedCacheInvalidator != null && author != null) {
+            feedCacheInvalidator.invalidateViewer(author);
+            return;
+        }
         try {
             var feedCache = cacheManager.getCache("feedPages");
             if (feedCache != null) feedCache.clear();
