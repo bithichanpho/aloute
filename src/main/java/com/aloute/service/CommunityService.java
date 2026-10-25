@@ -677,7 +677,8 @@ public class CommunityService {
         dto.setPrivacy(community.getPrivacy());
         dto.setMemberCount(community.getMemberCount());
         dto.setCreatedAt(community.getCreatedAt());
-        dto.setMember(activeRoles().contains(rawRole));
+        // rawRole is null for communities the viewer has not joined; List.of rejects contains(null).
+        dto.setMember(rawRole != null && activeRoles().contains(rawRole));
         // Preserve the old JSON property for clients that already use `admin`.
         dto.setAdmin(manager);
         dto.setManager(manager);

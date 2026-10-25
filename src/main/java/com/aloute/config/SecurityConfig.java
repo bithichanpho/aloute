@@ -14,6 +14,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -129,6 +130,10 @@ public class SecurityConfig {
                         .csrfTokenRepository(csrfTokenRepository)
                         // SPA sends the unmasked token read from XSRF-TOKEN cookie.
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        // JwtAuthFilter authenticates every stateless request, which Spring treats
+                        // as a new login and clears the token after each one; the next POST then
+                        // fails with 403. Login rotation is unnecessary: no session is fixed to it.
+                        .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
                         // SockJS uses POST for its transport; origin validation is enforced by
                         // WebSocketConfig and inbound STOMP authentication remains mandatory.
                         .ignoringRequestMatchers("/ws/**"))
