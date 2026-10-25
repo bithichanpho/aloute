@@ -1,3 +1,5 @@
+> Historical note only: these instructions refer to an older source revision and are not required to use this full merged source. Follow `MERGE_REPORT.md` and `docs/PRODUCTION_RUNBOOK.md` instead.
+
 # Apply the consolidated Eclipse-first backend patch
 
 This delta patch is based only on `aloute_eclipse_post_media_hardened_source.zip` (the immediately previous consolidated source revision), not the original `src.zip` or earlier patch archives. The safest option remains importing the newest full source ZIP into a new Eclipse workspace project.

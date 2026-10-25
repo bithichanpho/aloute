@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 
 /** PostgreSQL-backed, lease-based queue with a bounded retry policy. */
 @Service
-public class PostModerationCoordinator {
+public class PostModerationCoordinator implements com.aloute.posts.api.PostReviewDispatch {
     private static final Logger log = LoggerFactory.getLogger(PostModerationCoordinator.class);
     private final PostgresDocumentStore documentStore;
     private final PostModerationWorker worker;

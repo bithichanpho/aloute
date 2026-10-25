@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.response.ModerationResult;
 import com.aloute.model.document.Comment;
@@ -30,12 +32,12 @@ public class CommentModerationWorker {
     private final ModerationService moderation;
     private final CacheManager cacheManager;
     private final ModerationRetryPolicy retryPolicy;
-    private final NotificationService notifications;
+    private final Notifications notifications;
     private final TransactionTemplate databaseTransaction;
 
     public CommentModerationWorker(
             PostgresDocumentStore documentStore, ModerationService moderation, ModerationRetryPolicy retryPolicy,
-            NotificationService notifications, CacheManager cacheManager,
+            Notifications notifications, CacheManager cacheManager,
             @Qualifier("transactionManager") PlatformTransactionManager transactionManager) {
         this.documentStore = documentStore;
         this.moderation = moderation;

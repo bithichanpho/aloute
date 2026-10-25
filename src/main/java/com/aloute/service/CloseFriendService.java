@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.model.entity.CloseFriend;
@@ -19,12 +21,12 @@ public class CloseFriendService {
 
     private final ICloseFriendRepository closeFriendRepository;
     private final FriendService friendService;
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
 
     public CloseFriendService(
             ICloseFriendRepository closeFriendRepository,
             FriendService friendService,
-            NotificationService notificationService) {
+            Notifications notificationService) {
         this.closeFriendRepository = closeFriendRepository;
         this.friendService = friendService;
         this.notificationService = notificationService;

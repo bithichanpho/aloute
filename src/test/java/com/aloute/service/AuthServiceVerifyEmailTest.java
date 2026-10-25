@@ -95,4 +95,21 @@ class AuthServiceVerifyEmailTest {
         assertThrows(BadRequestException.class, () -> service.verifyEmail(EMAIL, "12ab"));
         verify(pendings, never()).findByEmailIgnoreCase(anyString());
     }
+
+    @Test
+    void malformedAndWrongAttemptsDoNotInvalidateTheCorrectCode() {
+        PendingUser pending=pending(LocalDateTime.now().plusMinutes(5));
+        String hash=pending.getVerificationToken();
+        LocalDateTime expiry=pending.getVerificationTokenExpiry();
+        when(pendings.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(pending));
+
+        assertThrows(BadRequestException.class,()->service.verifyEmail(EMAIL,"12ab"));
+        assertThrows(BadRequestException.class,()->service.verifyEmail(EMAIL,"000000"));
+        assertEquals(hash,pending.getVerificationToken());
+        assertEquals(expiry,pending.getVerificationTokenExpiry());
+        verify(users,never()).save(any());verify(pendings,never()).delete(any());
+
+        service.verifyEmail(EMAIL,CODE);
+        verify(users).save(any());verify(pendings).delete(pending);
+    }
 }

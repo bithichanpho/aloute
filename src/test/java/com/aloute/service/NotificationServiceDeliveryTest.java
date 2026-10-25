@@ -72,6 +72,11 @@ class NotificationServiceDeliveryTest {
         event.setSenderId(1L);
         event.setReceiverId(2L);
         event.setNotificationType("LIKE");
+        event.setReferenceId("post");
+        com.aloute.model.document.Post post = new com.aloute.model.document.Post();
+        post.setUserId("2");
+        when(posts.findById("post")).thenReturn(Optional.of(post));
+        when(access.canRead(post, 2L)).thenReturn(true);
         event.setContent("liked");
         Notification saved = new Notification();
         saved.setSenderId(1L);

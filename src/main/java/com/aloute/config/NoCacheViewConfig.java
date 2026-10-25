@@ -35,6 +35,7 @@ public class NoCacheViewConfig implements WebMvcConfigurer {
                         "/verify-email",
                         "/forgot-password",
                         "/reset-password",
+                        "/verify-reset-code",
                         "/feed",
                         "/chat",
                         "/profile/**",

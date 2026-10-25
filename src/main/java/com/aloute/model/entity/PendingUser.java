@@ -31,7 +31,7 @@ public class PendingUser {
     @Column(nullable = false, length = 50)
     private String username;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = 254)
     private String email;
 
     @Column(nullable = false)

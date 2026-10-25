@@ -41,8 +41,7 @@ public class AccountSecurityService {
     private final ICloseFriendRepository closeFriends;
     private final ICommunityMemberRepository communityMembers;
     private final IGroupMemberRepository groupMembers;
-    private final INotificationRepository notifications;
-    private final IUserPushTokenRepository pushTokens;
+    private final com.aloute.notifications.api.NotificationAccountCleanup notificationCleanup;
     private final IGroupReadStatusRepository groupReadStatuses;
     private final RefreshTokenService refreshTokens;
     private final AccountDataCleanupService accountDataCleanupService;
@@ -62,8 +61,7 @@ public class AccountSecurityService {
             ICloseFriendRepository closeFriends,
             ICommunityMemberRepository communityMembers,
             IGroupMemberRepository groupMembers,
-            INotificationRepository notifications,
-            IUserPushTokenRepository pushTokens,
+            com.aloute.notifications.api.NotificationAccountCleanup notificationCleanup,
             IGroupReadStatusRepository groupReadStatuses,
             RefreshTokenService refreshTokens,
             AccountDataCleanupService accountDataCleanupService,
@@ -80,13 +78,38 @@ public class AccountSecurityService {
         this.closeFriends = closeFriends;
         this.communityMembers = communityMembers;
         this.groupMembers = groupMembers;
-        this.notifications = notifications;
-        this.pushTokens = pushTokens;
+        this.notificationCleanup = notificationCleanup;
         this.groupReadStatuses = groupReadStatuses;
         this.refreshTokens = refreshTokens;
         this.accountDataCleanupService = accountDataCleanupService;
         this.authenticationUserCache = authenticationUserCache;
         this.firebaseAdminService = firebaseAdminService;
+    }
+
+    /** Compatibility adapter; production receives the notification owner API. */
+    public AccountSecurityService(
+            PostgresDocumentStore documentStore,
+            IUserRepository users,
+            PasswordEncoder passwords,
+            TotpService totp,
+            SecretEncryptionService encryption,
+            AuthTokenService tokens,
+            AuthRateLimitService limits,
+            IFriendRepository friends,
+            ICloseFriendRepository closeFriends,
+            ICommunityMemberRepository communityMembers,
+            IGroupMemberRepository groupMembers,
+            INotificationRepository notifications,
+            IUserPushTokenRepository pushTokens,
+            IGroupReadStatusRepository groupReadStatuses,
+            RefreshTokenService refreshTokens,
+            AccountDataCleanupService accountDataCleanupService,
+            AuthenticationUserCache authenticationUserCache,
+            FirebaseAdminService firebaseAdminService) {
+        this(documentStore, users, passwords, totp, encryption, tokens, limits, friends, closeFriends,
+                communityMembers, groupMembers,
+                new com.aloute.notifications.application.NotificationAccountCleanupService(notifications, null, pushTokens),
+                groupReadStatuses, refreshTokens, accountDataCleanupService, authenticationUserCache, firebaseAdminService);
     }
 
     /** Compatibility constructor retained for direct unit-test callers. */
@@ -380,8 +403,7 @@ public class AccountSecurityService {
             communityMembers.deleteByUserId(user);
             groupMembers.deleteByUserId(user);
             groupReadStatuses.deleteByUserId(user);
-            pushTokens.deleteByUserId(user);
-            notifications.deleteByReceiverIdOrSenderId(user, user);
+            notificationCleanup.removeAccountReferences(user);
             com.aloute.common.util.TransactionCommitHooks.afterCommit(() -> {
                 try {
                     accountDataCleanupService.deleteUserData(

@@ -1,0 +1,16 @@
+Realtime dependencies vendored without version/API changes to satisfy script-src self.
+
+sockjs-client 1.6.1
+Source: https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js
+SHA256: 1e0f37d073666196b0848fd7d80d525268d5adf47ea1ec459632f05bbf8e1f54
+Upstream: https://github.com/sockjs/sockjs-client/tree/v1.6.1
+License: sockjs-client/LICENSE (MIT)
+
+stomp.js 2.3.3
+Source: https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js
+SHA256: 9e43fc723e716937562bf06c665fb9ed9084fd8fe2e1436d6cd4e9807fba4dac
+Upstream: https://github.com/jmesnil/stomp-websocket/tree/2.3.3
+License: stomp/LICENSE.txt (Apache License 2.0)
+
+These are the same pinned browser library versions used before this fix.
+No CSP wildcard, unsafe-eval, inline-script permission or external CDN origin is added.

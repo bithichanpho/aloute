@@ -18,6 +18,9 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
     validate-on-migrate: true
+    # V20261104.1 was added after 20261105-20261109 had already run on shared databases.
+    # Lets those databases apply it once; fresh databases still run every version in order.
+    out-of-order: true
   servlet:
     multipart:
       max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:50MB}
@@ -84,7 +87,7 @@ spring:
       - application-actuator.yml
 
 server:
-  port: 8080
+  port: 8081
 
   compression:
     enabled: true

@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.util.TransactionCommitHooks;
 
 import com.aloute.common.exception.BadRequestException;
@@ -54,7 +56,7 @@ public class CommunityService {
     private final MediaUploadModerationService mediaUploadModeration;
     private final MediaAssetLifecycleService mediaAssets;
     private final IUserRepository userRepository;
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
     private final CommentService commentService;
     private final CommunityCleanupOutboxService cleanupOutbox;
 
@@ -66,7 +68,7 @@ public class CommunityService {
             MediaUploadModerationService mediaUploadModeration,
             MediaAssetLifecycleService mediaAssets,
             IUserRepository userRepository,
-            NotificationService notificationService,
+            Notifications notificationService,
             CommentService commentService,
             CommunityCleanupOutboxService cleanupOutbox) {
         this.communityRepository = communityRepository;
@@ -88,7 +90,7 @@ public class CommunityService {
             MediaUploadModerationService mediaUploadModeration,
             MediaAssetLifecycleService mediaAssets,
             IUserRepository userRepository,
-            NotificationService notificationService,
+            Notifications notificationService,
             CommentService commentService) {
         this(communityRepository, memberRepository, postService, mediaUploadModeration,
                 mediaAssets, userRepository, notificationService, commentService, null);
@@ -597,7 +599,7 @@ public class CommunityService {
     }
 
     private boolean isManagerRole(String role) {
-        return ROLE_OWNER.equals(role) || ROLE_MANAGER.equals(role) || ROLE_ADMIN.equals(role);
+        return com.aloute.communities.domain.CommunityRoles.canManage(role);
     }
 
     private boolean isOwnerRole(String role) {
@@ -613,7 +615,7 @@ public class CommunityService {
     }
 
     private List<String> managerRoles() {
-        return List.of(ROLE_OWNER, ROLE_MANAGER, ROLE_ADMIN);
+        return com.aloute.communities.domain.CommunityRoles.managerRoles();
     }
 
     private boolean isActiveMember(Long communityId, Long userId) {

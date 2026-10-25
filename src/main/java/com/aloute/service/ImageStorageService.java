@@ -19,13 +19,24 @@ public class ImageStorageService {
 
     private final Cloudinary cloudinary;
     private final String configuredCloudName;
+    private final com.aloute.media.domain.MediaDeletionPolicy deletionPolicy;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ImageStorageService(
             Cloudinary cloudinary,
-            @Value("${cloudinary.cloud-name:}") String configuredCloudName) {
+            @Value("${cloudinary.cloud-name:}") String configuredCloudName,
+            com.aloute.media.domain.MediaDeletionPolicy deletionPolicy) {
         this.cloudinary = cloudinary;
+        this.deletionPolicy = deletionPolicy;
         this.configuredCloudName = configuredCloudName == null ? "" : configuredCloudName.trim();
     }
+
+    /** Direct Java construction is safe by default too. */
+    public ImageStorageService(Cloudinary cloudinary, String configuredCloudName) {
+        this(cloudinary, configuredCloudName, new com.aloute.media.domain.MediaDeletionPolicy(false, true));
+    }
+
+    public boolean physicalDeletionAllowed() { return deletionPolicy.permitsPhysicalDeletion(); }
 
     public Map<String, String> uploadImageDetails(MultipartFile file, UploadPurpose purpose) throws IOException {
         if (purpose == null || !purpose.allows(UploadContentValidator.DetectedType.IMAGE)) {
@@ -132,7 +143,7 @@ public class ImageStorageService {
     }
 
     public void deleteMedia(String publicId, String resourceType) throws IOException {
-        if (publicId == null || publicId.isBlank()) return;
+        if (!physicalDeletionAllowed() || publicId == null || publicId.isBlank()) return;
         cloudinary
                 .uploader()
                 .destroy(

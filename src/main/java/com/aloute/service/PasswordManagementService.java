@@ -59,6 +59,7 @@ public class PasswordManagementService {
         this(userRepository, passwordEncoder, authTokenService, emailService, null, null);
     }
 
+    @Transactional
     public void forgotPassword(String email) {
 
         String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
@@ -93,17 +94,16 @@ public class PasswordManagementService {
                             String resetTokenHash =
                                     authTokenService.hashOtp(normalizedEmail, resetOtp);
 
-                            user.setResetPasswordToken(resetTokenHash);
-
-                            user.setResetPasswordExpiry(
-                                    now.plusMinutes(RESET_PASSWORD_TOKEN_MINUTES));
-
-                            userRepository.save(user);
-
-                            if (mailDispatcher != null) mailDispatcher.send(
-                                    user.getEmail(), user.getFullName(), resetOtp);
-                            else emailService.sendResetPasswordEmail(
-                                    user.getEmail(), user.getFullName(), resetOtp);
+                            // Update only reset state; a stale entity must not overwrite a concurrently
+                            // changed password. The conditional write also enforces the send cooldown.
+                            int issued=userRepository.issueResetToken(user.getId(),resetTokenHash,
+                                    now.plusMinutes(RESET_PASSWORD_TOKEN_MINUTES),
+                                    now.plusMinutes(RESET_PASSWORD_TOKEN_MINUTES).minusSeconds(RESET_EMAIL_COOLDOWN_SECONDS));
+                            if(issued!=1)return;
+                            TransactionCommitHooks.afterCommit(()->{
+                                if (mailDispatcher != null) mailDispatcher.send(user.getEmail(), user.getFullName(), resetOtp);
+                                else emailService.sendResetPasswordEmail(user.getEmail(), user.getFullName(), resetOtp);
+                            });
                         });
     }
 
@@ -115,6 +115,42 @@ public class PasswordManagementService {
      */
     @Transactional
     public void resetPassword(String email, String code, String newPassword) {
+        User user=verifiedOtpUser(email,code);
+        consumeReset(user,user.getResetPasswordToken(),newPassword);
+    }
+
+    /** Immutable internal proof; never serialize this hash into a browser response. */
+    public record ResetProof(Long userId,String tokenHash,LocalDateTime resetExpiry) {}
+
+    @Transactional(readOnly=true)
+    public ResetProof verifyResetCode(String email,String code) {
+        User user=verifiedOtpUser(email,code);
+        return new ResetProof(user.getId(),user.getResetPasswordToken(),user.getResetPasswordExpiry());
+    }
+
+    @Transactional(readOnly=true)
+    public java.util.Optional<String> verifiedResetEmail(ResetProof proof) {
+        return userRepository.findById(proof.userId()).filter(user->activeProof(user,proof))
+                .map(User::getEmail);
+    }
+
+    @Transactional
+    public void resetPasswordVerified(ResetProof proof,String newPassword) {
+        User user=userRepository.findById(proof.userId()).filter(found->activeProof(found,proof))
+                .orElseThrow(PasswordManagementService::invalidResetCode);
+        consumeReset(user,proof.tokenHash(),newPassword,proof.resetExpiry());
+    }
+
+    private boolean activeProof(User user,ResetProof proof) {
+        String hash=proof.tokenHash();
+        return hash!=null&&user.getResetPasswordToken()!=null
+                &&java.security.MessageDigest.isEqual(hash.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    user.getResetPasswordToken().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                &&user.getResetPasswordExpiry()!=null&&user.getResetPasswordExpiry().equals(proof.resetExpiry())
+                &&user.getResetPasswordExpiry().isAfter(LocalDateTime.now());
+    }
+
+    private User verifiedOtpUser(String email,String code) {
 
         String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
 
@@ -142,17 +178,26 @@ public class PasswordManagementService {
             throw new BadRequestException(
                     "Mã đặt lại mật khẩu " + "đã hết hạn, vui lòng yêu cầu lại");
         }
+        return user;
+    }
 
+    private void consumeReset(User user,String storedHash,String newPassword) {
+        consumeReset(user,storedHash,newPassword,null);
+    }
+
+    private void consumeReset(User user,String storedHash,String newPassword,LocalDateTime expectedExpiry) {
         // Hash outside the conditional UPDATE so the row is not locked during the slow BCrypt work.
         String encodedPassword = passwordEncoder.encode(newPassword);
+        LocalDateTime now=LocalDateTime.now();
         Instant revokedAt = Instant.now();
         Long userId = user.getId();
         String username = user.getUsername();
 
         // Compare-and-set: succeeds for exactly one of any number of concurrent requests that
         // present the same code; the rest affect 0 rows and are rejected.
-        int updated =
-                userRepository.consumeResetToken(userId, storedHash, encodedPassword, revokedAt, now);
+        int updated = expectedExpiry==null
+                ? userRepository.consumeResetToken(userId, storedHash, encodedPassword, revokedAt, now)
+                : userRepository.consumeVerifiedResetToken(userId,storedHash,expectedExpiry,encodedPassword,revokedAt,now);
 
         if (updated != 1) {
             throw invalidResetCode();

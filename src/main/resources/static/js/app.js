@@ -21,8 +21,11 @@ window.Aloute = (function () {
   }
 
   let sessionRefreshPromise = null;
+  let logoutInProgress = false;
 
   function refreshSessionOnce() {
+    // Do not issue fresh credentials while the user is ending this browser's session.
+    if (logoutInProgress) return Promise.resolve(null);
     if (sessionRefreshPromise) return sessionRefreshPromise;
     sessionRefreshPromise = fetch('/api/auth/refresh', {
       method: 'POST',
@@ -68,6 +71,7 @@ window.Aloute = (function () {
     try {
       res = await fetchWithSessionRefresh(path, opts);
     } catch (error) {
+      if (error.name === 'AbortError') throw error;
       throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối và thử lại.');
     }
 
@@ -177,8 +181,8 @@ window.Aloute = (function () {
   const readyCallbacks = [];
 
   const REALTIME_LIBS = [
-    'https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js'
+    '/vendor/sockjs-client/sockjs.min.js',
+    '/vendor/stomp/stomp.min.js'
   ];
 
   function loadScriptOnce(src) {
@@ -1526,11 +1530,18 @@ window.Aloute = (function () {
     const tabsEl = document.getElementById('searchTabs');
     const discoverEl = document.getElementById('searchDiscover');
 
-    const cache = { users: {}, posts: {} };
+    const cache = { users: Object.create(null), posts: Object.create(null) };
     let currentTab = 'users';
     let keyword = '';
     let debounceTimer = null;
     let requestToken = 0;
+    let searchController = null;
+
+    function cancelSearch() {
+      requestToken++;
+      if (searchController) searchController.abort();
+      searchController = null;
+    }
 
     loadDiscoverSections();
 
@@ -1540,6 +1551,7 @@ window.Aloute = (function () {
     }
 
     input.addEventListener('input', () => {
+      cancelSearch();
       const value = input.value.trim();
       if (clearBtn) clearBtn.hidden = value.length === 0;
       clearTimeout(debounceTimer);
@@ -1619,7 +1631,7 @@ window.Aloute = (function () {
     }
 
     function showDiscover() {
-      requestToken++;
+      cancelSearch();
       resultsEl.hidden = true;
       resultsEl.innerHTML = '';
       if (tabsEl) tabsEl.hidden = true;
@@ -1635,23 +1647,22 @@ window.Aloute = (function () {
     const SEARCH_PAGE_SIZE = 20;
 
     async function runSearch(page = 0, append = false) {
+      cancelSearch();
       showResults();
 
       const tab = currentTab;
       const key = keyword;
       const token = ++requestToken;
 
-      if (!append && page === 0 && cache[tab][key]) {
-        const cached = cache[tab][key];
-        paint(tab, cached.items, cached.hasMore, cached.page);
-        return;
-      }
+      // A fresh query revalidates visibility; cached items only preserve pagination state.
+      const controller = new AbortController();
+      searchController = controller;
 
       if (!append) resultsEl.innerHTML = searchSkeleton(tab);
       try {
         const url = (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=')
           + encodeURIComponent(key) + '&page=' + page + '&size=' + SEARCH_PAGE_SIZE;
-        const data = await api(url);
+        const data = await api(url, { signal: controller.signal });
         if (token !== requestToken) return;
         const batch = data || [];
         const existing = append && cache[tab][key] ? cache[tab][key].items : [];
@@ -1660,10 +1671,18 @@ window.Aloute = (function () {
           page,
           hasMore: batch.length === SEARCH_PAGE_SIZE
         };
+        const keys = Object.keys(cache[tab]);
+        if (keys.length > 20) {
+          // Integer-like query keys sort before other object keys; keep the active page state.
+          const removable = keys.find(cachedKey => cachedKey !== key);
+          if (removable !== undefined) delete cache[tab][removable];
+        }
         paint(tab, cache[tab][key].items, cache[tab][key].hasMore, page);
       } catch (err) {
-        if (token !== requestToken) return;
+        if (controller.signal.aborted || token !== requestToken) return;
         resultsEl.innerHTML = discoverEmpty('Không tải được kết quả', err.message);
+      } finally {
+        if (searchController === controller) searchController = null;
       }
     }
 
@@ -1788,7 +1807,7 @@ window.Aloute = (function () {
       '    </div>' +
       '    <p class="post__content">' + escapeHtml(post.content || '') + '</p>' +
       (post.imageUrl ? '<img class="post__image" src="' + escapeHtml(post.imageUrl) + '" alt="ảnh bài viết">' : '') +
-      (post.videoUrl ? '<video class="post__video" src="' + escapeHtml(post.videoUrl) + '" controls preload="metadata"></video>' : '') +
+      (post.videoUrl ? '<video class="post__video" src="' + escapeHtml(post.videoUrl) + '" controls preload="none"></video>' : '') +
       '    <div class="post__actions">' +
       '      <button class="action action--like' + (post.likedByCurrentUser ? ' is-liked' : '') + '">' +
       '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg>' +
@@ -2155,35 +2174,60 @@ window.Aloute = (function () {
     });
   }
 
+  async function withLogoutDeadline(operation, milliseconds) {
+    const controller = new AbortController();
+    let timeout;
+    const expired = new Promise((_, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Yêu cầu đăng xuất quá thời gian chờ. Vui lòng thử lại.'));
+      }, milliseconds);
+    });
+    try { return await Promise.race([operation(controller.signal), expired]); }
+    finally { clearTimeout(timeout); }
+  }
+
   function initLogout() {
     document.querySelectorAll('#logoutBtn, [data-logout]').forEach((btn) => {
       if (btn.dataset.logoutBound === '1') return;
       btn.dataset.logoutBound = '1';
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
-        // Remove this browser's Firebase Installation ID before ending the ALOUTE session so a shared device
-        // does not keep receiving push messages for the account that just signed out.
-        let pushFid = null;
-        try { pushFid = localStorage.getItem('aloute-fcm-fid'); } catch (storageReadError) { /* Continue logout when storage is blocked. */ }
-        if (pushFid) {
+        if (logoutInProgress) return;
+        logoutInProgress = true;
+        const buttons = document.querySelectorAll('#logoutBtn, [data-logout]');
+        buttons.forEach(button => button.setAttribute('aria-busy', 'true'));
+        try {
+          await withLogoutDeadline(async signal => {
+            // An already running rotation must finish before logout reads/revokes its new cookie.
+            if (sessionRefreshPromise) await sessionRefreshPromise;
+            signal.throwIfAborted();
+            let pushFid = null;
+            try {
+              pushFid = localStorage.getItem('aloute-fcm-fid');
+              // Stop background push enrollment while this session is being closed.
+              localStorage.setItem('aloute-fcm-disabled', 'true');
+            } catch (_) { /* Storage may be blocked. */ }
+            if (pushFid) {
+              try {
+                await withLogoutDeadline(pushSignal => api('/api/push/register', {
+                  method: 'DELETE', body: { fid: pushFid }, signal: pushSignal
+                }), 2000);
+              } catch (_) { /* Push cleanup is best effort and must not hold logout indefinitely. */ }
+            }
+            signal.throwIfAborted();
+            await api('/api/auth/logout', { method: 'POST', signal });
+          }, 10000);
           try {
-            await api('/api/push/register', { method: 'DELETE', body: JSON.stringify({ fid: pushFid }) });
-          } catch (pushCleanupError) {
-            // Logout must continue even if FCM installation cleanup is temporarily unavailable.
-          }
+            localStorage.removeItem('aloute-fcm-fid');
+            localStorage.setItem('aloute-fcm-disabled', 'true');
+          } catch (_) { /* Server cookies have already been cleared even if storage is blocked. */ }
+          window.location.replace('/login');
+        } catch (error) {
+          logoutInProgress = false;
+          buttons.forEach(button => button.removeAttribute('aria-busy'));
+          toast(error.message || 'Chưa đăng xuất được. Vui lòng thử lại.', true);
         }
-        try {
-          localStorage.removeItem('aloute-fcm-fid');
-          localStorage.setItem('aloute-fcm-disabled', 'true');
-        } catch (storageError) {
-          // Storage may be unavailable in a restrictive browser; still continue to logout.
-        }
-        try {
-          await api('/api/auth/logout', { method: 'POST' });
-        } catch (e2) {
-
-        }
-        window.location.href = '/login';
       });
     });
   }

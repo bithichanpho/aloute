@@ -14,7 +14,7 @@ import com.aloute.service.CommunityService;
 import com.aloute.service.DiscoveryService;
 import com.aloute.service.FriendService;
 import com.aloute.service.GroupService;
-import com.aloute.service.NotificationService;
+import com.aloute.notifications.api.Notifications;
 import com.aloute.service.PostService;
 import com.aloute.service.PresenceService;
 import com.aloute.service.SocialFeatureService;
@@ -43,9 +43,10 @@ import java.util.Set;
 public class ViewController {
 
     private final PostService postService;
+    private final com.aloute.feed.api.FeedQuery feedQuery;
     private final UserService userService;
     private final FriendService friendService;
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
     private final ChatService chatService;
     private final GroupService groupService;
     private final PresenceService presenceService;
@@ -53,18 +54,20 @@ public class ViewController {
     private final CommunityService communityService;
     private final SocialFeatureService socialFeatureService;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ViewController(
             PostService postService,
             UserService userService,
             FriendService friendService,
-            NotificationService notificationService,
+            Notifications notificationService,
             ChatService chatService,
             GroupService groupService,
             PresenceService presenceService,
             DiscoveryService discoveryService,
             CommunityService communityService,
-            SocialFeatureService socialFeatureService) {
+            SocialFeatureService socialFeatureService, com.aloute.feed.api.FeedQuery feedQuery) {
         this.postService = postService;
+        this.feedQuery = feedQuery;
         this.userService = userService;
         this.friendService = friendService;
         this.notificationService = notificationService;
@@ -74,6 +77,22 @@ public class ViewController {
         this.discoveryService = discoveryService;
         this.communityService = communityService;
         this.socialFeatureService = socialFeatureService;
+    }
+
+    /** Direct construction adapter retained for existing MVC tests/callers. */
+    public ViewController(
+            PostService postService,
+            UserService userService,
+            FriendService friendService,
+            Notifications notificationService,
+            ChatService chatService,
+            GroupService groupService,
+            PresenceService presenceService,
+            DiscoveryService discoveryService,
+            CommunityService communityService,
+            SocialFeatureService socialFeatureService) {
+        this(postService, userService, friendService, notificationService, chatService, groupService,
+                presenceService, discoveryService, communityService, socialFeatureService, postService);
     }
 
     @GetMapping("/")
@@ -100,12 +119,6 @@ public class ViewController {
     @GetMapping("/forgot-password")
     public String forgotPassword(Authentication authentication) {
         return isLoggedIn(authentication) ? "redirect:/feed" : "auth/forgot-password";
-    }
-
-    @GetMapping("/reset-password")
-    public String resetPassword(@RequestParam(required = false) String email, Model model) {
-        model.addAttribute("email", email);
-        return "auth/reset-password";
     }
 
     @GetMapping("/feed")
@@ -137,7 +150,7 @@ public class ViewController {
         if (postId != null && !postId.isBlank()) {
             posts = List.of(postService.getPost(postId.trim(), userId));
         } else {
-            var feedPage = postService.getCursorFeedForViewer(
+            var feedPage = feedQuery.getCursorFeedForViewer(
                     userId, tab, hashtag, null, 20);
             posts = feedPage.items();
             nextCursor = feedPage.nextCursor();
@@ -268,7 +281,7 @@ public class ViewController {
             @RequestParam(required = false) @Size(max = 50, message = "Hashtag không hợp lệ") String tag) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
-        var page = postService.getCursorFeedForViewer(
+        var page = feedQuery.getCursorFeedForViewer(
                 userId, tab, tag, cursor, 20);
         model.addAttribute("posts", page.items());
         var currentUser = new UserProfileDto();

@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Redis-backed rate limiting with an in-memory development fallback. */
 @Service
-public class AuthRateLimitService {
+public class AuthRateLimitService implements com.aloute.identity.api.ActionRateLimit {
 
     private static final Logger log = LoggerFactory.getLogger(AuthRateLimitService.class);
     private static final int MAX_REQUESTS = 5;

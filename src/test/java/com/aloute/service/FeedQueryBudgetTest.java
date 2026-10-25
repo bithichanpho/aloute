@@ -79,22 +79,21 @@ class FeedQueryBudgetTest {
     }
 
     @Test
-    void followingFeedStreamsFollowIdsInBoundedJpaBatches() {
+    void followingFeedUsesOneCandidateQueryAndOneBoundedScopeProbe() {
         IPostRepository relationalPostRepository = mock(IPostRepository.class);
         IFriendRepository friendRepository = mock(IFriendRepository.class);
+        when(friendRepository.existsByFollowerId(2L)).thenReturn(true);
         PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
-        when(friendRepository.findFollowedIdsAfter(eq(2L), eq(0L), any()))
-                .thenReturn(List.of(10L, 11L));
         when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
         PostService service = newService(relationalPostRepository, documentStore, friendRepository);
 
         var page = service.getCursorFeedForViewer(2L, "following", null, null, 20);
 
         assertTrue(page.items().isEmpty());
-        verify(friendRepository).findFollowedIdsAfter(eq(2L), eq(0L), argThat(pageable ->
-                pageable.getPageSize() == 500));
-        verify(friendRepository, never()).findByFollowerId(anyLong());
-        verify(documentStore).find(any(Query.class), eq(Post.class));
+        verify(friendRepository,times(1)).existsByFollowerId(2L);
+        verify(friendRepository,never()).findFollowedIdsAfter(any(),any(),any());
+        verify(documentStore,times(1)).find(argThat(query -> query.limit()==80
+                && query.criteria().nodes().toString().contains(com.aloute.social.api.FollowedAccounts.READ_VIEW)),eq(Post.class));
     }
 
     @Test

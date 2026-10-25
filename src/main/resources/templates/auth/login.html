@@ -9,6 +9,8 @@
   <link rel="stylesheet" th:href="@{/css/main.css?v=20261017-moderation-toast-v2}">
   <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
   <link rel="stylesheet" th:href="@{/css/theme.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/auth-form-feedback.css?v=20261025-focus-v1}">
+  <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261025-otp-message-v2}">
   <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}" defer></script>
 </head>
 <body class="auth-body">
@@ -18,7 +20,7 @@
   </button>
 
   <div class="auth-shell">
-    <div class="auth-card">
+    <div class="auth-card auth-error-focus">
       <div class="auth-card__logo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
@@ -74,6 +76,9 @@
 
   <script th:src="@{/js/app.js?v=20261017-moderation-toast-v2}"></script>
   <script th:src="@{/js/firebase-client.js?v=20261017-firebase-csp-fix-v1}"></script>
-  <script th:src="@{/js/auth-login.js?v=20261019-csp-v1}"></script>
+  <script th:src="@{/js/auth-form-feedback.js?v=20261025-otp-message-v2}"></script>
+  <script th:src="@{/js/auth-otp.js?v=20261025-input-retry-v3}"></script>
+  <script th:src="@{/js/auth-login.js?v=20261025-otp-message-v2}"></script>
 </body>
 </html>
+

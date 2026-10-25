@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.dto.response.ModerationResult;
 import com.aloute.model.document.ModerationStatus;
 import com.aloute.model.document.Post;
@@ -30,13 +32,13 @@ public class PostModerationWorker {
     private FeedCacheInvalidator feedCacheInvalidator;
     private final IUserRepository users;
     private final ContentAccessService access;
-    private final NotificationService notifications;
+    private final Notifications notifications;
     private final MediaAssetLifecycleService postMediaAssets;
 
     @Autowired
     public PostModerationWorker(PostgresDocumentStore documentStore, ModerationService moderation,
             ModerationRetryPolicy retryPolicy, CacheManager cacheManager,
-            IUserRepository users, ContentAccessService access, NotificationService notifications,
+            IUserRepository users, ContentAccessService access, Notifications notifications,
             MediaAssetLifecycleService postMediaAssets) {
         this.documentStore = documentStore;
         this.moderation = moderation;
@@ -51,7 +53,7 @@ public class PostModerationWorker {
     /** Compatibility constructor for isolated service tests. */
     public PostModerationWorker(PostgresDocumentStore documentStore, ModerationService moderation,
             ModerationRetryPolicy retryPolicy, CacheManager cacheManager,
-            IUserRepository users, ContentAccessService access, NotificationService notifications) {
+            IUserRepository users, ContentAccessService access, Notifications notifications) {
         this(documentStore, moderation, retryPolicy, cacheManager, users, access, notifications, null);
     }
 

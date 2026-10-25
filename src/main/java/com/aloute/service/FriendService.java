@@ -1,5 +1,7 @@
 package com.aloute.service;
 
+import com.aloute.notifications.api.Notifications;
+
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.model.entity.Friend;
 import com.aloute.model.document.FollowRequest;
@@ -24,13 +26,13 @@ public class FriendService {
     private final PostgresDocumentStore documentStore;
     private final IUserRepository users;
     private final IFriendRepository friendRepository;
-    private final NotificationService notificationService;
+    private final Notifications notificationService;
     private final FeedCacheInvalidator feedCacheInvalidator;
 
     @Autowired
     public FriendService(
             IFriendRepository friendRepository,
-            NotificationService notificationService,
+            Notifications notificationService,
             ContentAccessService access,
             PostgresDocumentStore documentStore,
             IUserRepository users,
@@ -46,7 +48,7 @@ public class FriendService {
     /** Compatibility constructor for isolated service tests. */
     public FriendService(
             IFriendRepository friendRepository,
-            NotificationService notificationService,
+            Notifications notificationService,
             ContentAccessService access,
             PostgresDocumentStore documentStore,
             IUserRepository users) {

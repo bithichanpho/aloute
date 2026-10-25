@@ -38,8 +38,7 @@ final class SqlCriteriaCompiler {
         if (type != null && (Number.class.isAssignableFrom(box(type)) || isNumericPrimitive(type))) {
             return "NULLIF(" + json + ", '')::numeric";
         }
-        if (type == LocalDateTime.class) return "aloute_jsonb_ts(" + json + ")";
-        if (type == Instant.class) return "aloute_jsonb_tstz(" + json + ")";
+        if (isTemporal(type)) return temporalExpression(json, type);
         if (type == Boolean.class || type == boolean.class) return "NULLIF(" + json + ", '')::boolean";
         return json;
     }
@@ -84,6 +83,19 @@ final class SqlCriteriaCompiler {
         boolean mapField = type != null && Map.class.isAssignableFrom(type);
 
         return switch (c.operator()) {
+            case IN_READ_VIEW -> {
+                Criteria.ReadView view = (Criteria.ReadView)c.value();
+                parameters.add(view.includedValue() == null ? null : view.includedValue().toString());
+                parameters.add(view.viewerId());
+                // Keep membership as a hashed subplan under OR, allowing the ordered timestamp
+                // index to stop at LIMIT. A UNION-based semi-join can sort the entire post set.
+                yield "(" + json + " = CAST(? AS text) OR " + json
+                        + " IN (SELECT value FROM " + view.name() + " WHERE viewer_id = CAST(? AS bigint)))";
+            }
+            case VALID_DATE_TIME -> {
+                if (!isTemporal(type)) throw new IllegalArgumentException("Temporal field required: " + field);
+                yield temporalExpression(json, type) + " IS NOT NULL";
+            }
             case EXISTS -> Boolean.TRUE.equals(c.value()) ? keyExists : (idField ? "FALSE" : "NOT " + keyExists);
             case REGEX -> {
                 parameters.add(c.value() == null ? "" : c.value().toString());
@@ -190,14 +202,11 @@ final class SqlCriteriaCompiler {
         return "(" + String.join(" OR ", arms) + ")";
     }
 
-    // Date fields go through the IMMUTABLE aloute_jsonb_ts/tstz functions (V20261104) so that
-    // sorts and range filters match the expression indexes; a plain ::timestamp cast cannot be indexed.
     private String comparisonExpression(String json, Class<?> type) {
         if (type == null) return json;
         if (Number.class.isAssignableFrom(box(type)) || isNumericPrimitive(type)) return "NULLIF(" + json + ", '')::numeric";
         if (type == Boolean.class || type == boolean.class) return "NULLIF(" + json + ", '')::boolean";
-        if (type == LocalDateTime.class) return "aloute_jsonb_ts(" + json + ")";
-        if (type == Instant.class) return "aloute_jsonb_tstz(" + json + ")";
+        if (isTemporal(type)) return temporalExpression(json, type);
         return json;
     }
 
@@ -205,8 +214,7 @@ final class SqlCriteriaCompiler {
         if (type == null) return "?";
         if (Number.class.isAssignableFrom(box(type)) || isNumericPrimitive(type)) return "CAST(? AS numeric)";
         if (type == Boolean.class || type == boolean.class) return "CAST(? AS boolean)";
-        if (type == LocalDateTime.class) return "CAST(? AS timestamp)";
-        if (type == Instant.class) return "CAST(? AS timestamptz)";
+        if (isTemporal(type)) return temporalFunction(type) + "(to_jsonb(CAST(? AS text)))";
         return "?";
     }
 
@@ -217,6 +225,20 @@ final class SqlCriteriaCompiler {
         if (value instanceof Instant instant) return instant.toString();
         if (fieldType != null && fieldType.isEnum() && value instanceof String s) return s;
         return value.toString();
+    }
+
+    private static boolean isTemporal(Class<?> type) {
+        return type == LocalDateTime.class || type == Instant.class;
+    }
+
+    private static String temporalFunction(Class<?> type) {
+        return type == LocalDateTime.class ? "aloute_jsonb_local_datetime_key" : "aloute_jsonb_instant_key";
+    }
+
+    private static String temporalExpression(String json, Class<?> type) {
+        // Compare exact nanoseconds, not PostgreSQL's microsecond timestamp precision.
+        // The function accepts raw JSON so legacy Jackson arrays/numeric instants remain readable.
+        return temporalFunction(type) + "(" + json.replace(" ->> ", " -> ") + ")";
     }
 
     private List<?> values(Object raw) {

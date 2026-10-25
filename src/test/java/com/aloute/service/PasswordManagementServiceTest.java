@@ -111,17 +111,50 @@ class PasswordManagementServiceTest {
     @Test
     void forgotPasswordSendsSixDigitOtpAndStoresOnlyItsHash() {
         User user = new User();
+        user.setId(7L);
         user.setEmail(EMAIL);
         user.setFullName("Alice");
         when(users.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(user));
+        when(users.issueResetToken(eq(7L),anyString(),any(),any())).thenReturn(1);
 
         service.forgotPassword(" Alice@Example.com ");
 
         ArgumentCaptor<String> otp = ArgumentCaptor.forClass(String.class);
         verify(emailService).sendResetPasswordEmail(eq(EMAIL), eq("Alice"), otp.capture());
         org.junit.jupiter.api.Assertions.assertTrue(otp.getValue().matches("\\d{6}"));
-        org.junit.jupiter.api.Assertions.assertEquals(
-                tokens.hashOtp(EMAIL, otp.getValue()), user.getResetPasswordToken());
-        verify(users).save(user);
+        verify(users).issueResetToken(eq(7L),eq(tokens.hashOtp(EMAIL,otp.getValue())),any(),any());
+        verify(users,never()).save(any());
+    }
+
+    @Test void verifyingCodeDoesNotChangePasswordOrSpendTheReset() {
+        when(users.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(userWithResetExpiring(LocalDateTime.now().plusMinutes(5))));
+        var proof=service.verifyResetCode(EMAIL,OTP);
+        org.junit.jupiter.api.Assertions.assertEquals(tokens.hashOtp(EMAIL,OTP),proof.tokenHash());
+        verify(users,never()).consumeResetToken(anyLong(),anyString(),anyString(),any(),any());
+        org.mockito.Mockito.verifyNoInteractions(encoder,refreshTokens);
+    }
+    @Test void lostAtomicIssuanceDoesNotSendMail() {
+        User user=userWithResetExpiring(null);user.setResetPasswordToken(null);
+        when(users.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(user));
+        when(users.issueResetToken(anyLong(),anyString(),any(),any())).thenReturn(0);
+        service.forgotPassword(EMAIL);org.mockito.Mockito.verifyNoInteractions(emailService);
+    }
+
+    @Test void malformedAndWrongAttemptsLeaveTheCorrectResetCodeUsable() {
+        User user=userWithResetExpiring(LocalDateTime.now().plusMinutes(5));
+        String hash=user.getResetPasswordToken();LocalDateTime expiry=user.getResetPasswordExpiry();
+        when(users.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(user));
+
+        assertThrows(BadRequestException.class,()->service.verifyResetCode(EMAIL,"12ab"));
+        assertThrows(BadRequestException.class,()->service.verifyResetCode(EMAIL,"000000"));
+        org.junit.jupiter.api.Assertions.assertEquals(hash,user.getResetPasswordToken());
+        org.junit.jupiter.api.Assertions.assertEquals(expiry,user.getResetPasswordExpiry());
+        var proof=service.verifyResetCode(EMAIL,OTP);
+        org.junit.jupiter.api.Assertions.assertEquals(hash,proof.tokenHash());
+        org.junit.jupiter.api.Assertions.assertEquals(expiry,proof.resetExpiry());
+        verify(users,never()).save(any());
+        verify(users,never()).consumeResetToken(anyLong(),anyString(),anyString(),any(),any());
+        verify(users,never()).consumeVerifiedResetToken(anyLong(),anyString(),any(),anyString(),any(),any());
+        org.mockito.Mockito.verifyNoInteractions(encoder,refreshTokens);
     }
 }
