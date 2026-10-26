@@ -13,17 +13,15 @@ import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDateTime;
 
-/** Thông tin đăng ký tạm; chỉ được chuyển sang users sau khi xác thực email. */
 @Entity
-@Table(name = "pending_users",
+@Table(
+        name = "pending_users",
         uniqueConstraints = {
-                @UniqueConstraint(columnNames = "username"),
-                @UniqueConstraint(columnNames = "email"),
-                @UniqueConstraint(columnNames = "verification_token")
+            @UniqueConstraint(columnNames = "username"),
+            @UniqueConstraint(columnNames = "email"),
+            @UniqueConstraint(columnNames = "verification_token")
         },
-        indexes = {
-                @Index(name = "idx_pending_users_expires_at", columnList = "expires_at")
-        })
+        indexes = {@Index(name = "idx_pending_users_expires_at", columnList = "expires_at")})
 public class PendingUser {
 
     @Id
@@ -33,10 +31,9 @@ public class PendingUser {
     @Column(nullable = false, length = 50)
     private String username;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = 254)
     private String email;
 
-    /** Mật khẩu đã được BCrypt hash, không lưu mật khẩu thô. */
     @Column(nullable = false)
     private String password;
 
@@ -46,14 +43,12 @@ public class PendingUser {
     @Column(name = "verification_token", nullable = false, length = 100)
     private String verificationToken;
 
-    /** Mỗi link xác thực có hiệu lực 15 phút. */
     @Column(name = "verification_token_expiry", nullable = false)
     private LocalDateTime verificationTokenExpiry;
 
     @Column(name = "verification_email_sent_at", nullable = false)
     private LocalDateTime verificationEmailSentAt;
 
-    /** Quá thời điểm này mà chưa xác thực thì cleanup được phép xóa. */
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 

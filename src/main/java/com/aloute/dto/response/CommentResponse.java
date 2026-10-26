@@ -13,6 +13,7 @@ public class CommentResponse {
     private String parentCommentId;
     private String parentUsername;
     private int replyCount;
+    private com.aloute.model.document.ModerationStatus moderationStatus;
     private LocalDateTime createdAt;
 
     public String getId() {
@@ -93,5 +94,13 @@ public class CommentResponse {
 
     public void setReplyCount(int replyCount) {
         this.replyCount = replyCount;
+    }
+
+    public com.aloute.model.document.ModerationStatus getModerationStatus() {
+        return moderationStatus;
+    }
+
+    public void setModerationStatus(com.aloute.model.document.ModerationStatus moderationStatus) {
+        this.moderationStatus = moderationStatus;
     }
 }

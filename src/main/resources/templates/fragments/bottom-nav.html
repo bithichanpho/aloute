@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- Bottom nav (mobile). Badge dùng data-badge-mirror để app.js đồng bộ với badge ở sidebar, tránh trùng id. -->
+<nav class="bottom-nav" th:fragment="bottomNav" aria-label="Điều hướng nhanh">
+    <a class="bottom-nav__item" th:classappend="${activeNav == 'feed'} ? 'is-active' : ''" th:href="@{/feed}" aria-label="Trang chủ">
+        <i class="bi" th:classappend="${activeNav == 'feed'} ? 'bi-house-door-fill' : 'bi-house-door'"></i>
+    </a>
+    <a class="bottom-nav__item" th:classappend="${activeNav == 'chat'} ? 'is-active' : ''" th:href="@{/chat}" aria-label="Tin nhắn">
+        <span class="sidebar__icon-wrap">
+            <i class="bi bi-messenger"></i>
+            <span class="badge" data-badge-mirror="chatUnreadBadge" th:text="${unreadMessageCount > 99 ? '99+' : unreadMessageCount}" th:style="${unreadMessageCount > 0 ? '' : 'display:none'}">0</span>
+        </span>
+    </a>
+    <a class="bottom-nav__item bottom-nav__create" th:classappend="${activeNav == 'compose'} ? 'is-active' : ''" th:href="@{/compose}" aria-label="Tạo bài viết">
+        <i class="bi bi-plus-lg"></i>
+    </a>
+    <a class="bottom-nav__item" th:classappend="${activeNav == 'activity'} ? 'is-active' : ''" th:href="@{/activity}" aria-label="Thông báo">
+        <span class="sidebar__icon-wrap">
+            <i class="bi" th:classappend="${activeNav == 'activity'} ? 'bi-heart-fill' : 'bi-heart'"></i>
+            <span class="badge" data-badge-mirror="notifUnreadBadge" th:text="${unreadCount > 99 ? '99+' : unreadCount}" th:style="${unreadCount > 0 ? '' : 'display:none'}">0</span>
+        </span>
+    </a>
+    <a class="bottom-nav__item" th:classappend="${activeNav == 'profile'} ? 'is-active' : ''" th:href="@{/profile/me}" aria-label="Trang cá nhân">
+        <img class="bottom-nav__avatar" src="/images/avatar_default.png" th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}" alt="avatar"/>
+    </a>
+</nav>
+</body>
+</html>

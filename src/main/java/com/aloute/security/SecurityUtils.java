@@ -2,11 +2,9 @@ package com.aloute.security;
 
 import org.springframework.security.core.Authentication;
 
-/** Tiện ích lấy userId của người đang đăng nhập từ SecurityContext, dùng trong mọi Controller. */
 public final class SecurityUtils {
 
-    private SecurityUtils() {
-    }
+    private SecurityUtils() {}
 
     public static Long currentUserId(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -19,7 +17,8 @@ public final class SecurityUtils {
     }
 
     public static AloutePrincipal currentPrincipal(Authentication authentication) {
-        if (authentication != null && authentication.getPrincipal() instanceof AloutePrincipal principal) {
+        if (authentication != null
+                && authentication.getPrincipal() instanceof AloutePrincipal principal) {
             return principal;
         }
         return null;

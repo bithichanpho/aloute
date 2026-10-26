@@ -1,3 +1,3 @@
 jwt:
   secret: ${JWT_SECRET:aloute-dev-secret-key-thay-doi-truoc-khi-nop-bai-32ky-tu}
-  expiration: ${JWT_EXPIRATION:86400000}
+  expiration: ${JWT_EXPIRATION:900000}

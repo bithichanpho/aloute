@@ -1,31 +1,49 @@
 package com.aloute.model.entity;
 
-import java.time.LocalDateTime;
-
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+
 @Entity
-@Table(name = "notifications",
-        indexes = {
-                @Index(name = "idx_notifications_receiver", columnList = "receiver_id")
-        })
+@Table(
+        name = "notifications",
+        indexes = {@Index(name = "idx_notifications_receiver", columnList = "receiver_id")})
 public class Notification {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "outbox_event_id", unique = true, length = 36)
+    private String outboxEventId;
+
     @Column(name = "receiver_id", nullable = false)
     private Long receiverId;
 
     @Column(name = "sender_id")
-    private Long senderId; // nullable — null nếu là thông báo hệ thống
+    private Long senderId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "receiver_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User receiver;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "sender_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User sender;
 
     @Column(nullable = false, length = 30)
-    private String type; // LIKE, COMMENT, FOLLOW, MESSAGE, MODERATION
+    private String type;
 
-    @Column(name = "reference_id", length = 50)
-    private String referenceId; // id của Post/Comment bên Mongo (dạng String)
+    @Column(name = "reference_id", length = 100)
+    private String referenceId;
 
     @Column(nullable = false, length = 255)
     private String content;
@@ -48,12 +66,24 @@ public class Notification {
         this.id = id;
     }
 
+    public String getOutboxEventId() { return outboxEventId; }
+
+    public void setOutboxEventId(String outboxEventId) { this.outboxEventId = outboxEventId; }
+
     public Long getReceiverId() {
         return receiverId;
     }
 
     public void setReceiverId(Long receiverId) {
         this.receiverId = receiverId;
+    }
+
+    public User getReceiver() {
+        return receiver;
+    }
+
+    public User getSender() {
+        return sender;
     }
 
     public Long getSenderId() {

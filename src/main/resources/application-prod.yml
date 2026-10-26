@@ -1,29 +1,35 @@
-# Production profile for a persistent Windows/Docker deployment using Supabase Postgres.
+
 spring:
+  thymeleaf:
+    cache: ${THYMELEAF_CACHE:true}
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${DB_POOL_MAX_SIZE:3}
-      minimum-idle: ${DB_POOL_MIN_IDLE:0}
-      connection-timeout: ${DB_CONNECTION_TIMEOUT:30000}
-      idle-timeout: ${DB_IDLE_TIMEOUT:30000}
+      schema: ${DB_SCHEMA:public}
+
+      # Keep this below the connection allowance of the PostgreSQL/Supabase pooler.
+      # Ten connections per replica is a safer production starting point than five;
+      # tune DB_POOL_MAX together with APP_REPLICAS and database max_connections.
+      maximum-pool-size: ${DB_POOL_MAX:10}
+
+      minimum-idle: ${DB_POOL_MIN:2}
+
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:10000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:300000}
   jpa:
     hibernate:
-      ddl-auto: ${DB_DDL_AUTO:update}
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         format_sql: false
         jdbc:
           time_zone: UTC
-        # Keep JPA server-side access isolated from Supabase's Data API surface.
+
         default_schema: ${DB_SCHEMA:public}
-  data:
-    mongodb:
-      uri: ${MONGO_URI}
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -35,15 +41,21 @@ spring:
           auth: true
           starttls:
             enable: true
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
 server:
   address: 0.0.0.0
   port: ${SERVER_PORT:8080}
-  forward-headers-strategy: framework
+  # Keep the socket peer address intact; ClientIpResolver trusts X-Forwarded-For
+  # only when the immediate peer is in APP_TRUSTED_PROXY_CIDRS.
+  forward-headers-strategy: none
+  shutdown: graceful
 
 jwt:
   secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION:86400000}
+  # Short-lived access JWT; refresh tokens handle longer sessions.
+  expiration: ${JWT_EXPIRATION:900000}
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME}
@@ -51,12 +63,50 @@ cloudinary:
   api-secret: ${CLOUDINARY_API_SECRET}
 
 app:
+  cache:
+    redis:
+      enabled: ${REDIS_CACHE_ENABLED:true}
+    ttl: ${APP_CACHE_TTL:2m}
+    feed-ttl: ${APP_FEED_CACHE_TTL:30s}
+  websocket:
+    broker-relay:
+      # Production replicas must share subscriptions and /user destinations.
+      enabled: ${APP_WEBSOCKET_BROKER_RELAY_ENABLED:true}
+  calls:
+    distributed-state-enabled: ${APP_CALLS_DISTRIBUTED_STATE_ENABLED:true}
+  seed:
+    demo-data: false
+  db:
+    # PostgreSQL integrity changes are versioned through Flyway in production.
+    relationship-migration:
+      enabled: ${ALOUTE_DB_RELATIONSHIP_MIGRATION:false}
+  migrations:
+    legacy-repost:
+      enabled: ${ALOUTE_MIGRATE_LEGACY_REPOST:false}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:8080}
   security:
-    cookie-secure: ${APP_COOKIE_SECURE:false}
+    cookie-secure: ${APP_SECURITY_COOKIE_SECURE:true}
+    encryption-key: ${APP_SECURITY_ENCRYPTION_KEY}
+    legacy-encryption-key: ${APP_SECURITY_LEGACY_ENCRYPTION_KEY:}
+    user-cache-ttl: ${APP_SECURITY_USER_CACHE_TTL:5s}
+    rate-limit:
+      # Production refuses auth-sensitive requests if the shared Redis limiter is down.
+      redis-required: ${RATE_LIMIT_REDIS_REQUIRED:true}
+    # Set APP_TRUSTED_PROXY_CIDRS to the actual immediate proxy CIDRs in each deployed environment.
+    trusted-proxy-cidrs: ${APP_TRUSTED_PROXY_CIDRS}
   mail:
     from: ${MAIL_FROM:ALOUTE <no-reply@example.com>}
     frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:8080}
   moderation:
-    service-url: ${MODERATION_SERVICE_URL:http://localhost:8000}
+    # Intentionally enabled in production; never silently bypass moderation.
+    enabled: true
+    service-url: ${MODERATION_SERVICE_URL}
+    connect-timeout: ${MODERATION_CONNECT_TIMEOUT:2s}
+    read-timeout: ${MODERATION_READ_TIMEOUT:60s}
+    upload-media-timeout: ${MODERATION_UPLOAD_MEDIA_TIMEOUT:12s}
+    text-timeout: ${MODERATION_TEXT_TIMEOUT:10s}
+    max-attempts: ${MODERATION_MAX_ATTEMPTS:5}
+    retry-base-delay-seconds: ${MODERATION_RETRY_BASE_DELAY_SECONDS:30}
+    lease-seconds: ${MODERATION_LEASE_SECONDS:300}
+    api-token: ${MODERATION_API_TOKEN}

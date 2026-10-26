@@ -12,6 +12,7 @@ target/
 .vscode/
 *.iml
 .classpath
+.factorypath
 .project
 .settings/
 
@@ -20,3 +21,10 @@ target/
 
 # Temporary/archive files
 *.zip
+
+# Local secrets (never commit Firebase Admin private keys)
+.secret/
+.secrets/
+credentials/
+**/*firebase-adminsdk*.json
+**/*service-account*.json

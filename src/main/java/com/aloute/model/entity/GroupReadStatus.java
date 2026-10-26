@@ -4,11 +4,14 @@ import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 
-/** Lưu mốc thời gian đọc gần nhất của mỗi user trong mỗi nhóm, dùng để tính unreadCount. */
 @Entity
-@Table(name = "group_read_status", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"group_id", "user_id"})
-})
+@Table(
+        name = "group_read_status",
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_group_read_status_group_user",
+                    columnNames = {"group_id", "user_id"})
+        })
 public class GroupReadStatus {
 
     @Id
@@ -21,11 +24,26 @@ public class GroupReadStatus {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "group_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private ChatGroup group;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "user_id",
+            insertable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private User user;
+
     @Column(name = "last_read_at", nullable = false)
     private LocalDateTime lastReadAt;
 
-    public GroupReadStatus() {
-    }
+    public GroupReadStatus() {}
 
     public GroupReadStatus(Long groupId, Long userId) {
         this.groupId = groupId;
@@ -47,6 +65,14 @@ public class GroupReadStatus {
 
     public void setGroupId(Long groupId) {
         this.groupId = groupId;
+    }
+
+    public ChatGroup getGroup() {
+        return group;
+    }
+
+    public User getUser() {
+        return user;
     }
 
     public Long getUserId() {

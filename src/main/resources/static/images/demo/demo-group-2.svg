@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+<rect width="160" height="160" rx="40" fill="hsl(146 30% 24%)"/>
+<circle cx="55" cy="70" r="28" fill="hsl(146 60% 68%)"/><circle cx="105" cy="70" r="28" fill="hsl(181 60% 64%)"/>
+<path d="M30 128c7-23 19-35 34-35s28 12 34 35" fill="hsl(146 60% 68%)"/><path d="M62 128c7-23 19-35 34-35s28 12 34 35" fill="hsl(181 60% 64%)"/>
+<text x="80" y="154" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="white">TEAM</text>
+</svg>

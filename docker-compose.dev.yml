@@ -1,0 +1,34 @@
+# Local development services. Run the Java app on the host (IDE or ./mvnw spring-boot:run) and
+# point it at these. Never use this file for deployment: no passwords, ports bound to localhost.
+#
+#   docker compose -f docker-compose.dev.yml up -d                       # Mailpit
+#   docker compose -f docker-compose.dev.yml --profile redis up -d       # + Redis (skip if one already runs on 6379)
+#   docker compose -f docker-compose.dev.yml --profile moderation up -d  # + AI moderation (needs OPENAI_API_KEY)
+#
+# Mailpit inbox (verification / reset-password emails): http://localhost:8025
+services:
+  redis:
+    profiles: ["redis"]
+    image: redis:7-alpine
+    container_name: aloute-dev-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: aloute-dev-mailpit
+    ports:
+      - "127.0.0.1:1025:1025"   # SMTP
+      - "127.0.0.1:8025:8025"   # Web inbox
+
+  moderation:
+    profiles: ["moderation"]
+    build:
+      context: ./moderation
+    container_name: aloute-dev-moderation
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}   # required: the service refuses to start without it
+      MODERATION_API_TOKEN: ${MODERATION_API_TOKEN:-local-dev-moderation-token-0123456789abcdef}
+      MODERATION_ALLOWED_MEDIA_HOSTS: res.cloudinary.com
+    ports:
+      - "127.0.0.1:8000:8000"

@@ -1,31 +1,43 @@
 package com.aloute.config;
 
-import java.util.Date;
-import java.util.function.Function;
-
-import javax.crypto.SecretKey;
-
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import com.aloute.service.AccessTokenRevocationService;
+
+import java.util.Date;
+import java.nio.charset.StandardCharsets;
+import java.util.function.Function;
+
+import javax.crypto.SecretKey;
 
 @Component
 public class JwtUtil {
 
     private final SecretKey secretKey;
+    private final AccessTokenRevocationService accessRevocations;
     private final long expirationMs;
 
     public JwtUtil(
             @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration}") long expirationMs) {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+            @Value("${jwt.expiration}") long expirationMs,
+            AccessTokenRevocationService accessRevocations) {
+        byte[] secretBytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (secretBytes.length < 32) {
+            throw new IllegalStateException(
+                    "JWT_SECRET must contain at least 32 UTF-8 bytes; generate a random key before starting ALOUTE");
+        }
+        if (expirationMs < 60_000L || expirationMs > 86_400_000L) {
+            throw new IllegalStateException("JWT_EXPIRATION must be between 60,000 ms and 86,400,000 ms");
+        }
+        this.secretKey = Keys.hmacShaKeyFor(secretBytes);
         this.expirationMs = expirationMs;
+        this.accessRevocations = accessRevocations;
     }
 
-    /** Sinh token mới cho username, kèm claim "userId" và "role". */
     public String generateToken(String username, Long userId, String role) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
@@ -40,9 +52,16 @@ public class JwtUtil {
                 .compact();
     }
 
-    /** Thời hạn token (ms) — dùng để set maxAge cho cookie ALOUTE_TOKEN ở AuthController. */
     public long getExpirationMs() {
         return expirationMs;
+    }
+
+    public java.time.Instant issuedAt(String token) {
+        return extractClaim(token, Claims::getIssuedAt).toInstant();
+    }
+
+    public java.time.Instant expiresAt(String token) {
+        return extractClaim(token, Claims::getExpiration).toInstant();
     }
 
     public String extractUsername(String token) {
@@ -60,7 +79,8 @@ public class JwtUtil {
     public boolean isTokenValid(String token, String username) {
         try {
             String extracted = extractUsername(token);
-            return extracted.equals(username) && !isTokenExpired(token);
+            return extracted.equals(username) && !isTokenExpired(token)
+                    && !accessRevocations.isRevoked(token);
         } catch (Exception e) {
             return false;
         }
@@ -75,10 +95,6 @@ public class JwtUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(secretKey)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
     }
 }

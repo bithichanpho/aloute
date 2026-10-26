@@ -1,22 +1,40 @@
+springdoc:
+  api-docs:
+    enabled: ${OPENAPI_ENABLED:false}
+  swagger-ui:
+    enabled: ${OPENAPI_ENABLED:false}
+  show-actuator: false
+
 spring:
   application:
     name: aloute
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Keep Flyway and Hibernate pointed to the same schema in production.
+    default-schema: ${DB_SCHEMA:public}
+    schemas:
+      - ${DB_SCHEMA:public}
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+    # V20261104.1 was added after 20261105-20261109 had already run on shared databases.
+    # Lets those databases apply it once; fresh databases still run every version in order.
+    out-of-order: true
   servlet:
     multipart:
-      max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
-      max-request-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
+      max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:50MB}
+      max-request-size: ${ALOUTE_MAX_UPLOAD_REQUEST_SIZE:52MB}
       file-size-threshold: 2MB
 
-  # ===== Tốc độ: template & tài nguyên tĩnh =====
   thymeleaf:
-    # Cache template đã biên dịch. Khi đang sửa .html thì chạy với
-    # -Dspring.thymeleaf.cache=false hoặc dùng spring-boot-devtools.
+    # Without the cache every request re-reads and re-parses all templates and fragments.
+    # Set THYMELEAF_CACHE=false only while editing templates locally.
     cache: ${THYMELEAF_CACHE:true}
 
   web:
     resources:
-      # Gắn mã băm nội dung vào tên file (/css/main-a1b2c3.css) nên có thể
-      # cache rất lâu mà vẫn tự động hết hạn mỗi lần file đổi nội dung.
+
       chain:
         enabled: true
         cache: true
@@ -27,12 +45,13 @@ spring:
             paths: /**
       cache:
         cachecontrol:
-          max-age: 30d
-          cache-public: true
+          # Asset URLs built with @{...} are content-hashed by the resource chain above, so a long
+          # max-age is safe; with 0s every page load revalidated every CSS/JS/font file.
+          max-age: ${STATIC_CACHE_MAX_AGE:7d}
+          cache-public: ${STATIC_CACHE_PUBLIC:false}
 
   jpa:
-    # Không giữ EntityManager/kết nối DB suốt vòng đời request.
-    # An toàn ở đây vì entity duy nhất có quan hệ (User.role) đang là EAGER.
+
     open-in-view: false
     properties:
       hibernate:
@@ -45,6 +64,8 @@ spring:
 
   datasource:
     hikari:
+      # Keep raw JDBC queries (JSONB document store) on the same schema as Flyway/JPA.
+      schema: ${DB_SCHEMA:public}
       maximum-pool-size: ${DB_POOL_MAX:15}
       minimum-idle: ${DB_POOL_MIN:3}
       connection-timeout: 20000
@@ -53,25 +74,21 @@ spring:
       keepalive-time: 120000
 
   data:
-    mongodb:
-      # Tự tạo các index đã khai báo bằng @CompoundIndex/@Indexed trong
-      # Post, Like, ChatMessage. Từ Spring Boot 3 mặc định là false, nên
-      # nếu không bật thì mọi truy vấn feed/chat đều phải quét toàn bộ collection.
-      auto-index-creation: true
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
 
   config:
     import:
+      - optional:file:.env[.properties]
       - application-db.yml
-      - application-mongo.yml
       - application-jwt.yml
       - application-mail.yml
       - application-cloudinary.yml
       - application-actuator.yml
 
 server:
-  port: 8080
+  port: 8081
 
-  # ===== Tốc độ: nén phản hồi trên đường truyền =====
   compression:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json,image/svg+xml
@@ -88,6 +105,112 @@ server:
     accept-count: 200
     connection-timeout: 20s
 
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId:-},traceId:%X{traceId:-},spanId:%X{spanId:-}]"
+
 app:
+  time-zone: ${APP_TIME_ZONE:Asia/Bangkok}
+  host:
+    username: ${APP_HOST_USERNAME:}
+    bootstrap-enabled: ${APP_HOST_BOOTSTRAP_ENABLED:false}
+  security:
+    cookie-secure: ${APP_SECURITY_COOKIE_SECURE:false}
+    refresh-token-days: ${APP_REFRESH_TOKEN_DAYS:30}
+    # Duplicate refresh requests from multiple browser tabs are tolerated for 20 seconds.
+    # Values are clamped to 10..30 seconds in RefreshTokenService.
+    refresh-token-replay-grace-seconds: ${APP_REFRESH_TOKEN_REPLAY_GRACE_SECONDS:20}
+    # Local-only fallback. application-prod.yml requires a separately managed key.
+    encryption-key: ${APP_SECURITY_ENCRYPTION_KEY:aloute-local-demo-encryption-key-change-before-production-001}
+    legacy-encryption-key: ${APP_SECURITY_LEGACY_ENCRYPTION_KEY:}
+    user-cache-ttl: ${APP_SECURITY_USER_CACHE_TTL:5s}
+    # Set APP_TRUSTED_PROXY_CIDRS to the actual immediate proxy CIDRs in each deployed environment.
+    trusted-proxy-cidrs: ${APP_TRUSTED_PROXY_CIDRS:127.0.0.1/32,::1/128}
+    rate-limit:
+      # Local development keeps working when Redis is not running. Production overrides this
+      # setting to true so rate limits remain shared across every application instance.
+      redis-required: ${RATE_LIMIT_REDIS_REQUIRED:false}
+  moderation:
+    enabled: ${MODERATION_ENABLED:true}
+    service-url: ${MODERATION_SERVICE_URL:http://localhost:8000}
+    connect-timeout: ${MODERATION_CONNECT_TIMEOUT:2s}
+    read-timeout: ${MODERATION_READ_TIMEOUT:60s}
+    upload-media-timeout: ${MODERATION_UPLOAD_MEDIA_TIMEOUT:12s}
+    text-timeout: ${MODERATION_TEXT_TIMEOUT:10s}
+    api-token: ${MODERATION_API_TOKEN:}
+    max-attempts: ${MODERATION_MAX_ATTEMPTS:5}
+    retry-base-delay-seconds: ${MODERATION_RETRY_BASE_DELAY_SECONDS:30}
+    lease-seconds: ${MODERATION_LEASE_SECONDS:300}
+    # The scanner must not claim more work per pass than the executor can accept.
+    scan-limit: ${MODERATION_SCAN_LIMIT:100}
+    scan-interval: ${MODERATION_SCAN_INTERVAL:30000}
+    scan-initial-delay: ${MODERATION_SCAN_INITIAL_DELAY:10000}
+    executor:
+      core-size: ${MODERATION_EXECUTOR_CORE_SIZE:8}
+      max-size: ${MODERATION_EXECUTOR_MAX_SIZE:16}
+      queue-capacity: ${MODERATION_EXECUTOR_QUEUE_CAPACITY:100}
+  firebase:
+    web:
+      api-key: ${FIREBASE_WEB_API_KEY:}
+      auth-domain: ${FIREBASE_WEB_AUTH_DOMAIN:}
+      project-id: ${FIREBASE_PROJECT_ID:}
+      storage-bucket: ${FIREBASE_STORAGE_BUCKET:}
+      messaging-sender-id: ${FIREBASE_MESSAGING_SENDER_ID:}
+      app-id: ${FIREBASE_WEB_APP_ID:}
+      vapid-key: ${FIREBASE_VAPID_KEY:}
+    admin:
+      project-id: ${FIREBASE_PROJECT_ID:}
+      credentials-path: ${FIREBASE_ADMIN_CREDENTIALS:}
+  cache:
+    redis:
+      enabled: ${REDIS_CACHE_ENABLED:true}
+    ttl: ${APP_CACHE_TTL:2m}
+    feed-ttl: ${APP_FEED_CACHE_TTL:30s}
+    host-dashboard-ttl: ${APP_HOST_DASHBOARD_CACHE_TTL:30s}
+  websocket:
+    broker-relay:
+      enabled: ${APP_WEBSOCKET_BROKER_RELAY_ENABLED:false}
+      host: ${APP_WEBSOCKET_BROKER_RELAY_HOST:localhost}
+      port: ${APP_WEBSOCKET_BROKER_RELAY_PORT:61613}
+      username: ${RABBITMQ_USER:}
+      password: ${RABBITMQ_PASSWORD:}
+      virtual-host: ${RABBITMQ_VHOST:/}
+  calls:
+    # Local tests can use the in-process registry. Production overrides this to true.
+    distributed-state-enabled: ${APP_CALLS_DISTRIBUTED_STATE_ENABLED:false}
+  maintenance:
+    reaction-reconciliation-cron: ${REACTION_RECONCILIATION_CRON:0 30 3 * * *}
+    reaction-reconciliation-enabled: ${REACTION_RECONCILIATION_ENABLED:true}
+    relationship-reconciliation-ms: ${RELATIONSHIP_RECONCILIATION_MS:900000}
+    relationship-reconciliation-initial-ms: ${RELATIONSHIP_RECONCILIATION_INITIAL_MS:60000}
+  seed:
+    demo-data: false
   upload:
-    max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:2GB}
+    max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:50MB}
+  presence:
+    # Redis leases are refreshed while the WebSocket session remains connected; expired leases
+    # clean up presence after a crashed application instance.
+    connection-ttl-ms: ${PRESENCE_CONNECTION_TTL_MS:120000}
+    refresh-interval-ms: ${PRESENCE_REFRESH_INTERVAL_MS:30000}
+  media:
+    cleanup:
+      interval-ms: ${POST_MEDIA_CLEANUP_INTERVAL_MS:3600000}
+      initial-delay-ms: ${POST_MEDIA_CLEANUP_INITIAL_DELAY_MS:300000}
+      orphan-age-hours: ${POST_MEDIA_ORPHAN_AGE_HOURS:2}
+      scan-limit: ${POST_MEDIA_CLEANUP_SCAN_LIMIT:100}
+      deleted-retention-days: ${POST_MEDIA_DELETED_RETENTION_DAYS:30}
+  community-cleanup:
+    initial-delay-ms: ${COMMUNITY_CLEANUP_INITIAL_DELAY_MS:5000}
+    fixed-delay-ms: ${COMMUNITY_CLEANUP_FIXED_DELAY_MS:30000}
+  db:
+    relationship-migration:
+      enabled: ${ALOUTE_DB_RELATIONSHIP_MIGRATION:false}
+  migrations:
+    legacy-repost:
+      enabled: ${ALOUTE_MIGRATE_LEGACY_REPOST:false}
+
+  webrtc:
+    stun-urls: ${APP_WEBRTC_STUN_URLS:stun:stun.l.google.com:19302}
+    turn-urls: ${APP_WEBRTC_TURN_URLS:}
+    turn-shared-secret: ${APP_WEBRTC_TURN_SHARED_SECRET:${TURN_SHARED_SECRET:}}
+    turn-credential-ttl-seconds: ${APP_WEBRTC_TURN_CREDENTIAL_TTL_SECONDS:3600}

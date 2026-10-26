@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+<rect width="160" height="160" rx="80" fill="hsl(276 28% 22%)"/>
+<circle cx="80" cy="60" r="30" fill="hsl(276 55% 68%)"/>
+<path d="M35 139c7-31 25-46 45-46s38 15 45 46" fill="hsl(276 55% 68%)"/>
+<text x="80" y="154" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" font-weight="700" fill="white">PT</text>
+</svg>

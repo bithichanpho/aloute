@@ -1,94 +1,72 @@
 package com.aloute.service;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.aloute.messaging.api.CallSignaling;
+import com.aloute.messaging.api.MissedCallHistory;
+import com.aloute.messaging.calls.application.CallRegistryService;
+import com.aloute.notifications.api.Notifications;
+import com.aloute.repository.IUserRepository;
+import com.aloute.users.infrastructure.JpaCallParticipants;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.aloute.repository.IUserRepository;
-
-/**
- * Quản lý thời gian chờ cuộc gọi. Nếu sau 30 giây người nhận chưa answer/reject,
- * cuộc gọi tự kết thúc và được ghi nhận là cuộc gọi nhỡ. Dùng scheduler trong JVM,
- * phù hợp với demo/đồ án 1 instance; production nhiều instance nên chuyển sang Redis/job queue.
- */
+/** Legacy Java/scheduling facade. The state machine is owned by messaging.calls. */
 @Service
-public class CallTimeoutService {
+public class CallTimeoutService implements CallSignaling {
+    public static final long CALL_TIMEOUT_SECONDS = CallRegistryService.CALL_TIMEOUT_SECONDS;
+    private final CallRegistryService calls;
 
-    public static final long CALL_TIMEOUT_SECONDS = 30L;
-
-    private final ScheduledExecutorService scheduler;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final IUserRepository userRepository;
-    private final NotificationService notificationService;
-    private final ChatService chatService;
-
-    private final Map<String, ScheduledFuture<?>> pending = new ConcurrentHashMap<>();
-
-    public CallTimeoutService(
-            ScheduledExecutorService callTimeoutExecutor,
-            SimpMessagingTemplate messagingTemplate,
-            IUserRepository userRepository,
-            NotificationService notificationService,
-            ChatService chatService) {
-        this.scheduler = callTimeoutExecutor;
-        this.messagingTemplate = messagingTemplate;
-        this.userRepository = userRepository;
-        this.notificationService = notificationService;
-        this.chatService = chatService;
+    public record CallInfo(String callId, Long callerId, Long calleeId, String callType,
+            boolean answered, Instant createdAt) implements CallSignaling.Session {
+        public boolean involves(Long userId) {
+            return userId != null && (userId.equals(callerId) || userId.equals(calleeId));
+        }
+        public boolean matchesPair(Long first, Long second) {
+            return first != null && second != null
+                    && ((first.equals(callerId) && second.equals(calleeId))
+                            || (first.equals(calleeId) && second.equals(callerId)));
+        }
     }
 
-    public void schedule(String callId, Long callerId, Long receiverId, String callType) {
-        if (callId == null || callId.isBlank()) return;
-        cancel(callId);
+    @Autowired
+    public CallTimeoutService(CallRegistryService calls) { this.calls = calls; }
 
-        ScheduledFuture<?> future = scheduler.schedule(() -> timeout(callId, callerId, receiverId, callType),
-                CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        pending.put(callId, future);
+    /** Compatibility for existing direct constructors; production injects the module service. */
+    public CallTimeoutService(ScheduledExecutorService scheduler, SimpMessagingTemplate messaging,
+            IUserRepository users, Notifications notifications, MissedCallHistory history,
+            StringRedisTemplate redis, boolean distributedStateEnabled) {
+        this(new CallRegistryService(scheduler, messaging, new JpaCallParticipants(users),
+                notifications, history, redis, distributedStateEnabled));
     }
 
-    public void cancel(String callId) {
-        if (callId == null || callId.isBlank()) return;
-        ScheduledFuture<?> future = pending.remove(callId);
-        if (future != null) future.cancel(false);
+    CallTimeoutService(ScheduledExecutorService scheduler, SimpMessagingTemplate messaging,
+            IUserRepository users, Notifications notifications, MissedCallHistory history) {
+        this(scheduler, messaging, users, notifications, history, null, false);
     }
 
-    private void timeout(String callId, Long callerId, Long receiverId, String callType) {
-        // Chỉ một callback được quyền xử lý timeout. Nếu answer/hangup đã cancel trước đó
-        // thì callId sẽ không còn trong map.
-        ScheduledFuture<?> marker = pending.remove(callId);
-        if (marker == null) return;
+    public boolean registerOffer(String callId, Long callerId, Long calleeId, String callType) {
+        return calls.registerOffer(callId, callerId, calleeId, callType);
+    }
+    public boolean confirmAnswer(String callId, Long senderId, Long targetId) {
+        return calls.confirmAnswer(callId, senderId, targetId);
+    }
+    public boolean authorizePeerSignal(String callId, Long senderId, Long targetId) {
+        return calls.authorizePeerSignal(callId, senderId, targetId);
+    }
+    public Optional<CallInfo> findCall(String callId) { return calls.findCall(callId).map(CallTimeoutService::view); }
+    public Optional<CallInfo> finishCall(String callId, Long actorId, Long targetId) {
+        return calls.finishCall(callId, actorId, targetId).map(CallTimeoutService::view);
+    }
+    @Scheduled(fixedDelayString = "${app.calls.timeout-scan-ms:1000}")
+    public void processDistributedTimeouts() { calls.processDistributedTimeouts(); }
 
-        String type = "audio".equalsIgnoreCase(callType) ? "voice" : "video";
-        userRepository.findById(callerId).ifPresent(caller ->
-                userRepository.findById(receiverId).ifPresent(receiver -> {
-                    Map<String, Object> signal = new java.util.HashMap<>();
-                    signal.put("type", "hangup");
-                    signal.put("reason", "timeout");
-                    signal.put("missed", true);
-                    signal.put("callId", callId);
-                    signal.put("callType", callType == null ? "video" : callType);
-                    signal.put("fromUserId", caller.getId());
-                    signal.put("fromUsername", caller.getUsername());
-                    signal.put("fromFullName", caller.getFullName());
-                    signal.put("fromAvatarUrl", caller.getAvatarUrl());
-
-                    // Đóng popup/ring ở cả hai phía. Server là nguồn thời gian chuẩn,
-                    // nên nếu tab của caller bị đóng thì receiver vẫn tự hết giờ.
-                    messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/call", signal);
-                    messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/call", signal);
-
-                    // Lưu cùng một bản ghi vào lịch sử chat: cuộc gọi nhỡ hoạt động như một
-                    // tin nhắn đặc biệt, có thời gian, status MISSED và tự cập nhật preview hội thoại.
-                    chatService.createMissedCallMessage(callerId, receiverId, callId, callType);
-
-                    // Notification riêng vẫn được giữ để badge/Activity có thể hiển thị cuộc gọi nhỡ.
-                    notificationService.notify(receiverId, callerId, "CALL_MISSED", callId,
-                            "đã gọi " + type + " cho bạn nhưng bạn không trả lời trong 30 giây");
-                }));
+    private static CallInfo view(CallSignaling.Session call) {
+        return new CallInfo(call.callId(), call.callerId(), call.calleeId(), call.callType(),
+                call.answered(), call.createdAt());
     }
 }

@@ -1,39 +1,44 @@
 package com.aloute.service;
 
-import com.aloute.common.util.AvatarUtil;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-import org.bson.Document;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.stereotype.Service;
-
 import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.exception.UnauthorizedException;
-import com.aloute.common.util.TimeAgoUtil;
+import com.aloute.common.exception.ForbiddenException;
+import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.response.ChatMessageResponse;
+import com.aloute.dto.response.ChatCursorPage;
+import com.aloute.dto.response.ConversationCursorPage;
 import com.aloute.dto.response.ConversationResponse;
 import com.aloute.model.document.ChatMessage;
-import com.aloute.model.entity.ChatGroup;
 import com.aloute.model.entity.GroupReadStatus;
 import com.aloute.model.entity.User;
 import com.aloute.repository.IChatMessageRepository;
 import com.aloute.repository.IGroupReadStatusRepository;
 import com.aloute.repository.IUserRepository;
 
+import org.springframework.data.domain.Sort;
+import com.aloute.persistence.postgres.document.PostgresDocumentStore;
+import com.aloute.persistence.postgres.document.Criteria;
+import com.aloute.persistence.postgres.document.Query;
+import com.aloute.persistence.postgres.document.Update;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 @Service
-public class ChatService {
+public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
+    private final ContentAccessService access;
 
     private final IChatMessageRepository chatMessageRepository;
     private final IUserRepository userRepository;
@@ -41,9 +46,60 @@ public class ChatService {
     private final GroupService groupService;
     private final SimpMessagingTemplate messagingTemplate;
     private final FriendService friendService;
-    private final PresenceService presenceService;
-    private final MongoTemplate mongoTemplate;
+    private final PostgresDocumentStore documentStore;
+    private final PushNotificationService pushNotificationService;
+    private final ConversationService conversationService;
+    private final ChatMessageMapper chatMessageMapper;
+    private final ChatHistoryService chatHistoryService;
+    private final MediaUploadModerationService mediaUploadModeration;
+    private final MediaAssetLifecycleService mediaAssets;
+    private final com.aloute.messaging.api.CallHistoryAuthorization callHistoryAuthorization;
 
+    @Autowired
+    public ChatService(
+            IChatMessageRepository chatMessageRepository,
+            IUserRepository userRepository,
+            IGroupReadStatusRepository groupReadStatusRepository,
+            GroupService groupService,
+            SimpMessagingTemplate messagingTemplate,
+            FriendService friendService,
+            PostgresDocumentStore documentStore,
+            ContentAccessService access,
+            PushNotificationService pushNotificationService,
+            ConversationService conversationService,
+            ChatMessageMapper chatMessageMapper,
+            ChatHistoryService chatHistoryService,
+            MediaUploadModerationService mediaUploadModeration,
+            MediaAssetLifecycleService mediaAssets, com.aloute.messaging.api.CallHistoryAuthorization callHistoryAuthorization) {
+        this.callHistoryAuthorization = callHistoryAuthorization;
+        this.access = access;
+
+        this.chatMessageRepository = chatMessageRepository;
+        this.userRepository = userRepository;
+        this.groupReadStatusRepository = groupReadStatusRepository;
+        this.groupService = groupService;
+        this.messagingTemplate = messagingTemplate;
+        this.friendService = friendService;
+        this.documentStore = documentStore;
+        this.pushNotificationService = pushNotificationService;
+        this.conversationService = conversationService;
+        this.chatMessageMapper = chatMessageMapper;
+        this.chatHistoryService = chatHistoryService;
+        this.mediaUploadModeration = mediaUploadModeration;
+        this.mediaAssets = mediaAssets;
+    }
+
+    /** Compatibility constructor; production requires the durable history policy above. */
+    public ChatService(IChatMessageRepository messages, IUserRepository users,
+            IGroupReadStatusRepository readStatus, GroupService groups, SimpMessagingTemplate messaging,
+            FriendService friends, PostgresDocumentStore documents, ContentAccessService access,
+            PushNotificationService push, ConversationService conversations, ChatMessageMapper mapper,
+            ChatHistoryService history, MediaUploadModerationService moderation, MediaAssetLifecycleService media) {
+        this(messages, users, readStatus, groups, messaging, friends, documents, access, push,
+                conversations, mapper, history, moderation, media, null);
+    }
+
+    /** Backward-compatible constructor for focused unit tests. Spring uses the @Autowired constructor above. */
     public ChatService(
             IChatMessageRepository chatMessageRepository,
             IUserRepository userRepository,
@@ -52,54 +108,115 @@ public class ChatService {
             SimpMessagingTemplate messagingTemplate,
             FriendService friendService,
             PresenceService presenceService,
-            MongoTemplate mongoTemplate) {
-        this.chatMessageRepository = chatMessageRepository;
-        this.userRepository = userRepository;
-        this.groupReadStatusRepository = groupReadStatusRepository;
-        this.groupService = groupService;
-        this.messagingTemplate = messagingTemplate;
-        this.friendService = friendService;
-        this.presenceService = presenceService;
-        this.mongoTemplate = mongoTemplate;
+            PostgresDocumentStore documentStore,
+            ContentAccessService access,
+            PushNotificationService pushNotificationService) {
+        this(chatMessageRepository, userRepository, groupReadStatusRepository, groupService,
+                messagingTemplate, friendService, documentStore, access,
+                pushNotificationService,
+                new ConversationService(userRepository, groupReadStatusRepository, groupService,
+                        friendService, presenceService, documentStore, access),
+                new ChatMessageMapper(userRepository),
+                new ChatHistoryService(chatMessageRepository, userRepository, new ChatMessageMapper(userRepository)),
+                null,
+                null);
     }
 
-    // ================= CHAT 1-1 =================
-
-    /**
-     * Lưu tin nhắn vào MongoDB rồi đẩy real-time tới người nhận (nếu đang mở app)
-     * qua /user/{username}/queue/messages, đồng thời đẩy lại cho chính người gửi
-     * để đồng bộ nếu họ đang mở nhiều tab/thiết bị.
-     *
-     * Quyền nhắn tin: mở cho tất cả mọi người. Riêng tài khoản bật chế độ riêng tư
-     * (users.is_private = true) thì chỉ bạn bè (theo dõi lẫn nhau) mới nhắn được.
-     */
-    public ChatMessageResponse sendMessage(Long senderId, Long receiverId, String content, String clientId) {
+    @Transactional
+    public ChatMessageResponse sendMessage(
+            Long senderId, Long receiverId, String content, String clientId) {
         return sendMessage(senderId, receiverId, content, clientId, null, null, null, null);
     }
 
-    public ChatMessageResponse sendMessage(Long senderId, Long receiverId, String content, String clientId, String mediaUrl, String mediaType, String mediaName, Long mediaSize) {
+    @Transactional
+    public ChatMessageResponse sendMessage(
+            Long senderId,
+            Long receiverId,
+            String content,
+            String clientId,
+            String mediaUrl,
+            String mediaType,
+            String mediaName,
+            Long mediaSize) {
+        String normalizedClientId = normalizeClientId(clientId);
+        ChatMessageResponse previous = findExistingMessage(senderId, normalizedClientId);
+        if (previous != null) return previous;
+        return sendMessageInternal(
+                senderId, receiverId, content, normalizedClientId, mediaUrl, mediaType, mediaName, mediaSize);
+    }
+
+    /** True when a previous WebSocket retry already persisted this sender/clientId pair. */
+    public boolean hasMessageForClientId(Long senderId, String clientId) {
+        String normalized = normalizeClientId(clientId);
+        return normalized != null && chatMessageRepository.existsBySenderIdAndClientId(
+                String.valueOf(senderId), normalized);
+    }
+
+    /** Returns the canonical persisted message so a concurrent duplicate can receive an ACK. */
+    public ChatMessageResponse findMessageForClientId(Long senderId, String clientId) {
+        return findExistingMessage(senderId, normalizeClientId(clientId));
+    }
+
+    private ChatMessageResponse findExistingMessage(Long senderId, String clientId) {
+        if (senderId == null || clientId == null) return null;
+        return chatMessageRepository.findBySenderIdAndClientId(String.valueOf(senderId), clientId)
+                .map(this::toResponse)
+                .map(response -> {
+                    response.setClientId(clientId);
+                    return response;
+                })
+                .orElse(null);
+    }
+
+    private String normalizeClientId(String clientId) {
+        if (clientId == null || clientId.isBlank()) return null;
+        String normalized = clientId.trim();
+        return normalized.length() <= 100 ? normalized : normalized.substring(0, 100);
+    }
+
+    private ChatMessageResponse sendMessageInternal(
+            Long senderId,
+            Long receiverId,
+            String content,
+            String clientId,
+            String mediaUrl,
+            String mediaType,
+            String mediaName,
+            Long mediaSize) {
         if ((content == null || content.isBlank()) && (mediaUrl == null || mediaUrl.isBlank())) {
             throw new BadRequestException("Tin nhắn phải có nội dung hoặc tệp đính kèm");
         }
         if (senderId.equals(receiverId)) {
             throw new BadRequestException("Không thể tự nhắn tin cho chính mình");
         }
+        assertMediaAllowedForChat(mediaUrl, String.valueOf(senderId));
 
-        User sender = userRepository.findById(senderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người gửi"));
-        User receiver = userRepository.findById(receiverId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người nhận"));
+        access.requireProfile(senderId, receiverId);
+        User sender =
+                userRepository
+                        .findById(senderId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người gửi"));
+        if (!sender.isActive()) throw new UnauthorizedException("Tài khoản đã bị vô hiệu hóa");
+        User receiver =
+                userRepository
+                        .findById(receiverId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người nhận"));
 
-        // Mặc định ai cũng nhắn tin được. Chỉ khi người nhận bật "tài khoản riêng tư"
-        // thì mới bắt buộc hai bên phải theo dõi lẫn nhau (bạn bè).
         if (receiver.isPrivateAccount() && !friendService.isFriend(senderId, receiverId)) {
-            throw new BadRequestException("Tài khoản này ở chế độ riêng tư — hai bạn cần theo dõi lẫn nhau mới nhắn tin được");
+            throw new BadRequestException(
+                    "Tài khoản này ở chế độ riêng tư — hai bạn cần theo dõi lẫn nhau mới nhắn tin"
+                            + " được");
         }
 
         ChatMessage message = new ChatMessage();
-        message.setConversationId(ChatMessage.buildConversationId(String.valueOf(senderId), String.valueOf(receiverId)));
+        message.setConversationId(
+                ChatMessage.buildConversationId(
+                        String.valueOf(senderId), String.valueOf(receiverId)));
         message.setSenderId(String.valueOf(senderId));
         message.setReceiverId(String.valueOf(receiverId));
+        message.setClientId(normalizeClientId(clientId));
         message.setContent(content == null ? "" : content.trim());
         message.setMediaUrl(mediaUrl);
         message.setMediaType(mediaType);
@@ -107,72 +224,248 @@ public class ChatService {
         message.setMediaSize(mediaSize);
 
         ChatMessage saved = chatMessageRepository.save(message);
-        ChatMessageResponse dto = toResponse(saved);
+        attachChatMedia(saved, senderId);
+        ChatMessageResponse dto = toResponse(saved, sender);
         dto.setClientId(clientId);
 
-        messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
-        messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/messages", dto);
+        afterCommitSafely("direct chat delivery", () -> {
+            messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
+            messagingTemplate.convertAndSendToUser(sender.getUsername(), "/queue/messages", dto);
+            sendChatPushSafely(
+                    receiver.getId(),
+                    displayName(sender),
+                    notificationPreview(dto.getContent(), dto.getMediaUrl()),
+                    "/chat?userId=" + sender.getId());
+        });
 
         return dto;
     }
 
-    /** Lịch sử tin nhắn giữa 2 người, cũ -> mới; mặc định lấy 50 tin gần nhất. */
     public List<ChatMessageResponse> getMessages(Long currentUserId, Long otherUserId) {
         return getMessages(currentUserId, otherUserId, 0);
     }
 
     public List<ChatMessageResponse> getMessages(Long currentUserId, Long otherUserId, int page) {
-        String conversationId = ChatMessage.buildConversationId(String.valueOf(currentUserId), String.valueOf(otherUserId));
-        return history(conversationId, page);
+        access.requireProfile(currentUserId, otherUserId);
+        String conversationId =
+                ChatMessage.buildConversationId(
+                        String.valueOf(currentUserId), String.valueOf(otherUserId));
+        return chatHistoryService.history(conversationId, page, currentUserId);
     }
 
-    /**
-     * Đánh dấu toàn bộ tin nhắn CỦA otherUserId gửi cho currentUserId là đã đọc,
-     * đồng thời báo real-time ngược lại cho otherUserId (nếu đang mở app) để họ
-     * thấy bubble mình vừa gửi chuyển thành "Đã xem" ngay lập tức, không cần tải lại.
-     */
+    public ChatCursorPage getMessagesByCursor(
+            Long currentUserId, Long otherUserId, String beforeId, int requestedSize) {
+        access.requireProfile(currentUserId, otherUserId);
+        String conversationId = ChatMessage.buildConversationId(
+                String.valueOf(currentUserId), String.valueOf(otherUserId));
+        return conversationHistoryByCursor(conversationId, currentUserId, beforeId, requestedSize);
+    }
+
+    public List<ChatMessageResponse> searchDirectMessages(
+            Long currentUserId,
+            Long otherUserId,
+            String keyword,
+            String beforeId,
+            int size,
+            boolean mediaOnly) {
+        access.requireProfile(currentUserId, otherUserId);
+        String conversationId = ChatMessage.buildConversationId(
+                String.valueOf(currentUserId), String.valueOf(otherUserId));
+        return searchConversation(conversationId, currentUserId, keyword, beforeId, size, mediaOnly);
+    }
+
+    public List<ChatMessageResponse> searchGroupMessages(
+            Long currentUserId,
+            Long groupId,
+            String keyword,
+            String beforeId,
+            int size,
+            boolean mediaOnly) {
+        if (!groupService.isMember(groupId, currentUserId)) {
+            throw new ForbiddenException("Bạn không phải thành viên nhóm");
+        }
+        return searchConversation(
+                ChatMessage.buildGroupConversationId(groupId),
+                currentUserId,
+                keyword,
+                beforeId,
+                size,
+                mediaOnly);
+    }
+
+    private List<ChatMessageResponse> searchConversation(
+            String conversationId,
+            Long currentUserId,
+            String keyword,
+            String beforeId,
+            int requestedSize,
+            boolean mediaOnly) {
+        int size = Math.max(1, Math.min(50, requestedSize));
+        java.util.List<Criteria> clauses = new java.util.ArrayList<>();
+        clauses.add(Criteria.where("conversationId").is(conversationId));
+        clauses.add(Criteria.where("hiddenForUserIds").nin(String.valueOf(currentUserId)));
+        String term = null;
+        if (mediaOnly) {
+            clauses.add(Criteria.where("mediaUrl").nin(null, ""));
+        } else {
+            term = keyword == null ? "" : keyword.trim();
+            if (term.isBlank()) throw new BadRequestException("Từ khóa tìm kiếm không được để trống");
+        }
+        if (beforeId != null && !beforeId.isBlank()) clauses.add(Criteria.where("_id").lt(beforeId));
+        Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)));
+        if (!mediaOnly) {
+            query.addCriteria(com.aloute.persistence.postgres.document.TextCriteria
+                    .forDefaultLanguage().matching(term));
+        }
+        query.with(Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id"))).limit(size);
+        List<ChatMessage> messages = documentStore.find(query, ChatMessage.class);
+        java.util.Set<Long> senderIds = messages.stream()
+                .map(ChatMessage::getSenderId)
+                .filter(java.util.Objects::nonNull)
+                .map(Long::valueOf)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, User> senders = userRepository.findAllById(senderIds).stream()
+                .collect(java.util.stream.Collectors.toMap(User::getId, user -> user));
+        return messages.stream()
+                .map(message -> toResponse(
+                        message,
+                        message.getSenderId() == null
+                                ? null
+                                : senders.get(Long.valueOf(message.getSenderId()))))
+                .toList();
+    }
+
+    @Transactional
     public void markAsRead(Long currentUserId, Long otherUserId) {
-        // MỘT lệnh update duy nhất dưới Mongo. Bản cũ tải toàn bộ tin chưa đọc lên
-        // JVM rồi saveAll() — mở chat có 500 tin chưa đọc là 500 document đi về
-        // qua mạng chỉ để lật một cờ boolean.
-        long updated = mongoTemplate.updateMulti(
-                Query.query(Criteria.where("receiverId").is(String.valueOf(currentUserId))
-                        .and("senderId").is(String.valueOf(otherUserId))
-                        .and("read").is(false)
-                        .and("groupId").is(null)),
+        if (currentUserId == null || otherUserId == null || currentUserId.equals(otherUserId)) return;
+        // Reading an existing conversation must remain possible after either side blocks the other
+        // or one account is deactivated; otherwise its unread badge can never be cleared.
+        String currentId = String.valueOf(currentUserId);
+        String otherId = String.valueOf(otherUserId);
+        Criteria unreadCriteria = new Criteria().andOperator(
+                Criteria.where("receiverId").is(currentId),
+                Criteria.where("senderId").is(otherId),
+                Criteria.where("groupId").is(null),
+                Criteria.where("hiddenForUserIds").nin(currentId),
+                new Criteria().orOperator(
+                        Criteria.where("read").is(false), Criteria.where("read").exists(false)));
+        List<ChatMessage> recentUnread = documentStore.find(
+                Query.query(unreadCriteria).with(Sort.by(Sort.Direction.DESC, "sentAt")).limit(300),
+                ChatMessage.class);
+        long updated = documentStore.updateMulti(Query.query(unreadCriteria),
                 new Update().set("read", true), ChatMessage.class).getModifiedCount();
-        if (updated == 0) {
+        if (updated == 0) return;
+
+        List<String> messageIds = recentUnread.stream().map(ChatMessage::getId)
+                .filter(java.util.Objects::nonNull).toList();
+        if (!access.profileVisible(currentUserId, otherUserId)) return;
+        userRepository.findById(otherUserId).filter(User::isActive).ifPresent(otherUser -> {
+            Map<String, Object> receipt = new java.util.HashMap<>();
+            receipt.put("readerId", currentUserId);
+            receipt.put("otherUserId", otherUserId);
+            receipt.put("readAt", LocalDateTime.now().toString());
+            receipt.put("status", "READ");
+            receipt.put("messageIds", messageIds);
+            afterCommitSafely("direct read receipt", () ->
+                    messagingTemplate.convertAndSendToUser(
+                            otherUser.getUsername(), "/queue/read-receipts", receipt));
+        });
+    }
+
+    /** Called only after an authenticated recipient client receives a persisted WebSocket message. */
+    @Transactional
+    public void markAsDelivered(Long recipientId, String messageId) {
+        if (messageId == null || messageId.isBlank()) return;
+        ChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tin nhắn"));
+        String recipient = String.valueOf(recipientId);
+        String senderId = message.getSenderId();
+        if (senderId == null || senderId.equals(recipient)) return;
+        LocalDateTime now = LocalDateTime.now();
+
+        if (message.getGroupId() != null) {
+            Long groupId = message.getGroupId();
+            if (!groupService.isMember(groupId, recipientId)) {
+                throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
+            }
+            Query q = Query.query(Criteria.where("_id").is(messageId)
+                    .and("groupId").is(groupId)
+                    .and("senderId").ne(recipient)
+                    .and("deliveredToUserIds").nin(recipient));
+            var result = documentStore.updateFirst(q,
+                    new Update().addToSet("deliveredToUserIds", recipient).set("delivered", true),
+                    ChatMessage.class);
+            if (result.getModifiedCount() == 0) return;
+            ChatMessage updated = chatMessageRepository.findById(messageId).orElse(message);
+            userRepository.findById(Long.valueOf(senderId)).ifPresent(sender -> {
+                Map<String, Object> receipt = new java.util.HashMap<>();
+                receipt.put("messageId", messageId);
+                receipt.put("senderId", Long.valueOf(senderId));
+                receipt.put("recipientId", recipientId);
+                receipt.put("groupId", groupId);
+                receipt.put("deliveredCount", updated.getDeliveredToUserIds().size());
+                receipt.put("status", "DELIVERED");
+                receipt.put("deliveredAt", now.toString());
+                afterCommitSafely("group delivery receipt", () ->
+                        messagingTemplate.convertAndSendToUser(
+                                sender.getUsername(), "/queue/delivery-receipts", receipt));
+            });
             return;
         }
 
-        userRepository.findById(otherUserId).ifPresent(otherUser -> messagingTemplate.convertAndSendToUser(
-                otherUser.getUsername(), "/queue/read-receipts",
-                Map.of("readerId", currentUserId, "readAt", LocalDateTime.now().toString())));
+        if (message.getReceiverId() == null || !message.getReceiverId().equals(recipient)) {
+            throw new ForbiddenException("Bạn không phải người nhận tin nhắn này");
+        }
+        var result = documentStore.updateFirst(
+                Query.query(Criteria.where("_id").is(messageId)
+                        .and("receiverId").is(recipient).and("delivered").is(false)),
+                new Update().set("delivered", true).set("deliveredAt", now), ChatMessage.class);
+        if (result.getModifiedCount() == 0) return;
+        userRepository.findById(Long.valueOf(senderId)).ifPresent(sender -> {
+            Map<String, Object> receipt = new java.util.HashMap<>();
+            receipt.put("messageId", messageId);
+            receipt.put("senderId", Long.valueOf(senderId));
+            receipt.put("receiverId", recipientId);
+            receipt.put("delivered", true);
+            receipt.put("deliveredCount", 1);
+            receipt.put("status", "DELIVERED");
+            receipt.put("deliveredAt", now.toString());
+            afterCommitSafely("direct delivery receipt", () ->
+                    messagingTemplate.convertAndSendToUser(
+                            sender.getUsername(), "/queue/delivery-receipts", receipt));
+        });
     }
 
-    /**
-     * Tạo một "tin nhắn hệ thống" đại diện cho cuộc gọi nhỡ.
-     * Nó được lưu cùng collection chat_messages để xuất hiện trong lịch sử chat
-     * và tự động trở thành mục mới nhất của hội thoại.
-     */
-    public ChatMessageResponse createMissedCallMessage(Long callerId, Long receiverId, String callId, String callType) {
-        if (callerId == null || receiverId == null || callId == null || callId.isBlank()) {
-            return null;
-        }
+    @Transactional
+    public ChatMessageResponse createMissedCallMessage(
+            Long callerId, Long receiverId, String callId, String callType) {
+        if (callerId == null || receiverId == null || callerId <= 0 || receiverId <= 0
+                || callerId.equals(receiverId) || callId == null || callId.isBlank() || callId.length() > 100)
+            throw new BadRequestException("Thông tin cuộc gọi không hợp lệ");
 
-        // Idempotent: timeout/retry không tạo 2 dòng cuộc gọi nhỡ.
+        if (callHistoryAuthorization != null && !callHistoryAuthorization.missedFor(callId, callerId, receiverId))
+            throw new ForbiddenException("Không thể ghi lịch sử cho cuộc gọi chưa được xác thực");
         var existed = chatMessageRepository.findByCallId(callId);
         if (existed.isPresent()) {
+            requireCallParticipants(existed.get(), callerId, receiverId);
             return toResponse(existed.get());
         }
 
-        User caller = userRepository.findById(callerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người gọi"));
-        User receiver = userRepository.findById(receiverId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người nhận"));
+        User caller =
+                userRepository
+                        .findById(callerId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người gọi"));
+        User receiver =
+                userRepository
+                        .findById(receiverId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người nhận"));
 
         ChatMessage message = new ChatMessage();
-        message.setConversationId(ChatMessage.buildConversationId(String.valueOf(callerId), String.valueOf(receiverId)));
+        message.setConversationId(
+                ChatMessage.buildConversationId(
+                        String.valueOf(callerId), String.valueOf(receiverId)));
         message.setSenderId(String.valueOf(callerId));
         message.setReceiverId(String.valueOf(receiverId));
         message.setContent("");
@@ -180,51 +473,90 @@ public class ChatService {
         message.setCallId(callId);
         message.setCallType("audio".equalsIgnoreCase(callType) ? "audio" : "video");
         message.setCallStatus("MISSED");
-        // Người nhận chưa xem dòng cuộc gọi nhỡ thì badge/unread vẫn hoạt động như tin nhắn.
+
         message.setRead(false);
 
-        ChatMessage saved = chatMessageRepository.save(message);
-        ChatMessageResponse dto = toResponse(saved);
+        // The database unique callId index, not the preliminary lookup, decides the concurrent winner.
+        if (!documentStore.insertIfAbsent(message)) {
+            ChatMessage winner = chatMessageRepository.findByCallId(callId)
+                    .orElseThrow(() -> new IllegalStateException("Call history insert conflict without canonical record"));
+            requireCallParticipants(winner, callerId, receiverId);
+            return toResponse(winner);
+        }
+        ChatMessage saved = message;
+        ChatMessageResponse dto = toResponse(saved, caller);
 
-        // Cả hai phía thấy cùng một dòng trong lịch sử; phía nhận sẽ có unread nếu chat chưa mở.
-        messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
-        messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
+        afterCommitSafely("missed-call message delivery", () -> {
+            messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
+            messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
+        });
         return dto;
     }
 
+    private void requireCallParticipants(ChatMessage message, Long caller, Long callee) {
+        if (!"CALL".equals(message.getMessageType()) || !String.valueOf(caller).equals(message.getSenderId())
+                || !String.valueOf(callee).equals(message.getReceiverId()))
+            throw new ForbiddenException("Cuộc gọi không thuộc người tham gia này");
+    }
+
     public long countUnreadTotal(Long userId) {
-        long directUnread = chatMessageRepository.countByReceiverIdAndReadFalse(String.valueOf(userId));
-        long groupUnread = groupUnreadCounts(groupService.getMyGroups(userId), userId).values().stream()
-                .mapToLong(Long::longValue).sum();
+        long directUnread = conversationService.countUnreadDirect(userId);
+        long groupUnread = conversationService.countUnreadGroupsByIds(
+                groupService.getAllMyGroupIds(userId), userId);
         return directUnread + groupUnread;
     }
 
-    // ================= CHAT NHÓM =================
-
-    /** Gửi tin nhắn nhóm — chỉ thành viên nhóm mới gửi được, đẩy real-time tới TẤT CẢ thành viên. */
-    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId) {
+    @Transactional
+    public ChatMessageResponse sendGroupMessage(
+            Long senderId, Long groupId, String content, String clientId) {
         return sendGroupMessage(senderId, groupId, content, clientId, null, null, null, null);
     }
 
-    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId, String mediaUrl, String mediaType) {
-        return sendGroupMessage(senderId, groupId, content, clientId, mediaUrl, mediaType, null, null);
+    @Transactional
+    public ChatMessageResponse sendGroupMessage(
+            Long senderId,
+            Long groupId,
+            String content,
+            String clientId,
+            String mediaUrl,
+            String mediaType) {
+        return sendGroupMessage(
+                senderId, groupId, content, clientId, mediaUrl, mediaType, null, null);
     }
 
-    public ChatMessageResponse sendGroupMessage(Long senderId, Long groupId, String content, String clientId, String mediaUrl, String mediaType, String mediaName, Long mediaSize) {
+    @Transactional
+    public ChatMessageResponse sendGroupMessage(
+            Long senderId,
+            Long groupId,
+            String content,
+            String clientId,
+            String mediaUrl,
+            String mediaType,
+            String mediaName,
+            Long mediaSize) {
+        String normalizedClientId = normalizeClientId(clientId);
+        ChatMessageResponse previous = findExistingMessage(senderId, normalizedClientId);
+        if (previous != null) return previous;
         if ((content == null || content.isBlank()) && (mediaUrl == null || mediaUrl.isBlank())) {
             throw new BadRequestException("Tin nhắn phải có nội dung hoặc tệp đính kèm");
         }
+        assertMediaAllowedForChat(mediaUrl, String.valueOf(senderId));
         if (!groupService.isMember(groupId, senderId)) {
-            throw new UnauthorizedException("Bạn không phải thành viên của nhóm này");
+            throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
 
-        User sender = userRepository.findById(senderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người gửi"));
+        User sender =
+                userRepository
+                        .findById(senderId)
+                        .orElseThrow(
+                                () -> new ResourceNotFoundException("Không tìm thấy người gửi"));
+        if (!sender.isActive()) throw new UnauthorizedException("Tài khoản đã bị vô hiệu hóa");
 
         ChatMessage message = new ChatMessage();
         message.setConversationId(ChatMessage.buildGroupConversationId(groupId));
         message.setSenderId(String.valueOf(senderId));
         message.setGroupId(groupId);
+        message.setClientId(normalizedClientId);
         message.setContent(content == null ? "" : content.trim());
         message.setMediaUrl(mediaUrl);
         message.setMediaType(mediaType);
@@ -232,337 +564,277 @@ public class ChatService {
         message.setMediaSize(mediaSize);
 
         ChatMessage saved = chatMessageRepository.save(message);
-        ChatMessageResponse dto = toResponse(saved);
-        dto.setClientId(clientId);
+        attachChatMedia(saved, senderId);
+        ChatMessageResponse dto = toResponse(saved, sender);
+        dto.setClientId(normalizedClientId);
 
-        // Đẩy tới TẤT CẢ thành viên nhóm (kể cả người gửi, để đồng bộ nhiều tab/thiết bị)
-        for (Long memberId : groupService.getMemberIds(groupId)) {
-            userRepository.findById(memberId).ifPresent(
-                    u -> messagingTemplate.convertAndSendToUser(u.getUsername(), "/queue/messages", dto));
+        String resolvedGroupName = "nhóm";
+        try {
+            var group = groupService.getGroupDetail(groupId, senderId);
+            if (group != null && group.getName() != null && !group.getName().isBlank()) {
+                resolvedGroupName = group.getName();
+            }
+        } catch (RuntimeException ex) {
+            // The persisted message and WebSocket delivery must not depend on push metadata.
+            log.warn("Unable to load group metadata for chat notification (groupId={}, cause={})",
+                    groupId, ex.getClass().getSimpleName());
         }
+        // Capture the resolved value as an effectively-final local for the after-commit callback.
+        final String groupNameForNotification = resolvedGroupName;
+        List<User> recipients = userRepository.findAllById(groupService.getMemberIds(groupId));
+        afterCommitSafely("group chat delivery", () -> {
+            for (User member : recipients) {
+                if (member.isActive()) {
+                    messagingTemplate.convertAndSendToUser(
+                            member.getUsername(), "/queue/messages", dto);
+                    if (!member.getId().equals(senderId)) {
+                        sendChatPushSafely(
+                                member.getId(),
+                                "Tin nhắn trong " + groupNameForNotification,
+                                displayName(sender) + ": " + notificationPreview(dto.getContent(), dto.getMediaUrl()),
+                                "/chat?groupId=" + groupId);
+                    }
+                }
+            }
+        });
 
         return dto;
     }
 
-    /** Lịch sử tin nhắn trong nhóm, cũ -> mới; mặc định lấy 50 tin gần nhất. */
     public List<ChatMessageResponse> getGroupMessages(Long groupId, Long currentUserId) {
         return getGroupMessages(groupId, currentUserId, 0);
     }
 
     public List<ChatMessageResponse> getGroupMessages(Long groupId, Long currentUserId, int page) {
         if (!groupService.isMember(groupId, currentUserId)) {
-            throw new UnauthorizedException("Bạn không phải thành viên của nhóm này");
+            throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
         String conversationId = ChatMessage.buildGroupConversationId(groupId);
-        return history(conversationId, page);
+        return chatHistoryService.history(conversationId, page, currentUserId);
     }
 
-    /** Cập nhật mốc "đã đọc đến lúc này" của user trong nhóm — dùng để tính lại unreadCount. */
-    public void markGroupAsRead(Long groupId, Long userId) {
-        GroupReadStatus status = groupReadStatusRepository.findByGroupIdAndUserId(groupId, userId)
-                .orElseGet(() -> new GroupReadStatus(groupId, userId));
-        status.setLastReadAt(LocalDateTime.now());
-        groupReadStatusRepository.save(status);
-    }
-
-    /**
-     * Đếm tin chưa đọc cho TẤT CẢ nhóm của một người bằng đúng 2 truy vấn
-     * (1 SQL lấy mốc đã đọc + 1 aggregation Mongo), thay cho 2 query mỗi nhóm.
-     */
-    private Map<String, Long> groupUnreadCounts(List<ChatGroup> groups, Long userId) {
-        if (groups.isEmpty()) {
-            return Map.of();
+    public ChatCursorPage getGroupMessagesByCursor(
+            Long groupId, Long currentUserId, String beforeId, int requestedSize) {
+        if (!groupService.isMember(groupId, currentUserId)) {
+            throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
-
-        Map<Long, LocalDateTime> readTimes = groupReadStatusRepository.findByUserId(userId).stream()
-                .collect(Collectors.toMap(GroupReadStatus::getGroupId, GroupReadStatus::getLastReadAt));
-
-        Criteria[] filters = groups.stream().map(g -> {
-            Criteria c = Criteria.where("conversationId").is(ChatMessage.buildGroupConversationId(g.getId()));
-            if (readTimes.containsKey(g.getId())) {
-                c = c.and("sentAt").gt(readTimes.get(g.getId()));
-            }
-            return c;
-        }).toArray(Criteria[]::new);
-
-        Map<String, Long> counts = new java.util.HashMap<>();
-        mongoTemplate.aggregate(Aggregation.newAggregation(
-                        Aggregation.match(new Criteria().orOperator(filters)),
-                        Aggregation.group("conversationId").count().as("count")),
-                ChatMessage.class, Document.class)
-                .forEach(d -> counts.put(d.getString("_id"), ((Number) d.get("count")).longValue()));
-        return counts;
+        return conversationHistoryByCursor(
+                ChatMessage.buildGroupConversationId(groupId), currentUserId, beforeId, requestedSize);
     }
 
-    private long countGroupUnread(Long groupId, Long userId) {
-        String conversationId = ChatMessage.buildGroupConversationId(groupId);
-        return groupReadStatusRepository.findByGroupIdAndUserId(groupId, userId)
-                .map(status -> chatMessageRepository.countByConversationIdAndSentAtAfter(conversationId, status.getLastReadAt()))
-                .orElseGet(() -> chatMessageRepository.countByConversationId(conversationId));
-    }
-
-    // ================= DANH SÁCH HỘI THOẠI HỢP NHẤT (1-1 + nhóm) =================
-
-    /**
-     * Như {@link #getConversations(Long)} nhưng đảm bảo luôn có sẵn ô hội thoại với
-     * {@code ensureOtherUserId} — dùng khi người dùng bấm "Nhắn tin" từ trang cá nhân
-     * của một người chưa từng nhắn và cũng chưa phải bạn bè.
-     */
-    public List<ConversationResponse> getConversations(Long userId, Long ensureOtherUserId) {
-        List<ConversationResponse> conversations = getConversations(userId);
-        if (ensureOtherUserId == null || ensureOtherUserId.equals(userId)) {
-            return conversations;
+    private ChatCursorPage conversationHistoryByCursor(
+            String conversationId, Long currentUserId, String beforeId, int requestedSize) {
+        int size = Math.max(1, Math.min(100, requestedSize));
+        java.util.List<Criteria> clauses = new java.util.ArrayList<>();
+        clauses.add(Criteria.where("conversationId").is(conversationId));
+        clauses.add(Criteria.where("hiddenForUserIds").nin(String.valueOf(currentUserId)));
+        if (beforeId != null && !beforeId.isBlank()) {
+            clauses.add(Criteria.where("_id").lt(beforeId.trim()));
         }
-        boolean already = conversations.stream()
-                .anyMatch(c -> !c.isGroup() && ensureOtherUserId.equals(c.getOtherUserId()));
-        if (!already && userRepository.existsById(ensureOtherUserId)) {
-            conversations.add(0, toFriendPreviewResponse(ensureOtherUserId));
-            fillOtherUserInfo(conversations);
-        }
-        return conversations;
-    }
+        Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
+                .with(Sort.by(Sort.Order.desc("sentAt"), Sort.Order.desc("_id")))
+                .limit(size + 1);
+        List<ChatMessage> messages = new java.util.ArrayList<>(documentStore.find(query, ChatMessage.class));
+        boolean hasMore = messages.size() > size;
+        if (hasMore) messages.remove(messages.size() - 1);
+        String nextCursor = hasMore && !messages.isEmpty()
+                ? messages.get(messages.size() - 1).getId()
+                : null;
 
-    /**
-     * Gộp chung hội thoại 1-1 và nhóm vào 1 danh sách duy nhất cho cột trái
-     * trang /chat, sắp theo thời điểm tin nhắn mới nhất trước.
-     */
-    public List<ConversationResponse> getConversations(Long userId) {
-        String userIdStr = String.valueOf(userId);
-
-        // Lấy TIN MỚI NHẤT của mỗi hội thoại 1-1 ngay trong Mongo.
-        // Bản cũ kéo TOÀN BỘ tin nhắn của người dùng về JVM rồi mới lọc ra tin cuối
-        // của từng hội thoại — tài khoản nhắn nhiều là mỗi lần mở /chat phải tải
-        // hàng chục nghìn document chỉ để hiển thị vài dòng preview.
-        List<ChatMessage> latestDirect = mongoTemplate.aggregate(Aggregation.newAggregation(
-                        Aggregation.match(new Criteria().andOperator(
-                                Criteria.where("groupId").is(null),
-                                new Criteria().orOperator(
-                                        Criteria.where("senderId").is(userIdStr),
-                                        Criteria.where("receiverId").is(userIdStr)))),
-                        Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
-                        Aggregation.group("conversationId").first(Aggregation.ROOT).as("latest"),
-                        Aggregation.replaceRoot("latest"),
-                        Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
-                        Aggregation.limit(100)),
-                ChatMessage.class, ChatMessage.class).getMappedResults();
-
-        // Số tin chưa đọc theo từng người gửi — 1 aggregation thay cho 1 query mỗi ô hội thoại.
-        Map<String, Long> unreadBySender = new java.util.HashMap<>();
-        mongoTemplate.aggregate(Aggregation.newAggregation(
-                        Aggregation.match(Criteria.where("receiverId").is(userIdStr)
-                                .and("read").is(false).and("groupId").is(null)),
-                        Aggregation.group("senderId").count().as("count")),
-                ChatMessage.class, Document.class)
-                .forEach(d -> unreadBySender.put(d.getString("_id"), ((Number) d.get("count")).longValue()));
-
-        List<ConversationResponse> result = latestDirect.stream()
-                .map(latest -> toDirectConversationResponse(userIdStr, latest, unreadBySender))
-                .collect(Collectors.toList());
-
-        // Bạn bè (đã follow lẫn nhau) nhưng CHƯA từng nhắn tin — vẫn hiện sẵn trong
-        // danh sách để bắt đầu trò chuyện ngay, đúng yêu cầu "follow nhau xong thành bạn bè".
-        Set<Long> otherIdsWithConversation = result.stream()
-                .map(ConversationResponse::getOtherUserId)
-                .collect(Collectors.toSet());
-
-        for (Long friendId : friendService.getMutualFriendIds(userId)) {
-            if (!otherIdsWithConversation.contains(friendId)) {
-                result.add(toFriendPreviewResponse(friendId));
-            }
-        }
-
-        // Nhóm: gộp tin mới nhất + số thành viên + số chưa đọc thành vài truy vấn,
-        // thay vì 3 truy vấn nhân với số nhóm.
-        List<ChatGroup> groups = groupService.getMyGroups(userId);
-        Map<String, Long> groupUnread = groupUnreadCounts(groups, userId);
-        Map<Long, Integer> memberCounts = groupService.getMemberCounts(
-                groups.stream().map(ChatGroup::getId).collect(Collectors.toList()));
-
-        Map<String, ChatMessage> latestGroupMessages = new java.util.HashMap<>();
-        if (!groups.isEmpty()) {
-            mongoTemplate.aggregate(Aggregation.newAggregation(
-                            Aggregation.match(Criteria.where("conversationId").in(groups.stream()
-                                    .map(g -> ChatMessage.buildGroupConversationId(g.getId()))
-                                    .collect(Collectors.toList()))),
-                            Aggregation.sort(Sort.Direction.DESC, "sentAt", "_id"),
-                            Aggregation.group("conversationId").first(Aggregation.ROOT).as("latest"),
-                            Aggregation.replaceRoot("latest")),
-                    ChatMessage.class, ChatMessage.class)
-                    .forEach(m -> latestGroupMessages.put(m.getConversationId(), m));
-        }
-
-        for (ChatGroup group : groups) {
-            String conversationId = ChatMessage.buildGroupConversationId(group.getId());
-            result.add(toGroupConversationResponse(group, latestGroupMessages.get(conversationId),
-                    memberCounts.getOrDefault(group.getId(), 0),
-                    groupUnread.getOrDefault(conversationId, 0L)));
-        }
-
-        // Gop tra cuu user thanh 1 query, phai chay TRUOC sort vi sort dung otherFullName.
-        fillOtherUserInfo(result);
-
-        result.sort((a, b) -> {
-            LocalDateTime ta = a.getLastMessageAt();
-            LocalDateTime tb = b.getLastMessageAt();
-            if (ta == null && tb == null) {
-                return nameOf(a).compareToIgnoreCase(nameOf(b));
-            }
-            if (ta == null) return 1;
-            if (tb == null) return -1;
-            return tb.compareTo(ta);
-        });
-
-        return result;
-    }
-
-    private String nameOf(ConversationResponse c) {
-        String name = c.isGroup() ? c.getGroupName() : c.getOtherFullName();
-        return name != null ? name : "";
-    }
-
-    private ConversationResponse toDirectConversationResponse(String currentUserIdStr, ChatMessage latest,
-            Map<String, Long> unreadBySender) {
-        boolean iAmSender = latest.getSenderId().equals(currentUserIdStr);
-        String otherIdStr = iAmSender ? latest.getReceiverId() : latest.getSenderId();
-        Long otherId = Long.valueOf(otherIdStr);
-
-        ConversationResponse dto = new ConversationResponse();
-        dto.setGroup(false);
-        dto.setOtherUserId(otherId);
-        dto.setLastMessage(previewText(latest));
-        dto.setLastMessageAt(latest.getSentAt());
-        dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
-        dto.setUnreadCount(unreadBySender.getOrDefault(otherIdStr, 0L));
-        dto.setOnline(presenceService.isOnline(otherId));
-        // Ten/avatar duoc do vao sau bang MOT query gop (xem fillOtherUserInfo).
-        return dto;
-    }
-
-    /** Bạn bè chưa từng nhắn tin — hiện trong danh sách với "lastMessage" rỗng, mời bắt đầu trò chuyện. */
-    private ConversationResponse toFriendPreviewResponse(Long friendId) {
-        ConversationResponse dto = new ConversationResponse();
-        dto.setGroup(false);
-        dto.setOtherUserId(friendId);
-        dto.setHasConversation(false);
-        dto.setUnreadCount(0);
-        dto.setOnline(presenceService.isOnline(friendId));
-        return dto;
-    }
-
-    /**
-     * Đổ tên/avatar cho toàn bộ hội thoại 1-1 bằng ĐÚNG MỘT query tới bảng users.
-     *
-     * Trước đây mỗi ô hội thoại tự gọi userRepository.findById() — danh sách 40 người
-     * là 40 query chỉ để lấy cái tên, đây là nguyên nhân chính khiến trang /chat ì.
-     */
-    private void fillOtherUserInfo(List<ConversationResponse> conversations) {
-        Set<Long> ids = conversations.stream()
-                .filter(c -> !c.isGroup() && c.getOtherUserId() != null && c.getOtherUsername() == null)
-                .map(ConversationResponse::getOtherUserId)
-                .collect(Collectors.toSet());
-        if (ids.isEmpty()) return;
-
-        Map<Long, User> byId = userRepository.findAllById(ids).stream()
-                .collect(Collectors.toMap(User::getId, u -> u));
-
-        for (ConversationResponse c : conversations) {
-            if (c.isGroup() || c.getOtherUserId() == null) continue;
-            User u = byId.get(c.getOtherUserId());
-            if (u == null) continue;
-            c.setOtherUsername(u.getUsername());
-            c.setOtherFullName(u.getFullName());
-            c.setOtherAvatarUrl(AvatarUtil.resolve(u.getAvatarUrl()));
-        }
-    }
-
-    private ConversationResponse toGroupConversationResponse(ChatGroup group, ChatMessage latest,
-            int memberCount, long unreadCount) {
-
-        ConversationResponse dto = new ConversationResponse();
-        dto.setGroup(true);
-        dto.setGroupId(group.getId());
-        dto.setGroupName(group.getName());
-        dto.setOtherAvatarUrl(group.getAvatarUrl());
-        dto.setMemberCount(memberCount);
-        dto.setUnreadCount(unreadCount);
-
-        if (latest != null) {
-            dto.setLastMessage(previewText(latest));
-            dto.setLastMessageAt(latest.getSentAt());
-            dto.setLastMessageTimeAgo(TimeAgoUtil.format(latest.getSentAt()));
-        } else {
-            dto.setLastMessage("Nhóm vừa được tạo");
-            dto.setLastMessageAt(group.getCreatedAt());
-            dto.setLastMessageTimeAgo(TimeAgoUtil.format(group.getCreatedAt()));
-        }
-
-        return dto;
-    }
-
-    private String previewText(ChatMessage message) {
-        if ("CALL".equalsIgnoreCase(message.getMessageType())) {
-            String call = "audio".equalsIgnoreCase(message.getCallType()) ? "Cuộc gọi thoại" : "Cuộc gọi video";
-            if ("MISSED".equalsIgnoreCase(message.getCallStatus())) return "☎ " + call + " nhỡ";
-            if ("REJECTED".equalsIgnoreCase(message.getCallStatus())) return "☎ " + call + " bị từ chối";
-            return "☎ " + call;
-        }
-        if (message.getMediaType() != null) {
-            if ("video".equalsIgnoreCase(message.getMediaType())) return "🎥 Video";
-            if ("file".equalsIgnoreCase(message.getMediaType())) return "📎 " + (message.getMediaName() != null ? message.getMediaName() : "Tệp đính kèm");
-            return "📷 Ảnh";
-        }
-        return message.getContent() != null ? message.getContent() : "";
-    }
-
-    private List<ChatMessageResponse> history(String conversationId, int page) {
-        int safePage = Math.max(0, page);
-        var messages = new java.util.ArrayList<>(chatMessageRepository.findByConversationIdOrderBySentAtDesc(
-                conversationId, PageRequest.of(safePage, 50, Sort.by(Sort.Direction.DESC, "sentAt", "id"))));
-        java.util.Collections.reverse(messages);
-
-        var senderIds = messages.stream()
+        java.util.Set<Long> senderIds = messages.stream()
                 .map(ChatMessage::getSenderId)
                 .filter(java.util.Objects::nonNull)
                 .map(Long::valueOf)
-                .collect(Collectors.toSet());
-        var users = userRepository.findAllById(senderIds).stream()
-                .collect(Collectors.toMap(User::getId, java.util.function.Function.identity()));
-
-        return messages.stream()
-                .map(m -> toResponse(m, users.get(m.getSenderId() != null ? Long.valueOf(m.getSenderId()) : null)))
-                .collect(Collectors.toList());
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, User> senders = userRepository.findAllById(senderIds).stream()
+                .collect(java.util.stream.Collectors.toMap(User::getId, user -> user));
+        java.util.Collections.reverse(messages);
+        List<ChatMessageResponse> items = messages.stream()
+                .map(message -> toResponse(
+                        message,
+                        message.getSenderId() == null
+                                ? null
+                                : senders.get(Long.valueOf(message.getSenderId()))))
+                .toList();
+        return new ChatCursorPage(items, nextCursor, hasMore);
     }
 
-    private ChatMessageResponse toResponse(ChatMessage m) {
-        User sender = m.getSenderId() == null ? null
-                : userRepository.findById(Long.valueOf(m.getSenderId())).orElse(null);
-        return toResponse(m, sender);
-    }
-
-    private ChatMessageResponse toResponse(ChatMessage m, User sender) {
-        ChatMessageResponse dto = new ChatMessageResponse();
-        dto.setId(m.getId());
-        dto.setSenderId(Long.valueOf(m.getSenderId()));
-        dto.setReceiverId(m.getReceiverId() != null ? Long.valueOf(m.getReceiverId()) : null);
-        dto.setGroupId(m.getGroupId());
-        dto.setContent(m.getContent());
-        dto.setMediaUrl(m.getMediaUrl());
-        dto.setMediaType(m.getMediaType());
-        dto.setMediaName(m.getMediaName());
-        dto.setMediaSize(m.getMediaSize());
-        dto.setMessageType(m.getMessageType());
-        dto.setCallId(m.getCallId());
-        dto.setCallType(m.getCallType());
-        dto.setCallStatus(m.getCallStatus());
-        dto.setRead(m.isRead());
-        dto.setSentAt(m.getSentAt() != null ? m.getSentAt() : LocalDateTime.now());
-        dto.setTimeAgo(TimeAgoUtil.format(m.getSentAt()));
-
-        if (sender != null) {
-            dto.setSenderUsername(sender.getUsername());
-            dto.setSenderFullName(sender.getFullName());
-            dto.setSenderAvatarUrl(AvatarUtil.resolve(sender.getAvatarUrl()));
+    @Transactional
+    public void markGroupAsRead(Long groupId, Long userId) {
+        if (!groupService.isMember(groupId, userId)) {
+            throw new ForbiddenException("Bạn không phải thành viên của nhóm này");
         }
-        return dto;
+        String readerId = String.valueOf(userId);
+        LocalDateTime readAt = LocalDateTime.now();
+
+        Criteria unreadForReader = new Criteria().andOperator(
+                Criteria.where("groupId").is(groupId),
+                Criteria.where("senderId").ne(readerId),
+                Criteria.where("sentAt").lte(readAt),
+                Criteria.where("readByUserIds").nin(readerId));
+        Query receiptQuery = Query.query(unreadForReader)
+                .with(Sort.by(Sort.Direction.DESC, "sentAt")).limit(250);
+        List<ChatMessage> receiptCandidates = documentStore.find(receiptQuery, ChatMessage.class);
+
+        // SQL lastReadAt is the authoritative source for the unread group badge. Commit it first;
+        // update PostgreSQL's per-message receipts and notify senders after the SQL transaction commits.
+        int updated = groupReadStatusRepository.updateLastReadAt(groupId, userId, readAt);
+        if (updated == 0) {
+            // Compatibility for memberships created before read-status initialization existed.
+            GroupReadStatus status = new GroupReadStatus(groupId, userId);
+            status.setLastReadAt(readAt);
+            groupReadStatusRepository.save(status);
+        }
+        if (receiptCandidates.isEmpty()) return;
+
+        Map<String, List<String>> idsBySender = new java.util.HashMap<>();
+        for (ChatMessage candidate : receiptCandidates) {
+            if (candidate.getSenderId() == null || candidate.getId() == null) continue;
+            idsBySender.computeIfAbsent(candidate.getSenderId(), ignored -> new java.util.ArrayList<>())
+                    .add(candidate.getId());
+        }
+        Set<Long> senderIds = idsBySender.keySet().stream().map(Long::valueOf).collect(Collectors.toSet());
+        Map<Long, User> usersById = new java.util.HashMap<>();
+        userRepository.findAllById(senderIds).forEach(user -> usersById.put(user.getId(), user));
+
+        afterCommitSafely("group read receipt", () -> {
+            try {
+                documentStore.updateMulti(
+                        Query.query(unreadForReader),
+                        new Update().addToSet("readByUserIds", readerId),
+                        ChatMessage.class);
+            } catch (RuntimeException ex) {
+                // The SQL lastReadAt keeps unread totals correct; message receipts can be repaired
+                // on the next read/reconciliation rather than rolling back a committed SQL update.
+                log.warn("Could not persist group read receipts for group {} ({})",
+                        groupId, ex.getClass().getSimpleName());
+            }
+            idsBySender.forEach((senderId, messageIds) -> {
+                User sender = usersById.get(Long.valueOf(senderId));
+                if (sender == null || messageIds.isEmpty()) return;
+                Map<String, Object> receipt = new java.util.HashMap<>();
+                receipt.put("readerId", userId);
+                receipt.put("groupId", groupId);
+                receipt.put("readAt", readAt.toString());
+                receipt.put("status", "READ");
+                receipt.put("messageIds", messageIds);
+                messagingTemplate.convertAndSendToUser(
+                        sender.getUsername(), "/queue/read-receipts", receipt);
+            });
+        });
     }
+
+    public List<ConversationResponse> getConversations(Long userId, Long ensureOtherUserId) {
+        return conversationService.getConversations(userId, ensureOtherUserId);
+    }
+
+    public List<ConversationResponse> getConversations(Long userId) {
+        return conversationService.getConversations(userId);
+    }
+
+    public ConversationCursorPage getConversationPage(
+            Long userId, String cursor, int size) {
+        return conversationService.getConversationPage(userId, cursor, size);
+    }
+
+    @Transactional
+    public void deleteMessage(String messageId, Long currentUserId, boolean forEveryone) {
+        ChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tin nhắn không tồn tại"));
+        String userId = String.valueOf(currentUserId);
+        boolean participant = userId.equals(message.getSenderId()) || userId.equals(message.getReceiverId());
+        if (message.getGroupId() != null) participant = groupService.isMember(message.getGroupId(), currentUserId);
+        if (!participant) throw new ForbiddenException("Bạn không có quyền với tin nhắn này");
+
+        if (!forEveryone) {
+            message.getHiddenForUserIds().add(userId);
+            chatMessageRepository.save(message);
+            return;
+        }
+        if (!userId.equals(message.getSenderId())) {
+            throw new ForbiddenException("Chỉ người gửi mới có thể thu hồi tin nhắn với mọi người");
+        }
+        String removedMediaUrl = message.getMediaUrl();
+        chatMessageRepository.delete(message);
+        if (mediaAssets != null && removedMediaUrl != null && !removedMediaUrl.isBlank()) {
+            // Persist the deletion tombstone in the same PostgreSQL transaction as message removal.
+            // Cloudinary deletion is retried by the lifecycle worker after this transaction commits.
+            mediaAssets.queueUnreferencedDeletion(removedMediaUrl);
+        }
+        Map<String, Object> event = Map.of("messageId", messageId, "forEveryone", true);
+        List<User> recipients;
+        if (message.getGroupId() != null) {
+            recipients = userRepository.findAllById(groupService.getMemberIds(message.getGroupId()));
+        } else {
+            Set<Long> ids = Set.of(Long.valueOf(message.getSenderId()), Long.valueOf(message.getReceiverId()));
+            recipients = userRepository.findAllById(ids);
+        }
+        afterCommitSafely("message deletion broadcast", () -> {
+            for (User member : recipients) {
+                messagingTemplate.convertAndSendToUser(
+                        member.getUsername(), "/queue/message-deletions", event);
+            }
+        });
+    }
+
+    private void afterCommitSafely(String operation, Runnable action) {
+        TransactionCommitHooks.afterCommit(() -> {
+            try {
+                action.run();
+            } catch (RuntimeException ex) {
+                // A WebSocket/push failure must not imply the already committed message rolled back.
+                log.error("Post-commit chat side effect failed (operation={}, cause={})",
+                        operation, ex.getClass().getSimpleName(), ex);
+            }
+        });
+    }
+
+    private void sendChatPushSafely(Long receiverId, String title, String body, String relativeUrl) {
+        try {
+            pushNotificationService.sendChatMessageToUser(receiverId, title, body, relativeUrl);
+        } catch (Exception error) {
+            log.debug("FCM chat push skipped (receiverId={}, cause={})", receiverId,
+                    error.getClass().getSimpleName());
+        }
+    }
+
+    private String displayName(User user) {
+        if (user == null) return "Bạn bè";
+        if (user.getFullName() != null && !user.getFullName().isBlank()) return user.getFullName();
+        return user.getUsername() == null ? "Bạn bè" : user.getUsername();
+    }
+
+    private void attachChatMedia(ChatMessage message, Long uploaderId) {
+        if (mediaAssets == null || message == null || message.getMediaUrl() == null
+                || message.getMediaUrl().isBlank() || message.getId() == null || uploaderId == null) {
+            return;
+        }
+        mediaAssets.attachManagedReference(
+                message.getMediaUrl(), UploadPurpose.CHAT, String.valueOf(uploaderId),
+                "CHAT_MESSAGE", message.getId());
+    }
+
+    private void assertMediaAllowedForChat(String mediaUrl, String senderId) {
+        if (mediaUrl == null || mediaUrl.isBlank()) return;
+        if (mediaUploadModeration == null) {
+            throw new BadRequestException("Không thể xác minh media chat; vui lòng tải lên lại");
+        }
+        mediaUploadModeration.requirePurposeUrl(mediaUrl, UploadPurpose.CHAT, senderId, "image", "video");
+    }
+
+    private String notificationPreview(String content, String mediaUrl) {
+        String preview = content == null ? "" : content.trim();
+        if (preview.isBlank() && mediaUrl != null && !mediaUrl.isBlank()) preview = "Đã gửi tệp đính kèm";
+        if (preview.isBlank()) preview = "Bạn có tin nhắn mới";
+        return preview.length() > 140 ? preview.substring(0, 137) + "…" : preview;
+    }
+
+    private ChatMessageResponse toResponse(ChatMessage message) {
+        return chatMessageMapper.toResponse(message);
+    }
+
+    private ChatMessageResponse toResponse(ChatMessage message, User sender) {
+        return chatMessageMapper.toResponse(message, sender);
+    }
+
 }
