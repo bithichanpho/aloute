@@ -1,5 +1,7 @@
 # Index optimization retained without adding a Flyway version
 
+> **Superseded.** `V20261104_1__durable_call_sessions.sql` and `V20261110__reconcile_document_indexes.sql` now carry the call schema, helper fix and indexes through Flyway, so a fresh database also works. The manual scripts are no longer needed; running them first is harmless. See `docs/DATABASE_MIGRATIONS.md`.
+
 ## Requirement
 
 This project is intended to run against the user's existing Supabase database whose successful Flyway history currently ends at `20261109`. Do not add `V20261110` or reuse a prior version for different SQL. The current source includes 26 migrations from `V20260925` through `V20261109`.

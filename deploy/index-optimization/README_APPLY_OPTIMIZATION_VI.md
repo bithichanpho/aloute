@@ -1,5 +1,7 @@
 # Hướng dẫn áp dụng tối ưu index ALOUTE (không tạo migration mới)
 
+> **Đã thay thế.** `V20261104_1__durable_call_sessions.sql` và `V20261110__reconcile_document_indexes.sql` đã đưa schema cuộc gọi, bản sửa helper và các index vào Flyway, nên database mới cũng chạy được. Không cần chạy các script thủ công này nữa; nếu đã chạy trước thì cũng không sao. Xem `docs/DATABASE_MIGRATIONS.md`.
+
 ## Mục tiêu
 
 - Giữ nguyên toàn bộ migration Flyway hiện có trong project, từ `V20260925` đến `V20261109`.

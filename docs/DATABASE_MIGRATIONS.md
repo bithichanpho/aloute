@@ -15,14 +15,17 @@ The current merged source contains the CASO migration chain through `V20261108__
 Important newer migrations include:
 
 - `V20261102__postgres_jsonb_document_store.sql`: JSONB document storage and initial query indexes.
-- `V20261103__durable_call_sessions.sql` and `V20261104__call_history_idempotency.sql`: durable call state and idempotent call history.
+- `V20261103__iso_document_dates.sql` and `V20261104__indexable_document_dates.sql`: kept byte-for-byte because the shared database's history records their checksums. On that database the CASO call SQL is what actually ran under these versions.
+- `V20261104_1__durable_call_sessions.sql`: CASO's original `V20261103__durable_call_sessions.sql` and `V20261104__call_history_idempotency.sql`, made idempotent. A fresh database needs it before `V20261105`; on the shared database it is a no-op.
 - `V20261105__reserve_historical_call_ids.sql`: historical call-id reservation.
 - `V20261106__jsonb_temporal_query_keys.sql`: exact temporal-key functions and matching JSONB expression indexes; this is the index-oriented migration in the CASO source.
 - `V20261107__social_following_read_api.sql`: social-following read API/index support.
 - `V20261108__expand_account_email_length.sql`: safely widens owned email columns.
 - `V20261109__restore_jsonb_timestamp_functions.sql`: retained compatibility helper migration already applied in the previous working database.
 
-The earlier experimental `V20261110__reapply_document_query_indexes.sql` is intentionally absent because its application failed and rolled back. This package keeps the existing migration chain through `V20261109`; it does not add a new Flyway version. Four supplemental indexes adapted to the current temporal-key functions are available as a manually-run SQL script under `deploy/index-optimization/`, outside the Flyway migration directory. See `docs/INDEX_OPTIMIZATION_NO_NEW_FLYWAY_VERSION.md`.
+- `V20261110__reconcile_document_indexes.sql`: the helper and index changes from `deploy/index-optimization/01` and `02` (same names, `IF NOT EXISTS`), drops the unused `*_ts` indexes and restores the `V20261102` text indexes. Fresh and shared databases end with the same functions and indexes. It replaces the earlier experimental `V20261110__reapply_document_query_indexes.sql`, which failed and rolled back without leaving a history row.
+
+`spring.flyway.out-of-order` is `true` so the shared database, already at `20261109`, accepts `20261104.1`. Fresh databases still apply every version in order. Before deploying, confirm the shared history has no failed (`success = false`) row; Flyway refuses to migrate past one.
 
 ## Fresh-schema test
 

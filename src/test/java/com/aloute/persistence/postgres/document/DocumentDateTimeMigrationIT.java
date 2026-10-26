@@ -36,7 +36,8 @@ class DocumentDateTimeMigrationIT {
             assertEquals(before,jdbc.queryForObject(fingerprint,String.class));
             assertEquals(4,jdbc.queryForObject("SELECT count(*) FROM app_document_records",Integer.class));
             assertEquals(2,jdbc.queryForObject("SELECT count(*) FROM app_document_records WHERE aloute_jsonb_local_datetime_key(payload->'createdAt') IS NOT NULL",Integer.class));
-            assertEquals(14,jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE tablename='app_document_records' AND indexname LIKE '%_v2'",Integer.class));
+            // 14 from V20261106 plus the two repost indexes from V20261110.
+            assertEquals(16,jdbc.queryForObject("SELECT count(*) FROM pg_indexes WHERE tablename='app_document_records' AND indexname LIKE '%_v2'",Integer.class));
             assertNotNull(jdbc.queryForObject("SELECT to_regclass('ix_doc_posts_created')::text",String.class));
             new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(source))
                     .executeWithoutResult(tx -> {

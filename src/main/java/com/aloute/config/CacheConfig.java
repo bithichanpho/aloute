@@ -29,6 +29,7 @@ import java.util.Map;
 @EnableCaching
 public class CacheConfig implements CachingConfigurer {
     private static final Logger log = LoggerFactory.getLogger(CacheConfig.class);
+    private static final Duration SUGGESTED_USERS_TTL = Duration.ofMinutes(2);
 
     @Bean
     @Primary
@@ -43,6 +44,7 @@ public class CacheConfig implements CachingConfigurer {
                 "trendingTopics", defaults,
                 "feedPages", defaults.entryTtl((key,value) -> jitter(feedTtl)),
                 "relationshipIds", defaults.entryTtl((key,value) -> jitter(Duration.ofSeconds(30))),
+                "suggestedUsers", defaults.entryTtl((key,value) -> jitter(SUGGESTED_USERS_TTL)),
                 "userStatus", defaults.entryTtl((key,value) -> jitter(Duration.ofSeconds(15))),
                 "hostDashboard", defaults.entryTtl((key,value) -> jitter(hostDashboardTtl)));
         // SCAN clears cache entries in bounded batches; the default KEYS strategy can block Redis
@@ -78,8 +80,11 @@ public class CacheConfig implements CachingConfigurer {
         CaffeineCache hostDashboard = new CaffeineCache(
                 "hostDashboard", Caffeine.newBuilder().recordStats().maximumSize(400)
                         .expireAfterWrite(hostDashboardTtl).build());
+        CaffeineCache suggestedUsers = new CaffeineCache(
+                "suggestedUsers", Caffeine.newBuilder().maximumSize(5_000)
+                        .expireAfterWrite(SUGGESTED_USERS_TTL).build());
         SimpleCacheManager manager = new SimpleCacheManager();
-        manager.setCaches(List.of(trending, feeds, relationships, userStatus, hostDashboard));
+        manager.setCaches(List.of(trending, feeds, relationships, userStatus, hostDashboard, suggestedUsers));
         return manager;
     }
 

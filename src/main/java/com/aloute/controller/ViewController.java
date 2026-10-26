@@ -178,7 +178,7 @@ public class ViewController {
         model.addAttribute("feedGroups", feedGroups.stream().limit(8).toList());
         model.addAttribute("friends", mutualFriends);
         model.addAttribute("onlineFriendIds", onlineFriendIds);
-        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, 6, feedGroups));
+        model.addAttribute("suggestedUsers", discoveryService.getSuggestedUsers(userId, DiscoveryService.FEED_SUGGESTION_LIMIT, feedGroups));
         addCommonAttributes(model, userId, "feed");
         return "feed/index";
     }

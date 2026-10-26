@@ -18,6 +18,9 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
     validate-on-migrate: true
+    # V20261104.1 was added after 20261105-20261109 had already run on shared databases.
+    # Lets those databases apply it once; fresh databases still run every version in order.
+    out-of-order: true
   servlet:
     multipart:
       max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:50MB}
@@ -25,7 +28,9 @@ spring:
       file-size-threshold: 2MB
 
   thymeleaf:
-    cache: ${THYMELEAF_CACHE:false}
+    # Without the cache every request re-reads and re-parses all templates and fragments.
+    # Set THYMELEAF_CACHE=false only while editing templates locally.
+    cache: ${THYMELEAF_CACHE:true}
 
   web:
     resources:
@@ -40,7 +45,9 @@ spring:
             paths: /**
       cache:
         cachecontrol:
-          max-age: ${STATIC_CACHE_MAX_AGE:0s}
+          # Asset URLs built with @{...} are content-hashed by the resource chain above, so a long
+          # max-age is safe; with 0s every page load revalidated every CSS/JS/font file.
+          max-age: ${STATIC_CACHE_MAX_AGE:7d}
           cache-public: ${STATIC_CACHE_PUBLIC:false}
 
   jpa:

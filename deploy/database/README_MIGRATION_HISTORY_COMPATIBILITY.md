@@ -1,5 +1,7 @@
 # Flyway migration-history compatibility for the current Supabase database
 
+> **Superseded.** `V20261104_1__durable_call_sessions.sql` and `V20261110__reconcile_document_indexes.sql` now carry the call schema, helper fix and indexes through Flyway, so a fresh database also works. The manual scripts are no longer needed; running them first is harmless. See `docs/DATABASE_MIGRATIONS.md`.
+
 This package is aligned to the applied checksums observed in the existing `public.flyway_schema_history` logs on 2026-10-26. It is intended for that existing database, not as a clean-install baseline.
 
 ## Active migration files restored to applied variants

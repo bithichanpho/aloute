@@ -163,11 +163,7 @@ public class CommentService {
         if (cursor != null) {
             criteria = new Criteria().andOperator(
                     criteria,
-                    new Criteria().orOperator(
-                            Criteria.where("createdAt").gt(cursor.createdAt()),
-                            new Criteria().andOperator(
-                                    Criteria.where("createdAt").is(cursor.createdAt()),
-                                    Criteria.where("_id").gt(cursor.id()))));
+                    Criteria.keysetAfter("createdAt", cursor.createdAt(), "_id", cursor.id()));
         }
         Query query = Query.query(criteria)
                 .with(Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("_id")))

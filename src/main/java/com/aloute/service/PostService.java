@@ -482,11 +482,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
             List<Criteria> clauses = new ArrayList<>();
             clauses.add(ownTimelineCriteria(userId));
             if (cursor != null) {
-                clauses.add(new Criteria().orOperator(
-                        Criteria.where("createdAt").lt(cursor.createdAt()),
-                        new Criteria().andOperator(
-                                Criteria.where("createdAt").is(cursor.createdAt()),
-                                Criteria.where("id").lt(cursor.id()))));
+                clauses.add(Criteria.keysetBefore("createdAt", cursor.createdAt(), "id", cursor.id()));
             }
             Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                     .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
@@ -555,15 +551,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
             List<Criteria> clauses = new ArrayList<>();
             clauses.add(Criteria.where("userId").is(String.valueOf(userId)));
             if (cursor != null) {
-                clauses.add(
-                        new Criteria()
-                                .orOperator(
-                                        Criteria.where("createdAt").lt(cursor.createdAt()),
-                                        new Criteria()
-                                                .andOperator(
-                                                        Criteria.where("createdAt")
-                                                                .is(cursor.createdAt()),
-                                                        Criteria.where("_id").lt(cursor.id()))));
+                clauses.add(Criteria.keysetBefore("createdAt", cursor.createdAt(), "_id", cursor.id()));
             }
             Query query =
                     Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))

@@ -57,7 +57,8 @@ public class FriendService {
 
     @Caching(evict = {
         @CacheEvict(cacheNames = "relationshipIds", key = "'following:' + #currentUserId"),
-        @CacheEvict(cacheNames = "relationshipIds", key = "'followers:' + #targetUserId")
+        @CacheEvict(cacheNames = "relationshipIds", key = "'followers:' + #targetUserId"),
+        @CacheEvict(cacheNames = "suggestedUsers", key = "#currentUserId + ':' + T(com.aloute.service.DiscoveryService).FEED_SUGGESTION_LIMIT")
     })
     @org.springframework.transaction.annotation.Transactional
     public boolean toggleFollow(Long currentUserId, Long targetUserId) {

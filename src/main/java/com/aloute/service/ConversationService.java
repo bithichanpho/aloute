@@ -163,11 +163,7 @@ public class ConversationService {
                 scope, Criteria.where("hiddenForUserIds").nin(userIdString));
         Query after = new Query();
         if (cursor != null && !cursor.emptyPhase()) {
-            after = Query.query(new Criteria().orOperator(
-                    Criteria.where("sentAt").lt(cursor.sentAt()),
-                    new Criteria().andOperator(
-                            Criteria.where("sentAt").is(cursor.sentAt()),
-                            Criteria.where("_id").lt(cursor.id()))));
+            after = Query.query(Criteria.keysetBefore("sentAt", cursor.sentAt(), "_id", cursor.id()));
         }
         return documentStore.findLatestPerField(
                 Query.query(visible), "conversationId", after, ChatMessage.class,

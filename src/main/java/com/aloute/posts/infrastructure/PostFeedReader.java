@@ -53,11 +53,7 @@ public class PostFeedReader implements FeedPostReader {
                         Criteria.where("content").nin(null, ""))));
         if (!normalizedTag.isBlank()) clauses.add(Criteria.where("hashtags").is(normalizedTag));
         if (before != null) {
-            clauses.add(new Criteria().orOperator(
-                    Criteria.where("createdAt").lt(before.createdAt()),
-                    new Criteria().andOperator(
-                            Criteria.where("createdAt").is(before.createdAt()),
-                            Criteria.where("id").lt(before.id()))));
+            clauses.add(Criteria.keysetBefore("createdAt", before.createdAt(), "id", before.id()));
         }
         List<Post> loaded = followingOnly && streamFollowing
                 ? loadFollowingFeedBatch(clauses, viewerId, limit)
