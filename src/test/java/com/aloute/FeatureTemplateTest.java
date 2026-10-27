@@ -17,6 +17,20 @@ import java.util.Locale;
 
 class FeatureTemplateTest {
     @Test
+    void profileFixtureUsesUsernameLinksAndKeepsMediaSeparateFromDeferredReposts() throws Exception {
+        var own = savedPostFixtures().get(1); own.setId("owner-photo"); own.setUserId(1L); own.setUsername("tester");
+        String html = render("profile/view", false, "profile", java.util.Map.ofEntries(
+                java.util.Map.entry("activeNav", "profile"), java.util.Map.entry("isOwnProfile", true),
+                java.util.Map.entry("privateContentRestricted", false), java.util.Map.entry("userPosts", java.util.List.of(own)),
+                java.util.Map.entry("mediaPosts", java.util.List.of(own)), java.util.Map.entry("repostPosts", java.util.List.of()),
+                java.util.Map.entry("postCount", 42L), java.util.Map.entry("profilePostsHasMore", true),
+                java.util.Map.entry("profilePostsNextCursor", "owner-next"), java.util.Map.entry("profileRepostsDeferred", true),
+                java.util.Map.entry("profileRepostsHasMore", true), java.util.Map.entry("profileRepostsNextCursor", "")));
+        assertTrue(html.contains("href=\"/people/tester\""));
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target/profile-media-template.html"), html);
+    }
+
+    @Test
     void searchKeepsTabsAvailableBeforeTyping() throws Exception {
         String html = render("search/index", false, "search", java.util.Map.of("activeNav", "search"));
         assertTrue(html.contains("id=\"searchTabs\""));
@@ -166,7 +180,7 @@ class FeatureTemplateTest {
     void requestRowsRenderPublicAvatarNameProfileLinkAndBothActions() {
         var request=new com.aloute.dto.response.FollowRequestResponse("6:1",6L,1L,java.time.Instant.now(),"minhan","Minh An","/minhan.png");
         String html=render("features/index",false,"settings",java.util.Map.of("followRequests",java.util.List.of(request)));
-        for(String marker:java.util.List.of("Minh An","@minhan","src=\"/minhan.png\"","href=\"/profile/6\"","data-follow-request-actions=\"6:1\"")) assertTrue(html.contains(marker),marker);
+        for(String marker:java.util.List.of("Minh An","@minhan","src=\"/minhan.png\"","href=\"/people/minhan\"","data-follow-request-actions=\"6:1\"")) assertTrue(html.contains(marker),marker);
         assertFalse(html.contains("Tài khoản #6"));
     }
 
@@ -176,7 +190,7 @@ class FeatureTemplateTest {
                 java.time.Instant.now(), "minhan", "Minh <script>bad()</script>", "/minhan.png");
         String html = render("follow-requests/index", false, "follow-requests",
                 java.util.Map.of("followRequests", java.util.List.of(request), "requestsHasMore", false));
-        assertTrue(html.contains("href=\"/profile/6\""));
+        assertTrue(html.contains("href=\"/people/minhan\""));
         assertTrue(html.contains("Minh &lt;script&gt;bad()&lt;/script&gt;"));
         assertTrue(html.contains("data-follow-request-actions=\"6:1\""));
         assertTrue(html.contains("id=\"followRequestBadge\""));
@@ -188,7 +202,7 @@ class FeatureTemplateTest {
         var known = new com.aloute.dto.response.BlockedAccountResponse("1:6",1L,6L,java.time.Instant.now(),"alice","Alice <script>bad()</script>","/alice.png");
         var missing = new com.aloute.dto.response.BlockedAccountResponse("1:7",1L,7L,java.time.Instant.now(),null,null,null);
         String html = render("features/index",false,"settings",java.util.Map.of("blocks",java.util.List.of(known,missing)));
-        for (String marker : java.util.List.of("@alice","src=\"/alice.png\"","href=\"/profile/6\"","data-block-profile","data-action=\"unblock\"","Tài khoản không còn khả dụng","/images/avatar_default.png")) assertTrue(html.contains(marker),marker);
+        for (String marker : java.util.List.of("@alice","src=\"/alice.png\"","href=\"/people/alice\"","data-block-profile","data-action=\"unblock\"","Tài khoản không còn khả dụng","/images/avatar_default.png")) assertTrue(html.contains(marker),marker);
         assertTrue(html.contains("Alice &lt;script&gt;bad()&lt;/script&gt;"));
         assertFalse(html.contains("Alice <script>bad()</script>")); assertFalse(html.contains("Tài khoản #6"));
         java.nio.file.Files.writeString(java.nio.file.Path.of("target/blocked-accounts-template.html"),html);

@@ -9,7 +9,7 @@
       <div class="feature-list" id="followRequestList">
         <div class="feature-empty compact" th:if="${#lists.isEmpty(followRequests)}">Không có yêu cầu theo dõi đang chờ.</div>
         <div class="feature-list__row" th:each="request : ${followRequests}" th:attr="data-request-id=${request.id}">
-          <a class="feature-request-account" th:href="@{/profile/{id}(id=${request.followerId})}">
+          <a class="feature-request-account" th:href="${request.followerUsername != null} ? @{/people/{username}(username=${request.followerUsername})} : @{/profile/{id}(id=${request.followerId})}">
             <img class="follow-request-avatar" th:src="${request.followerAvatarUrl ?: '/images/avatar_default.png'}" alt="Ảnh đại diện" loading="lazy">
             <span class="follow-request-identity"><strong th:text="${!#strings.isEmpty(#strings.trim(request.followerFullName)) ? request.followerFullName : (!#strings.isEmpty(request.followerUsername) ? request.followerUsername : 'Tài khoản không còn khả dụng')}"></strong><small th:if="${!#strings.isEmpty(request.followerUsername)}" th:text="${'@' + request.followerUsername}"></small></span>
           </a>

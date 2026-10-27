@@ -45,7 +45,7 @@
                 <i class="bi" th:classappend="${activeNav == 'compose'} ? 'bi-plus-square-fill' : 'bi-plus-square'" aria-hidden="true"></i>
                 <span class="sidebar__label">Tạo</span>
             </a>
-            <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" th:href="@{/profile/me}" title="Trang cá nhân">
+            <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" th:href="${currentUser != null and currentUser.username != null} ? @{/people/{username}(username=${currentUser.username})} : @{/profile/me}" title="Trang cá nhân">
                 <img src="/images/avatar_default.png" th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}" alt="avatar"/>
                 <span class="sidebar__label">Trang cá nhân</span>
             </a>

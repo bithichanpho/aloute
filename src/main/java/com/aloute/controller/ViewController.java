@@ -222,17 +222,11 @@ public class ViewController {
     @GetMapping("/people/{username}")
     public String mentionedProfile(
             Authentication authentication,
-            @PathVariable @Size(min = 3, max = 50, message = "Tên đăng nhập không hợp lệ") String username) {
+            @PathVariable @Size(min = 3, max = 50, message = "Tên đăng nhập không hợp lệ") String username,
+            Model model) {
         Long viewer = requireLogin(authentication);
         if (viewer == null) return "redirect:/login";
-        return userService.searchUsers(username, viewer).stream()
-                .filter(u -> u.getUsername().equalsIgnoreCase(username))
-                .findFirst()
-                .map(u -> "redirect:/profile/" + u.getId())
-                .orElseThrow(
-                        () ->
-                                new ResourceNotFoundException(
-                                        "Không tìm thấy tài khoản"));
+        return renderProfile(userService.getProfileByUsername(username, viewer), viewer, model);
     }
 
     @GetMapping("/profile/me")
@@ -307,14 +301,7 @@ public class ViewController {
         model.addAttribute("repostPosts", Collections.emptyList());
         model.addAttribute(
                 "mediaPosts",
-                postPage.items().stream()
-                        .filter(
-                                post ->
-                                        (post.getImageUrl() != null
-                                                        && !post.getImageUrl().isBlank())
-                                                || (post.getVideoUrl() != null
-                                                        && !post.getVideoUrl().isBlank()))
-                        .collect(java.util.stream.Collectors.toList()));
+                profileMediaPosts(postPage.items(), userId));
         model.addAttribute("isOwnProfile", currentUserId.equals(userId));
         response.setHeader("X-Next-Cursor", postPage.nextCursor());
         response.setHeader("X-Has-More", Boolean.toString(postPage.hasMore()));
@@ -430,7 +417,18 @@ public class ViewController {
     }
 
     private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
-        UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
+        return renderProfile(userService.getProfile(profileUserId, currentUserId), currentUserId, model);
+    }
+
+    private List<PostResponse> profileMediaPosts(List<PostResponse> posts, Long ownerId) {
+        return posts.stream().filter(post -> ownerId.equals(post.getUserId()) && post.getRepostOf() == null)
+                .filter(post -> (post.getImageUrl() != null && !post.getImageUrl().isBlank())
+                        || (post.getVideoUrl() != null && !post.getVideoUrl().isBlank()))
+                .toList();
+    }
+
+    private String renderProfile(UserProfileDto profile, Long currentUserId, Model model) {
+        Long profileUserId = profile.getId();
         var postPage = postService.getPostsByUserCursor(profileUserId, currentUserId, null, 20);
         List<PostResponse> userPosts = postPage.items();
 
@@ -439,14 +437,7 @@ public class ViewController {
 
         model.addAttribute(
                 "mediaPosts",
-                userPosts.stream()
-                        .filter(
-                                post ->
-                                        (post.getImageUrl() != null
-                                                        && !post.getImageUrl().isBlank())
-                                                || (post.getVideoUrl() != null
-                                                        && !post.getVideoUrl().isBlank()))
-                        .collect(java.util.stream.Collectors.toList()));
+                profileMediaPosts(userPosts, profileUserId));
 
         model.addAttribute("profilePostsNextCursor", postPage.nextCursor());
         model.addAttribute("profilePostsHasMore", postPage.hasMore());

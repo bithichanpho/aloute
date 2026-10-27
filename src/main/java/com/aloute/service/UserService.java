@@ -101,6 +101,17 @@ public class UserService {
                         .findById(targetUserId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileResponse(user, currentUserId);
+    }
+
+    public UserProfileDto getProfileByUsername(String username, Long currentUserId) {
+        User user = userRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileResponse(user, currentUserId);
+    }
+
+    private UserProfileDto profileResponse(User user, Long currentUserId) {
+        Long targetUserId = user.getId();
         access.requireProfile(currentUserId, user);
         IFriendRepository.ProfileRelationshipStats relationshipStats =
                 friendRepository.getProfileRelationshipStats(targetUserId, currentUserId);

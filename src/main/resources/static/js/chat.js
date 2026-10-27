@@ -488,7 +488,7 @@
       name: fullName,
       avatar: avatar,
       online: online,
-      profileUrl: '/profile/' + encodeURIComponent(userId),
+      profileUrl: item.dataset.username ? '/people/' + encodeURIComponent(item.dataset.username) : '/profile/' + encodeURIComponent(userId),
       isGroup: false
     });
     const videoBtn = document.getElementById('videoCallBtn');

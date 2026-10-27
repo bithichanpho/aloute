@@ -88,7 +88,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
           { id: '9:1', followerId: 9, followerFullName: '<img src=x onerror=alert(1)>', followerUsername: 'safe' }
         ], nextCursor: '', hasMore: false });
         if (path.startsWith('/api/')) return reply(route, 0);
-        if (path === '/profile/6') return route.fulfill({ contentType: 'text/html', body: '<h1>Alice profile</h1>' });
+        if (path === '/people/alice' || path === '/profile/6') return route.fulfill({ contentType: 'text/html', body: '<h1>Alice profile</h1>' });
         return route.fulfill({ contentType: 'text/html; charset=utf-8', body: html('<div id="featureContent"><div id="followRequestList"></div><button data-action="load-more-requests">Xem thêm</button></div>') });
       });
       await page.goto('http://aloute.test/settings');
@@ -102,7 +102,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       assert.equal(await page.locator('[data-request-id="9:1"] strong').textContent(), '<img src=x onerror=alert(1)>');
       await page.locator('[data-request-id="7:1"] [data-follow-decision="accept"]').click();
       await page.waitForFunction(() => !document.querySelector('[data-request-id="7:1"]'));
-      await page.locator('a[href="/profile/6"]').click(); await page.waitForURL('http://aloute.test/profile/6');
+      await page.locator('a[href="/people/alice"]').click(); await page.waitForURL('http://aloute.test/people/alice');
       assert.deepEqual(errors, []);
       console.log(JSON.stringify({ scenario: 'cursor-avatar-labels-actions-profile', width, result: 'PASS' }));
       await page.close();

@@ -42,7 +42,7 @@
               <th:block th:each="actor,stat : ${post.recentReposters}">
                 <span th:if="${stat.index > 0 and !stat.last}">, </span>
                 <span th:if="${stat.index > 0 and stat.last}"> và </span>
-                <a class="post__reposter" th:href="@{'/profile/' + ${actor.userId}}" th:text="${actor.username}">username</a>
+                <a class="post__reposter" th:href="${actor.username != null} ? @{/people/{username}(username=${actor.username})} : @{'/profile/' + ${actor.userId}}" th:text="${actor.username}">username</a>
               </th:block>
             </span>
             <th:block th:if="${post.otherReposterCount > 0}">
@@ -62,7 +62,7 @@
           </div>
 
           <div class="post__avatar-col">
-            <a th:href="@{'/profile/' + ${mainUserId}}">
+            <a th:href="${mainUsername != null} ? @{/people/{username}(username=${mainUsername})} : @{'/profile/' + ${mainUserId}}">
               <img class="post__avatar"
                    th:src="${mainAvatarUrl != null ? mainAvatarUrl : '/images/avatar_default.png'}"
                    src="/images/avatar_default.png" alt="avatar" loading="lazy" decoding="async">
@@ -70,7 +70,7 @@
           </div>
           <div class="post__body">
             <div class="post__header">
-              <a th:href="@{'/profile/' + ${mainUserId}}" class="post__username" th:text="${mainUsername}">username</a>
+              <a th:href="${mainUsername != null} ? @{/people/{username}(username=${mainUsername})} : @{'/profile/' + ${mainUserId}}" class="post__username" th:text="${mainUsername}">username</a>
               <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
               <span class="post__moderation-status post__moderation-status--pending"
                     th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'PENDING'}"
@@ -129,7 +129,7 @@
             <div class="repost-card" th:if="${isQuote and !post.repostOf.deleted}">
               <div class="repost-card__header">
                 <img th:src="${post.repostOf.userAvatarUrl != null ? post.repostOf.userAvatarUrl : '/images/avatar_default.png'}" alt="avatar" loading="lazy" decoding="async">
-                <a th:href="@{'/profile/' + ${post.repostOf.userId}}" th:text="${post.repostOf.username}">username</a>
+                <a th:href="${post.repostOf.username != null} ? @{/people/{username}(username=${post.repostOf.username})} : @{'/profile/' + ${post.repostOf.userId}}" th:text="${post.repostOf.username}">username</a>
                 <span th:text="${post.repostOf.timeAgo}">6 giờ</span>
               </div>
               <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
@@ -199,7 +199,7 @@
 
       <div class="feed-suggestions__list" th:if="${not #lists.isEmpty(suggestedUsers)}">
         <div class="feed-suggestion" th:each="user : ${suggestedUsers}">
-          <a class="feed-suggestion__profile" th:href="@{'/profile/' + ${user.id}}">
+          <a class="feed-suggestion__profile" th:href="${user.username != null} ? @{/people/{username}(username=${user.username})} : @{'/profile/' + ${user.id}}">
             <img class="feed-suggestion__avatar"
                  th:src="${user.avatarUrl != null ? user.avatarUrl : '/images/avatar_default.png'}"
                  src="/images/avatar_default.png" alt="avatar" loading="lazy" decoding="async">

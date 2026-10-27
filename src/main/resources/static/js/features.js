@@ -277,7 +277,7 @@
     if (!list || !request || list.querySelector('[data-request-id="' + CSS.escape(String(request.id)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.requestId = request.id;
-    const link = element('a', null, 'feature-request-account'); link.href = '/profile/' + encodeURIComponent(request.followerId);
+    const link = element('a', null, 'feature-request-account'); link.href = Aloute.profileUrl(request.followerUsername, request.followerId);
     const avatar = element('img', null, 'follow-request-avatar'); avatar.src = request.followerAvatarUrl || '/images/avatar_default.png'; avatar.alt = 'Ảnh đại diện'; avatar.loading = 'lazy';
     const identity = element('div', null, 'follow-request-identity');
     identity.append(element('strong', request.followerFullName?.trim() || request.followerUsername || 'Tài khoản không còn khả dụng'));
@@ -300,7 +300,7 @@
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.blockId = block.targetId;
     const account = element('a', null, 'feature-request-account');
-    account.href = '/profile/' + encodeURIComponent(block.targetId);
+    account.href = Aloute.profileUrl(block.targetUsername, block.targetId);
     account.dataset.blockProfile = ''; account.title = 'Bỏ chặn để xem trang cá nhân';
     const avatar = element('img', null, 'follow-request-avatar');
     avatar.src = block.targetAvatarUrl || '/images/avatar_default.png'; avatar.alt = 'Ảnh đại diện'; avatar.loading = 'lazy';

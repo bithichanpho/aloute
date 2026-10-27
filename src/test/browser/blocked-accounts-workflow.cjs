@@ -52,7 +52,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       await row(6).waitFor({ state: 'visible' });
       assert.equal(await row(6).locator('strong').innerText(), 'Alice <script>bad()</script>');
       assert.equal(await row(6).locator('small').innerText(), '@alice');
-      assert.equal(await row(6).locator('a').getAttribute('href'), '/profile/6');
+      assert.equal(await row(6).locator('a').getAttribute('href'), '/people/alice');
       assert.equal(await row(7).locator('strong').innerText(), 'Tài khoản không còn khả dụng');
       assert.equal(await row(7).locator('img').getAttribute('src'), '/images/avatar_default.png');
       assert.equal(await page.evaluate(() => typeof window.bad), 'undefined');

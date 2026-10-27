@@ -2,6 +2,12 @@
 
 window.Aloute = (function () {
 
+  function profileUrl(username, legacyId) {
+    return username && String(username).trim()
+      ? '/people/' + encodeURIComponent(String(username).trim())
+      : '/profile/' + encodeURIComponent(legacyId == null ? 'me' : legacyId);
+  }
+
   function csrfTokenFromCookie() {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
     if (!match) return '';
@@ -682,7 +688,7 @@ window.Aloute = (function () {
     function appendActor(actor) {
       const link = document.createElement('a');
       link.className = 'post__repost-others-list__item';
-      link.href = '/profile/' + encodeURIComponent(actor.userId);
+      link.href = profileUrl(actor.username, actor.userId);
       const img = document.createElement('img');
       img.src = actor.userAvatarUrl || '/images/avatar_default.png';
       img.alt = '';
@@ -970,7 +976,7 @@ window.Aloute = (function () {
             if (index > 0) names.appendChild(document.createTextNode(index === 2 ? ' và ' : ', '));
             const link = document.createElement('a');
             link.className = 'post__reposter';
-            link.href = '/profile/' + encodeURIComponent(actor.userId);
+            link.href = profileUrl(actor.username, actor.userId);
             link.textContent = actor.username || 'người dùng';
             names.appendChild(link);
           });
@@ -1920,7 +1926,7 @@ window.Aloute = (function () {
 
     return (
       '<div class="discover-user">' +
-      '  <a class="discover-user__main" href="/profile/' + u.id + '">' +
+      '  <a class="discover-user__main" href="' + profileUrl(u.username, u.id) + '">' +
       '    <img class="discover-user__avatar" src="' + avatar + '" alt="avatar">' +
       '    <div class="discover-user__info">' +
       '      <div class="discover-user__name">' + escapeHtml(u.fullName || u.username) + '</div>' +
@@ -2013,11 +2019,11 @@ window.Aloute = (function () {
     return (
       '<div class="post" data-post-id="' + escapeHtml(post.id) + '" data-action-post-id="' + actionPostId + '">' +
       '  <div class="post__avatar-col">' +
-      '    <a href="/profile/' + post.userId + '"><img class="post__avatar" src="' + avatar + '" alt="avatar"></a>' +
+      '    <a href="' + profileUrl(post.username, post.userId) + '"><img class="post__avatar" src="' + avatar + '" alt="avatar"></a>' +
       '  </div>' +
       '  <div class="post__body">' +
       '    <div class="post__header">' +
-      '      <a href="/profile/' + post.userId + '" class="post__username">' + escapeHtml(post.username || '') + '</a>' +
+      '      <a href="' + profileUrl(post.username, post.userId) + '" class="post__username">' + escapeHtml(post.username || '') + '</a>' +
       '      <span class="post__time">' + when + '</span>' +
       renderVisibilityBadge(post.visibility, post.moderationStatus) +
       '    </div>' +
@@ -2070,7 +2076,7 @@ window.Aloute = (function () {
 
     return (
       '<div class="discover-user">' +
-      '  <a class="discover-user__main" href="/profile/' + u.id + '">' +
+      '  <a class="discover-user__main" href="' + profileUrl(u.username, u.id) + '">' +
       '    <img class="discover-user__avatar" src="' + escapeHtml(u.avatarUrl || DEFAULT_AVATAR) + '" alt="avatar">' +
       '    <div class="discover-user__info">' +
       '      <div class="discover-user__name">' + escapeHtml(u.fullName || u.username) + '</div>' +
@@ -2476,9 +2482,9 @@ window.Aloute = (function () {
       const payload = { fullName, bio };
       if (privateToggle) payload.privateAccount = privateToggle.checked;
       try {
-        await api('/api/users/me', { method: 'PUT', body: payload });
+        const updated = await api('/api/users/me', { method: 'PUT', body: payload });
         toast('Đã lưu thay đổi');
-        if (!form.closest('.settings-page')) window.location.href = '/profile/me';
+        if (!form.closest('.settings-page')) window.location.href = profileUrl(updated?.username, 'me');
       } catch (err) {
         toast(err.message, true);
       }
@@ -2627,6 +2633,8 @@ window.Aloute = (function () {
     const grid = document.getElementById('profileGrid');
     if (!grid) return;
     posts.forEach(post => {
+      // Repost fragments contain the original author's post, not this profile's own media.
+      if (!post.closest('#profilePosts') || post.classList.contains('post--repost')) return;
       const img = post.querySelector('.post__image');
       if (!img) return;
       const likeCount = post.querySelector('.action--like span');
@@ -2670,7 +2678,7 @@ window.Aloute = (function () {
             const hasAnyReposts = Boolean(button.parentElement && button.parentElement.querySelector('.post'));
             if (emptyState) emptyState.hidden = hasAnyReposts || response.headers.get('X-Has-More') === 'true';
           }
-          appendGridTiles(posts);
+          if (button.closest('#profilePosts')) appendGridTiles(posts);
           button.dataset.cursor = response.headers.get('X-Next-Cursor') || '';
           const hasMore = response.headers.get('X-Has-More') === 'true';
           button.hidden = !hasMore;
@@ -3296,7 +3304,7 @@ window.Aloute = (function () {
 
   document.addEventListener('aloute:follow-request-updated', function () { refreshNavBadges(true); });
 
-  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/follow-requests', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation', '/admin/dashboard'];
+  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/follow-requests', '/saved', '/profile/me', '/people', '/communities', '/settings', '/admin/moderation', '/admin/dashboard'];
   let restoringHistory = false;
   let softNavigationBusy = false;
 
@@ -3427,7 +3435,7 @@ window.Aloute = (function () {
   });
 
   return {
-    api, toast, timeAgo, escapeHtml, formatCount, csrfHeaders, fetchWithSessionRefresh,
+    api, toast, timeAgo, escapeHtml, formatCount, csrfHeaders, fetchWithSessionRefresh, profileUrl,
     onRealtimeReady, connectRealtime, refreshNavBadges,
     initFeedInteractions, initFollowButtons
   };

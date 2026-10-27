@@ -191,7 +191,7 @@
     const profile = document.createElement('a');
     profile.href = conversation.type === 'group'
       ? '/chat?groupId=' + encodeURIComponent(conversation.id)
-      : '/profile/' + encodeURIComponent(conversation.id);
+      : (conversation.username ? '/people/' + encodeURIComponent(conversation.username) : '/profile/' + encodeURIComponent(conversation.id));
     profile.className = 'friends-chat-window__header-btn';
     profile.title = conversation.type === 'group' ? 'Mở nhóm trong trang Tin nhắn' : 'Xem trang cá nhân';
     profile.setAttribute('aria-label', profile.title);

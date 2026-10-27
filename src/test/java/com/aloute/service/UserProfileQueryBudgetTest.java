@@ -17,6 +17,26 @@ import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 class UserProfileQueryBudgetTest {
+    @Test
+    void usernameLookupIsExactAndUsesTheSameProfileAuthorization() {
+        var users = mock(IUserRepository.class); var friends = mock(IFriendRepository.class);
+        var access = mock(ContentAccessService.class);
+        var target = new User(); target.setId(9L); target.setUsername("alice.name"); target.setActive(true);
+        when(users.findByUsernameIgnoreCase("ALICE.NAME")).thenReturn(Optional.of(target));
+        var service = new UserService(users, friends, mock(FriendService.class), mock(SimpMessagingTemplate.class), access);
+        assertEquals("alice.name", service.getProfileByUsername("ALICE.NAME", 9L).getUsername());
+        verify(users).findByUsernameIgnoreCase("ALICE.NAME");
+        verify(users, never()).findById(org.mockito.ArgumentMatchers.anyLong());
+        verify(access).requireProfile(9L, target);
+        org.mockito.Mockito.doThrow(new com.aloute.common.exception.ForbiddenException("blocked"))
+                .when(access).requireProfile(2L, target);
+        org.junit.jupiter.api.Assertions.assertThrows(com.aloute.common.exception.ForbiddenException.class,
+                () -> service.getProfileByUsername("ALICE.NAME", 2L));
+        verify(friends, never()).getProfileRelationshipStats(9L, 2L);
+        org.junit.jupiter.api.Assertions.assertThrows(com.aloute.common.exception.ResourceNotFoundException.class,
+                () -> service.getProfileByUsername("missing", 2L));
+    }
+
 
     @Test
     void profileUsesOneUserReadAndOneAggregateRelationshipQuery() {
