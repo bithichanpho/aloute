@@ -67,6 +67,16 @@ class MigrationHistoryContractTest {
     }
 
     @Test
+    void sharedNotificationDeliveryMigrationKeepsTheOtherSourcesChecksum() throws Exception {
+        Path path = DIRECTORY.resolve("V20261111__notification_outbox_in_app_delivery.sql");
+        assertTrue(Files.isRegularFile(path), "Keep the shared migration on both machines");
+        String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(normalized(Files.readAllBytes(path))));
+        assertEquals("3100d6b14cc402cc3c2b2a7b8e3574102e6bb58b5cad9e7b5dafb3ca156342d8", digest,
+                "Shared V20261111 changed; preserve the agreed SQL and add a later migration instead");
+    }
+
+    @Test
     void runtimeMigrationResourcesExactlyMatchCurrentSource() throws Exception {
         var runtime = new TreeMap<String,byte[]>();
         for (var resource : new PathMatchingResourcePatternResolver().getResources("classpath*:db/migration/*.sql")) {

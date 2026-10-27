@@ -328,7 +328,10 @@ public class AuthController {
     }
 
     private String normalizeRateIdentifier(String value) {
-        return value == null ? "unknown" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (value == null) return "unknown";
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalized.startsWith("@") && normalized.indexOf('@', 1) < 0
+                ? normalized.substring(1) : normalized;
     }
 
     private ResponseEntity<ApiResponse<AuthResponse>> withAuthCookie(

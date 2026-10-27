@@ -95,7 +95,11 @@
       </div>
     </div>
     <div class="feature-stack" th:if="${pageKind == 'moderation'}">
-      <div class="feature-empty" th:if="${#lists.isEmpty(moderationQueue['reports'])}"><strong>Không có báo cáo đang chờ</strong><span>Các bài viết và bình luận thông thường được đăng ngay.</span></div>
+      <div class="feature-empty" th:if="${#lists.isEmpty(moderationQueue['reports']) and #lists.isEmpty(moderationQueue['flaggedPosts'])}"><strong>Không có báo cáo đang chờ</strong><span>Báo cáo và bài viết cần xem xét sẽ xuất hiện tại đây.</span></div>
+      <article class="feature-card feature-review" th:each="post : ${moderationQueue['flaggedPosts']}" th:attr="data-review-type='POST',data-review-id=${post.id}">
+        <span class="feature-chip">Bài viết cần xem xét</span><p th:text="${post.content}"></p>
+        <div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Duyệt bài</button><button type="button" class="danger" data-action="hide-review">Ẩn bài</button></div>
+      </article>
       <article class="feature-card feature-review" th:each="item : ${moderationQueue['reports']}" th:attr="data-review-type=${item.targetType},data-review-id=${item.targetId},data-report-id=${item.id}"><span class="feature-chip">Báo cáo người dùng</span><h2 th:text="${item.targetType + ' · ' + item.targetId}">Nội dung</h2><p th:text="${item.reason}">Lý do</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Giữ nội dung</button><button type="button" class="danger" data-action="hide-review">Ẩn nội dung</button><button type="button" data-action="dismiss-review">Bác báo cáo</button></div></article>
       <nav class="feature-actions" th:if="${pageKind == 'moderation' and ((moderationQueue['page'] != null and moderationQueue['page'] > 0) or moderationQueue['hasMore'] == true)}" aria-label="Phân trang báo cáo vi phạm">
         <a th:if="${moderationQueue['page'] > 0}" th:href="@{/admin/moderation(page=${moderationQueue['page'] - 1})}">Trang trước</a>

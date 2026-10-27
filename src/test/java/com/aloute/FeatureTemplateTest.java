@@ -93,6 +93,19 @@ class FeatureTemplateTest {
     }
 
     @Test
+    void dedicatedFollowRequestPageKeepsPublicLabelsAndEscapesNames() throws Exception {
+        var request = new com.aloute.dto.response.FollowRequestResponse("6:1", 6L, 1L,
+                java.time.Instant.now(), "minhan", "Minh <script>bad()</script>", "/minhan.png");
+        String html = render("follow-requests/index", false, "follow-requests",
+                java.util.Map.of("followRequests", java.util.List.of(request), "requestsHasMore", false));
+        assertTrue(html.contains("href=\"/@minhan\""));
+        assertTrue(html.contains("Minh &lt;script&gt;bad()&lt;/script&gt;"));
+        assertTrue(html.contains("data-follow-request-actions=\"6:1\""));
+        assertTrue(html.contains("id=\"followRequestBadge\""));
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target/follow-requests-template.html"), html);
+    }
+
+    @Test
     void blockedRowsRenderLikeFollowRequestsAndEscapePublicNames() throws Exception {
         var known = new com.aloute.dto.response.BlockedAccountResponse("1:6",1L,6L,java.time.Instant.now(),"alice","Alice <script>bad()</script>","/alice.png");
         var missing = new com.aloute.dto.response.BlockedAccountResponse("1:7",1L,7L,java.time.Instant.now(),null,null,null);

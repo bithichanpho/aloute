@@ -14,6 +14,16 @@ import org.junit.jupiter.api.Test;
 
 class NotificationPostReaderTest {
     @Test
+    void moderationDeliveryLoadsOwnersInOneBulkLookup() {
+        var posts = mock(IPostRepository.class);
+        var post = new Post(); post.setId("post"); post.setUserId("7");
+        when(posts.findAllById(java.util.List.of("post", "missing"))).thenReturn(java.util.List.of(post));
+        var reader = new NotificationPostReader(posts, mock(ContentAccessService.class));
+        assertEquals(java.util.Map.of("post", 7L), reader.ownersOf(java.util.List.of("post", "missing", "post")));
+        verify(posts).findAllById(java.util.List.of("post", "missing"));
+        verifyNoMoreInteractions(posts);
+    }
+    @Test
     void reviewNotificationRequiresBothPendingPostAndCurrentCommunityPermission() {
         var posts = mock(IPostRepository.class);
         var visibility = mock(ContentAccessService.class);

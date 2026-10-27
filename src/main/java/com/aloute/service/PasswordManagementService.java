@@ -242,4 +242,13 @@ public class PasswordManagementService {
             TransactionCommitHooks.afterCommit(() -> authenticationUserCache.invalidate(username));
         }
     }
+
+    /** Optional REST field preserves older clients while validating confirmation when supplied. */
+    @Transactional
+    public void changePassword(Long userId, String currentPassword, String newPassword, String confirmation) {
+        if (confirmation != null && !java.util.Objects.equals(newPassword, confirmation)) {
+            throw new BadRequestException("Mật khẩu mới và phần nhập lại không khớp");
+        }
+        changePassword(userId, currentPassword, newPassword);
+    }
 }

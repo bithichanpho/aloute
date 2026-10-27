@@ -325,6 +325,12 @@
     accept.dataset.followDecision = 'accept'; reject.dataset.followDecision = 'reject';
     actions.append(accept, reject); row.append(link, actions); list.appendChild(row);
   }
+
+  function refreshRequestEmptyState() {
+    const list = document.getElementById('followRequestList');
+    if (list && !list.querySelector('.feature-list__row, .feature-empty'))
+      list.append(element('div', 'Không có yêu cầu theo dõi đang chờ.', 'feature-empty compact'));
+  }
   function appendBlockedAccount(list, block) {
     if (!list || !block || list.querySelector('[data-block-id="' + CSS.escape(String(block.targetId)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
@@ -480,8 +486,38 @@
       await api('/api/notifications/' + encodeURIComponent(id) + '/read', 'POST');
       row.classList.remove('notif-item--unread');
     }));
+    refreshRequestEmptyState();
     document.dispatchEvent(new CustomEvent('aloute:follow-request-resolved', { detail: { requestId, decision } }));
     if (reload) location.reload();
+  });
+  const requestHintVersions = new Map();
+  document.addEventListener('aloute:follow-request-updated', async event => {
+    const payload = event.detail || {};
+    if (String(payload.targetId) !== String(currentUser)) return;
+    const id = String(payload.followerId) + ':' + String(payload.targetId);
+    const generation = (requestHintVersions.get(id) || 0) + 1;
+    requestHintVersions.set(id, generation);
+    const list = document.getElementById('followRequestList');
+    if (payload.eventType === 'REQUEST_CREATED' && list) {
+      try {
+        const page = await api('/api/follow-requests/cursor?size=50');
+        if (requestHintVersions.get(id) !== generation) return;
+        const request = page.items?.find(item => item.id === id);
+        if (request) {
+          appendFollowRequest(list, request);
+          const row = [...list.querySelectorAll('.feature-list__row')].find(node => node.dataset.requestId === id);
+          if (row) list.prepend(row);
+        }
+      } catch (_) { /* Persisted request list remains available on reload/poll. */ }
+    } else if (payload.eventType === 'REQUEST_CANCELLED' || payload.eventType === 'REQUEST_DECIDED') {
+      document.querySelectorAll('[data-follow-request-actions]').forEach(group => {
+        if (group.dataset.followRequestActions !== id) return;
+        const row = group.closest('#followRequestList .feature-list__row');
+        if (row) row.remove();
+        else group.replaceWith(element('span', 'Yêu cầu đã được xử lý', 'follow-request-result'));
+      });
+      refreshRequestEmptyState();
+    }
   });
   document.addEventListener('aloute:navigated', initializePage);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

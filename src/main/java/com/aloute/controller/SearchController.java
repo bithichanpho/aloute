@@ -69,7 +69,7 @@ public class SearchController {
             throw new BadRequestException("Từ khóa tìm người dùng phải có ít nhất 2 ký tự");
         }
         Long currentUserId = SecurityUtils.currentUserId(authentication);
-        return ApiResponse.success(userService.searchUsers(searchable, currentUserId, page, size));
+        return ApiResponse.success(userService.searchUsersExcludingCurrentUser(searchable, currentUserId, page, size));
     }
 
     @GetMapping("/posts")

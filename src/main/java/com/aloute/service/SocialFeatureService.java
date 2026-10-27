@@ -53,6 +53,12 @@ public class SocialFeatureService {
     private final MediaAssetLifecycleService postMediaAssets;
     private final com.aloute.posts.api.PostEditing postEditing;
     private final com.aloute.posts.api.SavedPosts savedPosts;
+    private com.aloute.social.api.FollowRequestEvents requestEvents = (recipient, type, follower, target, status) -> {};
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFollowRequestEvents(com.aloute.social.api.FollowRequestEvents events) {
+        this.requestEvents = events;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public SocialFeatureService(
@@ -204,6 +210,10 @@ public class SocialFeatureService {
                 Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class));
     }
 
+    public long countRequests(Long user) {
+        return documentStore.count(Query.query(Criteria.where("targetId").is(user)), FollowRequest.class);
+    }
+
     public SocialCursorPage<com.aloute.dto.response.FollowRequestResponse> requests(
             Long user, String cursor, int requestedSize) {
         int size = Math.max(1, Math.min(100, requestedSize));
@@ -269,17 +279,27 @@ public class SocialFeatureService {
             // Declining only changes PostgreSQL. Delete directly rather than registering a PostgreSQL
             // side effect after a PostgreSQL transaction that has no SQL write to commit.
             documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
+            afterCommitSafely("follow-request rejection realtime", () -> publishFollowRequestDecision(user, request, false));
             return;
         }
-        if (!friends.existsByFollowerIdAndFollowedId(request.getFollowerId(), user)) {
+        boolean alreadyFollowing = friends.existsByFollowerIdAndFollowedId(request.getFollowerId(), user);
+        if (!alreadyFollowing) {
             friends.save(new Friend(request.getFollowerId(), user));
+            // Persist the acceptance intent in the same local transaction as the new follow edge.
+            notificationService.notifyFollowRequestAccepted(request.getFollowerId(), user);
         }
-        // If this PostgreSQL cleanup fails after the SQL commit, reconciliation observes the persisted
-        // Friend edge and safely removes the stale FollowRequest later.
-        afterCommitSafely("follow-request cleanup", () ->
-                documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class));
+        // JPA follow edge, JSONB request and outbox share one local PostgreSQL transaction.
+        // Only the best-effort UI hints run after commit.
+        documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
         posts.invalidateViewerFeedCache(user);
         posts.invalidateViewerFeedCache(request.getFollowerId());
+        afterCommitSafely("follow-request acceptance realtime", () -> publishFollowRequestDecision(user, request, true));
+    }
+
+    private void publishFollowRequestDecision(Long user, FollowRequest request, boolean accepted) {
+        requestEvents.publish(user, "REQUEST_DECIDED", request.getFollowerId(), user, "NONE");
+        requestEvents.publish(request.getFollowerId(), "STATE_CHANGED", request.getFollowerId(), user,
+                accepted ? "FOLLOWING" : "NONE");
     }
 
     public ContentReport report(Long user, String type, String id, String reason) {
@@ -336,13 +356,16 @@ public class SocialFeatureService {
         QueueSlice<ContentReport> reports = queueSlice(
                 Query.query(Criteria.where("status").is("OPEN")), ContentReport.class,
                 descendingCreated, offset, size);
+        QueueSlice<Post> flagged = queueSlice(Query.query(Criteria.where("moderationStatus").is(ModerationStatus.FLAGGED)),
+                Post.class, descendingCreated, offset, size);
         return Map.of(
                 "reports", reports.items(),
+                "flaggedPosts", flagged.items(),
                 "posts", List.of(),
                 "comments", List.of(),
                 "page", page,
                 "size", size,
-                "hasMore", reports.hasMore());
+                "hasMore", reports.hasMore() || flagged.hasMore());
     }
 
     private <T> QueueSlice<T> queueSlice(Query base, Class<T> type, Sort sort, long offset, int size) {
@@ -396,6 +419,9 @@ public class SocialFeatureService {
                     if (updated.getMatchedCount() == 0) {
                         throw new BadRequestException(
                                 "Trạng thái bài viết vừa thay đổi; vui lòng tải lại trước khi duyệt");
+                    }
+                    if (status == ModerationStatus.HIDDEN && current.getModerationStatus() != ModerationStatus.HIDDEN) {
+                        notificationService.notifyPostModerationResult(Long.valueOf(current.getUserId()), id, status.name());
                     }
                     if (status == ModerationStatus.HIDDEN && postMediaAssets != null) {
                         TransactionCommitHooks.afterCommit(() -> {

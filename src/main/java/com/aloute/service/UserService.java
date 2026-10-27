@@ -213,6 +213,17 @@ public class UserService {
 
     public List<UserProfileDto> searchUsers(
             String keyword, Long currentUserId, int page, int size) {
+        return searchUsersInternal(keyword, currentUserId, page, size, false);
+    }
+
+    /** Search-page results must not include the account that is performing the search. */
+    public List<UserProfileDto> searchUsersExcludingCurrentUser(
+            String keyword, Long currentUserId, int page, int size) {
+        return searchUsersInternal(keyword, currentUserId, page, size, true);
+    }
+
+    private List<UserProfileDto> searchUsersInternal(
+            String keyword, Long currentUserId, int page, int size, boolean excludeCurrentUser) {
         String term = keyword == null ? "" : keyword.trim();
         if (term.startsWith("@")) term = term.substring(1).trim();
         if (term.isBlank()) return Collections.emptyList();
@@ -220,15 +231,22 @@ public class UserService {
             throw new IllegalStateException("User search is not available without UserSearchQuery");
         }
 
-        // Ids come from the trigram-indexed query (newest first); entities are then loaded in one
-        // batch (with their role) and put back in that order.
+        // Exclude the current account in the indexed query before pagination, so it cannot occupy
+        // a result slot. Keep a defensive filter here as well for stale/mocked result sets.
         int safePage = Math.max(0, Math.min(10_000, page));
         int safeSize = Math.max(1, Math.min(50, size));
-        List<Long> ids = userSearchQuery.findIds(term, safePage, safeSize);
+        List<Long> ids = excludeCurrentUser && currentUserId != null
+                ? userSearchQuery.findIds(term, safePage, safeSize, currentUserId)
+                : userSearchQuery.findIds(term, safePage, safeSize);
         if (ids.isEmpty()) return Collections.emptyList();
         Map<Long, User> byId = new HashMap<>();
         for (User user : userRepository.findAllById(ids)) byId.put(user.getId(), user);
-        List<User> users = ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+        List<User> users = ids.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
+                .filter(user -> !excludeCurrentUser || currentUserId == null
+                        || !currentUserId.equals(user.getId()))
+                .toList();
         return toProfiles(users, currentUserId);
     }
 
@@ -265,6 +283,7 @@ public class UserService {
         Set<Long> followingSet = Collections.emptySet();
         Set<Long> followerSet = Collections.emptySet();
         Map<Long, String> closeStatuses = Collections.emptyMap();
+        Set<Long> pendingTargets = Collections.emptySet();
 
         if (currentUserId != null) {
 
@@ -278,6 +297,7 @@ public class UserService {
                             .collect(Collectors.toCollection(HashSet::new));
 
             closeStatuses = closeFriendService.getStatusMap(currentUserId, ids);
+            if (friendService != null) pendingTargets = friendService.pendingFollowRequestTargetIds(currentUserId, ids);
         }
 
         List<UserProfileDto> result = new java.util.ArrayList<>(users.size());
@@ -297,6 +317,7 @@ public class UserService {
             if (currentUserId != null) {
                 boolean iFollow = followingSet.contains(id);
                 dto.setFollowedByCurrentUser(iFollow);
+                dto.setFollowRequestPending(!iFollow && pendingTargets.contains(id));
                 dto.setMutualFriend(iFollow && followerSet.contains(id));
                 dto.setCloseFriendStatus(closeStatuses.getOrDefault(id, "NONE"));
                 dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, id));

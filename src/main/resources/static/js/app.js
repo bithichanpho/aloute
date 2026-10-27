@@ -183,6 +183,7 @@ window.Aloute = (function () {
   }
 
   let stompClient = null;
+  const receivedNotifications = new Set();
   let stompConnected = false;
   window.__alouteRealtimeConnected = false;
   let realtimeStarting = false;
@@ -254,9 +255,27 @@ window.Aloute = (function () {
 
       stompClient.subscribe('/user/queue/notifications', function (frame) {
         const notif = JSON.parse(frame.body);
-        toast(notif.message || 'Bạn có thông báo mới');
+        if (notif.id && receivedNotifications.has(String(notif.id))) return;
+        if (notif.id) {
+          receivedNotifications.add(String(notif.id));
+          if (receivedNotifications.size > 500) receivedNotifications.delete(receivedNotifications.values().next().value);
+        }
+        toast(notif.content || notif.message || 'Bạn có thông báo mới');
         document.dispatchEvent(new CustomEvent('aloute:notification', { detail: notif }));
         window.setTimeout(function () { refreshNavBadges(true); }, 180);
+      });
+
+      stompClient.subscribe('/user/queue/follow-requests', function (frame) {
+        try {
+          const payload = JSON.parse(frame.body);
+          if (String(payload.followerId) === String(document.body.dataset.currentUserId)) {
+            document.querySelectorAll('.btn-follow[data-user-id]').forEach(button => {
+              if (button.dataset.userId === String(payload.targetId)) applyFollowStatus(button, payload.status);
+            });
+          }
+          document.dispatchEvent(new CustomEvent('aloute:follow-request-updated', { detail: payload }));
+          refreshNavBadges(true);
+        } catch (_) { /* A malformed UI hint must not interrupt other realtime channels. */ }
       });
 
       stompClient.subscribe('/user/queue/messages', function (frame) {
@@ -1488,6 +1507,10 @@ window.Aloute = (function () {
     document.querySelectorAll('.btn-follow[data-user-id]').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
+      if (!btn.dataset.followStatus) {
+        const pending = btn.dataset.pending === 'true' || btn.textContent.includes('Đã gửi yêu cầu');
+        btn.dataset.followStatus = pending ? 'PENDING' : btn.classList.contains('is-following') ? 'FOLLOWING' : 'NONE';
+      }
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1498,7 +1521,7 @@ window.Aloute = (function () {
           applyFollowState(btn, following);
           if (!following) {
             const status = await api('/api/users/' + userId + '/follow-status');
-            if (status === 'PENDING') btn.textContent = 'Đã gửi yêu cầu · Hủy';
+            applyFollowStatus(btn, status);
           }
           if (btn.closest('.profile-cover')?.querySelector('.profile-cover__badge')) location.reload();
         } catch (err) {
@@ -1511,8 +1534,15 @@ window.Aloute = (function () {
   }
 
   function applyFollowState(btn, following) {
+    applyFollowStatus(btn, following ? 'FOLLOWING' : 'NONE');
+  }
+
+  function applyFollowStatus(btn, status) {
+    if (!['FOLLOWING', 'PENDING', 'NONE'].includes(status)) return;
+    const following = status === 'FOLLOWING';
+    btn.dataset.followStatus = status;
     btn.classList.toggle('is-following', following);
-    btn.textContent = following ? 'Đang theo dõi' : 'Theo dõi';
+    btn.textContent = following ? 'Đang theo dõi' : status === 'PENDING' ? 'Đã gửi yêu cầu · Hủy' : 'Theo dõi';
   }
 
   function initCloseFriendButtons() {
@@ -1969,7 +1999,7 @@ window.Aloute = (function () {
   function renderUserRow(u, options = {}) {
     const followBtn = u.followedByCurrentUser
       ? '<button class="btn-follow is-following" data-user-id="' + u.id + '">Đang theo dõi</button>'
-      : '<button class="btn-follow" data-user-id="' + u.id + '">Theo dõi</button>';
+      : '<button class="btn-follow" data-user-id="' + u.id + '" data-pending="' + Boolean(u.followRequestPending) + '">' + (u.followRequestPending ? 'Đã gửi yêu cầu · Hủy' : 'Theo dõi') + '</button>';
 
     let closeFriendBtn = '';
     if (u.mutualFriend && u.closeFriendStatus !== 'PENDING_RECEIVED') {
@@ -2409,7 +2439,7 @@ window.Aloute = (function () {
       try {
         await api('/api/users/me/change-password', {
           method: 'POST',
-          body: { currentPassword, newPassword }
+          body: { currentPassword, newPassword, confirmNewPassword }
         });
         successBox.textContent = 'Da doi mat khau thanh cong.';
         successBox.style.display = 'block';
@@ -3135,13 +3165,17 @@ window.Aloute = (function () {
     const readGeneration = notificationReadGeneration;
     navBadgeRequest = Promise.allSettled([
       api('/api/notifications/unread-count', { method: 'GET', cache: 'no-store' }),
-      api('/api/chat/unread-count', { method: 'GET', cache: 'no-store' })
+      api('/api/chat/unread-count', { method: 'GET', cache: 'no-store' }),
+      document.getElementById('followRequestBadge')
+        ? api('/api/follow-requests/unread-count', { method: 'GET', cache: 'no-store' }) : Promise.resolve(null)
     ]).then(function (results) {
       if (document.body.dataset.currentUserId !== userId) return;
       if (results[0].status === 'fulfilled' && readGeneration === notificationReadGeneration
           && notificationReadRequest?.userId !== userId)
         setBadge('notifUnreadBadge', results[0].value?.count ?? results[0].value ?? 0);
       if (results[1].status === 'fulfilled') setBadge('chatUnreadBadge', results[1].value?.count ?? results[1].value ?? 0);
+      if (results[2].status === 'fulfilled' && results[2].value != null)
+        setBadge('followRequestBadge', results[2].value.count ?? results[2].value ?? 0);
       navBadgeRefreshAt = Date.now();
     }).finally(function () {
       navBadgeRequest = null;
@@ -3152,7 +3186,7 @@ window.Aloute = (function () {
     });
   }
 
-  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation', '/admin/dashboard'];
+  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/follow-requests', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation', '/admin/dashboard'];
   let restoringHistory = false;
   let softNavigationBusy = false;
 

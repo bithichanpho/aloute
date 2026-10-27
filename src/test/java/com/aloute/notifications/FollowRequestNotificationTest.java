@@ -53,7 +53,7 @@ class FollowRequestNotificationTest {
         for(int i=0;i<2;i++) service.deliverQueued(event,Map.of(1L,"alice",2L,"bob"),Set.of(event.getReferenceId()));
         verify(repository,times(1)).save(any(Notification.class));
         var payload=org.mockito.ArgumentCaptor.forClass(com.aloute.dto.response.NotificationResponse.class);
-        verify(messaging,times(2)).convertAndSendToUser(eq("bob"),eq("/queue/notifications"),payload.capture());
+        verify(messaging,times(1)).convertAndSendToUser(eq("bob"),eq("/queue/notifications"),payload.capture());
         assertTrue(payload.getAllValues().stream().allMatch(n->"1:2".equals(n.getFollowRequestId())));
         verifyNoInteractions(users,requests);
     }

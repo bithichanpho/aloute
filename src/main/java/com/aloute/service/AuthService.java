@@ -216,7 +216,9 @@ public class AuthService {
 
     public AuthResponse login(LoginRequest request) {
 
-        String identifier = request.getUsername().trim();
+        String suppliedIdentifier = request.getUsername().trim();
+        final String identifier = suppliedIdentifier.startsWith("@") && suppliedIdentifier.indexOf('@', 1) < 0
+                ? suppliedIdentifier.substring(1) : suppliedIdentifier;
 
         var userOptional =
                 userRepository
@@ -499,6 +501,10 @@ public class AuthService {
 
     public void changePassword(Long userId, String currentPassword, String newPassword) {
         passwordManagementService.changePassword(userId, currentPassword, newPassword);
+    }
+
+    public void changePassword(Long userId, String currentPassword, String newPassword, String confirmation) {
+        passwordManagementService.changePassword(userId, currentPassword, newPassword, confirmation);
     }
 
 }

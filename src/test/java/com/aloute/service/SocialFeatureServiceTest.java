@@ -18,11 +18,23 @@ import java.time.Instant;
 import java.util.*;
 
 class SocialFeatureServiceTest {
+    @Test
+    void acceptedRequestQueuesOneNoticeAndRemovesRequestInTheSameUseCase() {
+        var request = new FollowRequest(); request.setId("6:1"); request.setFollowerId(6L); request.setTargetId(1L);
+        when(documentStore.findById("6:1", FollowRequest.class)).thenReturn(request);
+        service.decideFollow(1L, "6:1", true);
+        verify(notifications).notifyFollowRequestAccepted(6L, 1L);
+        verify(documentStore).remove(any(Query.class), eq(FollowRequest.class));
+        when(friends.existsByFollowerIdAndFollowedId(6L, 1L)).thenReturn(true);
+        service.decideFollow(1L, "6:1", true);
+        verify(notifications, times(1)).notifyFollowRequestAccepted(6L, 1L);
+    }
     private final PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
     private final ContentAccessService access = mock(ContentAccessService.class);
     private final IUserRepository users = mock(IUserRepository.class);
     private final IFriendRepository friends = mock(IFriendRepository.class);
     private final ICloseFriendRepository closeFriends = mock(ICloseFriendRepository.class);
+    private final NotificationService notifications = mock(NotificationService.class);
     private final SocialFeatureService service =
             new SocialFeatureService(
                     documentStore,
@@ -33,7 +45,7 @@ class SocialFeatureServiceTest {
                     mock(PostService.class),
                     mock(ModerationService.class),
                     mock(AuthRateLimitService.class),
-                    mock(NotificationService.class));
+                    notifications);
 
     @Test
     void requestCursorBatchesLabelsOnlyForTheReturnedPage() {

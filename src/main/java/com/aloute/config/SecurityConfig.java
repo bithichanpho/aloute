@@ -214,7 +214,7 @@ public class SecurityConfig {
                                 // All authenticated HTML application areas share the same entry point:
                                 // anonymous browser navigation redirects to /login; API requests still get JSON 401.
                                 .requestMatchers(
-                                                "/feed", "/chat", "/compose", "/activity", "/saved", "/hashtag/**",
+                                                "/feed", "/chat", "/compose", "/activity", "/follow-requests", "/saved", "/hashtag/**",
                                                 "/communities", "/communities/**", "/settings", "/settings/**")
                                         .authenticated()
                                 .requestMatchers(HttpMethod.GET, "/api/firebase/config")

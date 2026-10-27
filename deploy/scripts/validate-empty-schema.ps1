@@ -53,7 +53,7 @@ try {
     $env:ALOUTE_SCHEMA_VALIDATION_PASSWORD = $dbPassword
 
     Write-Host "Checking immutable SQL, fresh schema, upgrades, late compatibility migration and concurrent starts..."
-    $migrationMavenArguments = @('--batch-mode', '-Dtest=MigrationHistoryContractTest', '-Dit.test=FreshPostgresSchemaValidationIT,MigrationCompatibilityIT', '-DargLine=-Duser.timezone=UTC', 'verify')
+    $migrationMavenArguments = @('--batch-mode', '-Dtest=MigrationHistoryContractTest', '-Dit.test=FreshPostgresSchemaValidationIT,MigrationCompatibilityIT,NotificationOutboxMigrationIT,NotificationDeliveryTransactionIT', '-DargLine=-Duser.timezone=UTC', 'verify')
     if ($Offline) { $migrationMavenArguments = @('-o') + $migrationMavenArguments }
     & .\mvnw.cmd @migrationMavenArguments
     if ($LASTEXITCODE -ne 0) {

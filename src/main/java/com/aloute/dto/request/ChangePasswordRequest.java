@@ -13,6 +13,12 @@ public class ChangePasswordRequest {
     @StrongPassword
     private String newPassword;
 
+    @jakarta.validation.constraints.Size(max = 72)
+    private String confirmNewPassword;
+
+    public String getConfirmNewPassword() { return confirmNewPassword; }
+    public void setConfirmNewPassword(String value) { confirmNewPassword = value; }
+
     public String getCurrentPassword() {
         return currentPassword;
     }

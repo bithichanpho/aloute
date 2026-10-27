@@ -22,6 +22,13 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 class PasswordManagementServiceTest {
+    @Test
+    void mismatchedConfirmationIsRejectedBeforeAnyPasswordWrite() {
+        assertThrows(BadRequestException.class,
+                () -> service.changePassword(7L, "Old-Pass1!", "New-Pass1!", "Different-Pass1!"));
+        verify(users, never()).save(any());
+        verify(refreshTokens, never()).revokeAll(anyLong(), any());
+    }
     private static final String EMAIL = "alice@example.com";
     private static final String OTP = "123456";
 

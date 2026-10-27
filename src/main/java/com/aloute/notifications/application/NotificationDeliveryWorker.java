@@ -38,10 +38,12 @@ public class NotificationDeliveryWorker {
         if (events.isEmpty()) return;
         java.util.Map<Long, String> directory = java.util.Map.of();
         java.util.Set<String> pendingRequests = java.util.Set.of();
+        java.util.Map<String, Long> moderationOwners = java.util.Map.of();
         RuntimeException directoryFailure = null;
         try {
             directory = notificationService.deliveryDirectory(events);
             pendingRequests = notificationService.pendingDeliveryRequests(events);
+            moderationOwners = notificationService.moderationDeliveryOwners(events);
         } catch (RuntimeException failure) {
             directoryFailure = failure;
         }
@@ -50,6 +52,9 @@ public class NotificationDeliveryWorker {
                 if (directoryFailure != null) throw directoryFailure;
                 if ("FOLLOW_REQUEST".equals(event.getNotificationType()))
                     notificationService.deliverQueued(event, directory, pendingRequests);
+                else if ("POST_MODERATION_FLAGGED".equals(event.getNotificationType())
+                        || "POST_MODERATION_HIDDEN".equals(event.getNotificationType()))
+                    notificationService.deliverQueued(event, directory, pendingRequests, moderationOwners);
                 else notificationService.deliverQueued(event, directory);
                 repository.deleteById(event.getId());
             } catch (RuntimeException failure) {

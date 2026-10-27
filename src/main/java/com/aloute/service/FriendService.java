@@ -28,6 +28,12 @@ public class FriendService {
     private final IFriendRepository friendRepository;
     private final Notifications notificationService;
     private final FeedCacheInvalidator feedCacheInvalidator;
+    private com.aloute.social.api.FollowRequestEvents requestEvents = (recipient, type, follower, target, status) -> {};
+
+    @Autowired(required = false)
+    void setFollowRequestEvents(com.aloute.social.api.FollowRequestEvents events) {
+        this.requestEvents = events;
+    }
 
     @Autowired
     public FriendService(
@@ -78,6 +84,12 @@ public class FriendService {
                 notificationService.notify(targetUserId, currentUserId, "FOLLOW_REQUEST",
                         id + "|" + request.getCreatedAt(), "đã gửi yêu cầu theo dõi bạn");
             }
+            com.aloute.common.util.TransactionCommitHooks.afterCommit(() -> {
+                String status = pending == null ? "PENDING" : "NONE";
+                requestEvents.publish(targetUserId, pending == null ? "REQUEST_CREATED" : "REQUEST_CANCELLED",
+                        currentUserId, targetUserId, status);
+                requestEvents.publish(currentUserId, "STATE_CHANGED", currentUserId, targetUserId, status);
+            });
             return false;
         }
         if (currentUserId.equals(targetUserId)) {
@@ -137,6 +149,17 @@ public class FriendService {
                         com.aloute.persistence.postgres.document.Criteria.where("_id")
                                 .is(currentUserId + ":" + targetUserId)),
                 FollowRequest.class);
+    }
+
+    public java.util.Set<Long> pendingFollowRequestTargetIds(Long followerId, List<Long> targetIds) {
+        if (followerId == null || targetIds == null || targetIds.isEmpty()) return java.util.Set.of();
+        return documentStore.find(com.aloute.persistence.postgres.document.Query.query(
+                new com.aloute.persistence.postgres.document.Criteria().andOperator(
+                        com.aloute.persistence.postgres.document.Criteria.where("followerId").is(followerId),
+                        com.aloute.persistence.postgres.document.Criteria.where("targetId").in(targetIds)))
+                .limit(targetIds.size()), com.aloute.model.document.FollowRequest.class).stream()
+                .map(com.aloute.model.document.FollowRequest::getTargetId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     @Cacheable(cacheNames = "relationshipIds", key = "'followers:' + #userId")

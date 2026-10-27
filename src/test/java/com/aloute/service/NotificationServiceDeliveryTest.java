@@ -1,6 +1,7 @@
 package com.aloute.service;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -21,29 +22,42 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 class NotificationServiceDeliveryTest {
     @Test
-    void doesNotDuplicateRealtimeDeliveryWhenReliablePushFails() {
+    void retriesExternalPushWithoutDuplicatingCheckpointedRealtimeDelivery() {
         Fixture fixture = fixture();
         org.mockito.Mockito.doThrow(new IllegalStateException("temporary FCM outage"))
                 .when(fixture.push)
                 .sendNotificationToUserReliably(2L, "ALOUTE", "alice liked", "/activity");
 
         assertThrows(IllegalStateException.class, () -> fixture.service.deliverQueued(fixture.event));
+        assertThrows(IllegalStateException.class, () -> fixture.service.deliverQueued(fixture.event));
 
-        verify(fixture.messaging, never())
+        verify(fixture.messaging, org.mockito.Mockito.times(1))
                 .convertAndSendToUser(any(String.class), any(String.class), any());
+        verify(fixture.outbox).markInAppDelivered(eq(fixture.event.getId()), any());
     }
 
     @Test
-    void emitsRealtimeNotificationOnlyAfterReliablePushIsAccepted() {
+    void checkpointsRealtimeBeforeAttemptingExternalPush() {
         Fixture fixture = fixture();
 
         fixture.service.deliverQueued(fixture.event);
 
-        var order = inOrder(fixture.push, fixture.messaging);
-        order.verify(fixture.push)
-                .sendNotificationToUserReliably(2L, "ALOUTE", "alice liked", "/activity");
+        var order = inOrder(fixture.push, fixture.messaging, fixture.outbox);
         order.verify(fixture.messaging)
                 .convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
+        order.verify(fixture.outbox).markInAppDelivered(eq(fixture.event.getId()), any());
+        order.verify(fixture.push)
+                .sendNotificationToUserReliably(2L, "ALOUTE", "alice liked", "/activity");
+    }
+
+    @Test
+    void checkpointFailureDoesNotMarkTheEventDeliveredInMemoryOrProceedToPush() {
+        Fixture fixture = fixture();
+        org.mockito.Mockito.doThrow(new IllegalStateException("checkpoint unavailable"))
+                .when(fixture.outbox).markInAppDelivered(eq(fixture.event.getId()), any());
+        assertThrows(IllegalStateException.class, () -> fixture.service.deliverQueued(fixture.event));
+        assertNull(fixture.event.getInAppDeliveredAt());
+        verify(fixture.push, never()).sendNotificationToUserReliably(any(), any(), any(), any());
     }
 
     private Fixture fixture() {
@@ -84,12 +98,12 @@ class NotificationServiceDeliveryTest {
         saved.setType("LIKE");
         saved.setContent("alice liked");
         when(notifications.findByOutboxEventId(event.getId())).thenReturn(Optional.of(saved));
-        return new Fixture(service, messaging, push, event);
+        return new Fixture(service, messaging, push, event, outbox);
     }
 
     private record Fixture(
             NotificationService service,
             SimpMessagingTemplate messaging,
             PushNotificationService push,
-            NotificationOutboxEvent event) {}
+            NotificationOutboxEvent event, NotificationOutboxService outbox) {}
 }

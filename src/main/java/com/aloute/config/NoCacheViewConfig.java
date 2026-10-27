@@ -41,6 +41,7 @@ public class NoCacheViewConfig implements WebMvcConfigurer {
                         "/profile/**",
                         "/@*",
                         "/people/**",
+                        "/follow-requests",
                         "/compose",
                         "/search",
                         "/activity",

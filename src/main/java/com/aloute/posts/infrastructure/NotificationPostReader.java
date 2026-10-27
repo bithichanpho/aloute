@@ -29,6 +29,17 @@ public class NotificationPostReader implements PostNotificationLookup {
         return posts.findById(postId).map(post -> Long.valueOf(post.getUserId()));
     }
 
+    public java.util.Map<String, Long> ownersOf(java.util.Collection<String> postIds) {
+        if (postIds == null || postIds.isEmpty()) return java.util.Map.of();
+        var ids = postIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        var owners = new java.util.HashMap<String, Long>();
+        for (int start = 0; start < ids.size(); start += 500) {
+            for (var post : posts.findAllById(ids.subList(start, Math.min(start + 500, ids.size()))))
+                owners.put(post.getId(), Long.valueOf(post.getUserId()));
+        }
+        return java.util.Map.copyOf(owners);
+    }
+
     public boolean isReadable(String postId, Long viewerId) {
         return postId != null && posts.findById(postId)
                 .filter(post -> access.canRead(post, viewerId)).isPresent();

@@ -68,8 +68,10 @@ class NotificationApplicationServiceTest {
         service.deliverQueued(event);
 
         verify(repository, times(1)).save(argThat(n -> event.getId().equals(n.getOutboxEventId())));
-        verify(messaging, times(2)).convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
-        // External sends remain at-least-once; the persisted user-visible notification is deduped.
+        verify(messaging, times(1)).convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
+        verify(outbox).markInAppDelivered(eq(event.getId()), any());
+        verify(push, times(2)).sendNotificationToUserReliably(anyLong(), anyString(), anyString(), anyString());
+        // Persisted checkpoint avoids resending in-app delivery when FCM alone is retried.
     }
 
     @Test
@@ -150,6 +152,48 @@ class NotificationApplicationServiceTest {
     private void allowProfiles() {
         when(access.profileVisible(2L, 1L)).thenReturn(true);
         when(access.profileVisible(1L, 2L)).thenReturn(true);
+    }
+
+    @Test
+    void acceptanceNoticePreservesBlockChecksAndUsesTheOutbox() {
+        service.notifyFollowRequestAccepted(2L, 1L);
+        verifyNoInteractions(outbox);
+        allowProfiles();
+        service.notifyFollowRequestAccepted(2L, 1L);
+        verify(outbox).enqueue(eq(2L), eq(1L), eq("FOLLOW_REQUEST_ACCEPTED"), eq("1"), anyString());
+    }
+
+    @Test
+    void moderationNoticeCanOnlyTargetTheCurrentPostOwner() {
+        when(posts.ownerOf("post")).thenReturn(Optional.of(1L));
+        service.notifyPostModerationResult(2L, "post", "HIDDEN");
+        service.notifyPostModerationResult(1L, "post", "APPROVED");
+        verifyNoInteractions(outbox);
+        service.notifyPostModerationResult(1L, "post", "HIDDEN");
+        verify(outbox).enqueue(eq(1L), eq(1L), eq("POST_MODERATION_HIDDEN"), eq("post"), anyString());
+    }
+
+    @Test
+    void staleModerationNoticeIsDroppedWhenThePostIsGoneOrOwnedBySomeoneElse() {
+        var event = event("POST_MODERATION_HIDDEN");
+        event.setSenderId(2L);
+        when(posts.ownerOf("post")).thenReturn(Optional.of(3L));
+        service.deliverQueued(event);
+        verifyNoInteractions(repository, users, messaging, push, outbox);
+    }
+
+    @Test
+    void moderationBatchRechecksOwnersWithoutPerEventQueries() {
+        var first = event("POST_MODERATION_HIDDEN"); first.setReceiverId(1L);
+        var second = event("POST_MODERATION_FLAGGED"); second.setSenderId(2L); second.setReferenceId("other");
+        when(posts.ownersOf(List.of("post", "other"))).thenReturn(java.util.Map.of("post", 1L, "other", 2L));
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var owners = service.moderationDeliveryOwners(List.of(first, second));
+        for (var event : List.of(first, second))
+            service.deliverQueued(event, java.util.Map.of(1L, "alice", 2L, "bob"), Set.of(), owners);
+        verify(posts).ownersOf(List.of("post", "other"));
+        verify(posts, never()).ownerOf(any());
+        verify(messaging, times(2)).convertAndSendToUser(anyString(), eq("/queue/notifications"), any());
     }
 
     private NotificationOutboxEvent event(String type) {

@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -82,7 +83,8 @@ class PostModerationWorkerTest {
         worker.moderate("post-1").join();
 
         assertEquals(ModerationStatus.FLAGGED, finalStatus());
-        verifyNoInteractions(notifications);
+        verify(notifications).notifyPostModerationResult(1L, "post-1", "FLAGGED");
+        verifyNoMoreInteractions(notifications);
     }
 
     @Test
@@ -94,7 +96,8 @@ class PostModerationWorkerTest {
         worker.moderate("post-1").join();
 
         assertEquals(ModerationStatus.HIDDEN, finalStatus());
-        verifyNoInteractions(notifications);
+        verify(notifications).notifyPostModerationResult(1L, "post-1", "HIDDEN");
+        verifyNoMoreInteractions(notifications);
     }
 
     @Test
@@ -120,7 +123,8 @@ class PostModerationWorkerTest {
         Map<String, Object> set = lastUpdateSection("$set");
         assertEquals(ModerationStatus.FLAGGED, set.get("moderationStatus"));
         assertNotNull(set.get("moderationFailureReason"));
-        verifyNoInteractions(notifications);
+        verify(notifications).notifyPostModerationResult(1L, "post-1", "FLAGGED");
+        verifyNoMoreInteractions(notifications);
     }
 
     @Test

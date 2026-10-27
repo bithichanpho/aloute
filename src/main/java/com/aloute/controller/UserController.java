@@ -173,7 +173,11 @@ public class UserController {
     public ApiResponse<Void> changePassword(
             Authentication authentication, @Valid @RequestBody ChangePasswordRequest request) {
         Long userId = requireUserId(authentication);
-        authService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword());
+        if (request.getConfirmNewPassword() == null) {
+            authService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword());
+        } else {
+            authService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword(), request.getConfirmNewPassword());
+        }
         return ApiResponse.success("Đã đổi mật khẩu thành công", null);
     }
 

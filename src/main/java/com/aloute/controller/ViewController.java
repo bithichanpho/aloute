@@ -365,6 +365,19 @@ public class ViewController {
         return "activity/index";
     }
 
+    @GetMapping("/follow-requests")
+    public String followRequests(Authentication authentication, Model model) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+        var page = socialFeatureService.requests(userId, null, 50);
+        model.addAttribute("followRequests", page.items());
+        model.addAttribute("requestsNextCursor", page.nextCursor());
+        model.addAttribute("requestsHasMore", page.hasMore());
+        model.addAttribute("pageKind", "follow-requests");
+        addCommonAttributes(model, userId, "follow-requests");
+        return "follow-requests/index";
+    }
+
     @GetMapping("/saved")
     public String saved(Authentication authentication, Model model) {
         Long userId = requireLogin(authentication);
@@ -513,6 +526,7 @@ public class ViewController {
 
         model.addAttribute("unreadCount", 0L);
         model.addAttribute("unreadMessageCount", 0L);
+        model.addAttribute("followRequestCount", socialFeatureService.countRequests(currentUserId));
     }
 
     private boolean isLoggedIn(Authentication authentication) {

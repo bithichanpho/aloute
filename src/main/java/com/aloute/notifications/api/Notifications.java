@@ -8,6 +8,9 @@ import java.util.List;
 public interface Notifications {
     void notify(Long receiverId, Long senderId, String type, String referenceId, String content);
     void notifyPostLiked(String postId, Long likerId);
+    void notifyFollowRequestAccepted(Long requesterId, Long acceptedByUserId);
+    /** Status is an immutable boundary value; callers retain ownership of their domain enum. */
+    void notifyPostModerationResult(Long authorId, String postId, String status);
     List<NotificationResponse> getMyNotifications(Long userId);
     NotificationCursorPage getMyNotifications(Long userId, Long beforeId, int size);
     long countUnread(Long userId);

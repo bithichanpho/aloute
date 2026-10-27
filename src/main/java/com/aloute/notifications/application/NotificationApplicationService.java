@@ -1,6 +1,7 @@
 package com.aloute.notifications.application;
 
 import com.aloute.common.exception.ResourceNotFoundException;
+import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.response.NotificationCursorPage;
 import com.aloute.dto.response.NotificationResponse;
 import com.aloute.model.entity.Notification;
@@ -18,6 +19,8 @@ import com.aloute.social.api.FollowRequestLookup;
 import com.aloute.users.api.UserDirectory;
 
 public class NotificationApplicationService implements Notifications {
+    private static final java.util.Set<String> MODERATION_NOTICES = java.util.Set.of(
+            "POST_MODERATION_FLAGGED", "POST_MODERATION_HIDDEN");
     private static final Logger log = LoggerFactory.getLogger(NotificationApplicationService.class);
 
     private final ProfileVisibility access;
@@ -61,6 +64,36 @@ public class NotificationApplicationService implements Notifications {
                 "đã thích bài viết của bạn"));
     }
 
+    @Override
+    public void notifyFollowRequestAccepted(Long requesterId, Long acceptedByUserId) {
+        notify(requesterId, acceptedByUserId, "FOLLOW_REQUEST_ACCEPTED",
+                String.valueOf(acceptedByUserId), "đã chấp nhận yêu cầu theo dõi của bạn");
+    }
+
+    @Override
+    public void notifyPostModerationResult(Long authorId, String postId, String status) {
+        if (authorId == null || postId == null || postId.isBlank()) return;
+        if (!posts.ownerOf(postId).filter(authorId::equals).isPresent()) return;
+        String type;
+        String content;
+        if ("FLAGGED".equals(status)) {
+            type = "POST_MODERATION_FLAGGED";
+            content = "Bài viết của bạn đang bị hạn chế hiển thị và cần được xem xét.";
+        } else if ("HIDDEN".equals(status)) {
+            type = "POST_MODERATION_HIDDEN";
+            content = "Bài viết của bạn đã bị ẩn sau khi kiểm duyệt.";
+        } else return;
+        enqueueDurably(authorId, authorId, type, postId, content);
+    }
+
+    private void enqueueDurably(Long receiverId, Long senderId, String type, String referenceId, String content) {
+        if (TransactionCommitHooks.isExecutingAfterCommitCallback()) {
+            outboxService.enqueueAfterCommit(receiverId, senderId, type, referenceId, content);
+        } else {
+            outboxService.enqueue(receiverId, senderId, type, referenceId, content);
+        }
+    }
+
     /**
      * Persists a delivery intent instead of calling WebSocket/FCM inline. When invoked from a JPA
      * transaction this write participates in that transaction; otherwise repository.save starts a
@@ -72,7 +105,7 @@ public class NotificationApplicationService implements Notifications {
                 || !access.profileVisible(receiverId, senderId)
                 || !access.profileVisible(senderId, receiverId)) return;
         try {
-            outboxService.enqueue(receiverId, senderId, type, referenceId, content);
+            enqueueDurably(receiverId, senderId, type, referenceId, content);
         } catch (RuntimeException failure) {
             log.warn(
                     "Could not persist notification outbox event (receiverId={}, type={}, cause={})",
@@ -96,11 +129,11 @@ public class NotificationApplicationService implements Notifications {
             userDirectory.username(event.getSenderId()).ifPresent(name -> names.put(event.getSenderId(), name));
             userDirectory.username(event.getReceiverId()).ifPresent(name -> names.put(event.getReceiverId(), name));
             return names;
-        }, null);
+        }, null, null);
     }
 
     public void deliverQueued(NotificationOutboxEvent event, java.util.Map<Long, String> directory) {
-        deliverQueued(event, () -> directory, null);
+        deliverQueued(event, () -> directory, null, null);
     }
 
     public java.util.Set<String> pendingDeliveryRequests(List<NotificationOutboxEvent> events) {
@@ -111,13 +144,28 @@ public class NotificationApplicationService implements Notifications {
 
     public void deliverQueued(NotificationOutboxEvent event, java.util.Map<Long, String> directory,
             java.util.Set<String> pendingRequests) {
-        deliverQueued(event, () -> directory, pendingRequests);
+        deliverQueued(event, () -> directory, pendingRequests, null);
+    }
+
+    public java.util.Map<String, Long> moderationDeliveryOwners(List<NotificationOutboxEvent> events) {
+        var ids = events.stream().filter(event -> MODERATION_NOTICES.contains(event.getNotificationType()))
+                .map(NotificationOutboxEvent::getReferenceId).filter(java.util.Objects::nonNull).distinct().toList();
+        return ids.isEmpty() ? java.util.Map.of() : posts.ownersOf(ids);
+    }
+
+    public void deliverQueued(NotificationOutboxEvent event, java.util.Map<Long, String> directory,
+            java.util.Set<String> pendingRequests, java.util.Map<String, Long> owners) {
+        deliverQueued(event, () -> directory, pendingRequests, owners);
     }
 
     private void deliverQueued(NotificationOutboxEvent event,
             java.util.function.Supplier<java.util.Map<Long, String>> directory,
-            java.util.Set<String> pendingRequests) {
-        if (event.getReceiverId().equals(event.getSenderId())
+            java.util.Set<String> pendingRequests, java.util.Map<String, Long> owners) {
+        boolean moderationNotice = MODERATION_NOTICES.contains(event.getNotificationType());
+        if (moderationNotice) {
+            Long owner = owners == null ? posts.ownerOf(event.getReferenceId()).orElse(null) : owners.get(event.getReferenceId());
+            if (!event.getReceiverId().equals(event.getSenderId()) || !event.getReceiverId().equals(owner)) return;
+        } else if (event.getReceiverId().equals(event.getSenderId())
                 || !access.profileVisible(event.getReceiverId(), event.getSenderId())
                 || !access.profileVisible(event.getSenderId(), event.getReceiverId())) return;
 
@@ -147,19 +195,22 @@ public class NotificationApplicationService implements Notifications {
                     notification.setSenderId(event.getSenderId());
                     notification.setType(event.getNotificationType());
                     notification.setReferenceId(event.getReferenceId());
-                    notification.setContent(actorName + " " + event.getContent());
+                    notification.setContent(moderationNotice ? event.getContent() : actorName + " " + event.getContent());
                     return notificationRepository.save(notification);
                 });
 
-        // Let transient Firebase failures keep the event in the outbox for retry. The database
-        // notification remains idempotent because it is keyed by outboxEventId. Send the realtime
-        // event only after Firebase accepts the push; otherwise every retry would duplicate the
-        // WebSocket notification for an online receiver.
+        // Persisted checkpoint separates in-app delivery from external push retries. A crash
+        // between emitting the WebSocket frame and checkpointing still permits a duplicate;
+        // clients dedupe by the stable notification id. This is not an exactly-once guarantee.
+        String recipient = names.get(event.getReceiverId());
+        if (event.getInAppDeliveredAt() == null && recipient != null && !recipient.isBlank()) {
+            messagingTemplate.convertAndSendToUser(recipient, "/queue/notifications", toResponse(saved));
+            var deliveredAt = java.time.LocalDateTime.now();
+            outboxService.markInAppDelivered(event.getId(), deliveredAt);
+            event.setInAppDeliveredAt(deliveredAt);
+        }
         pushNotificationService.sendNotificationToUserReliably(
                 event.getReceiverId(), "ALOUTE", saved.getContent(), "/activity");
-        java.util.Optional.ofNullable(names.get(event.getReceiverId())).ifPresent(username ->
-                messagingTemplate.convertAndSendToUser(
-                        username, "/queue/notifications", toResponse(saved)));
     }
 
     public List<NotificationResponse> getMyNotifications(Long userId) {

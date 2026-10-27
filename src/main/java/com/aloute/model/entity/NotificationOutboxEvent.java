@@ -49,6 +49,10 @@ public class NotificationOutboxEvent {
     @Column(name = "failed_at")
     private LocalDateTime failedAt;
 
+    /** In-app delivery must not be repeated when only the external FCM channel needs retry. */
+    @Column(name = "in_app_delivered_at")
+    private LocalDateTime inAppDeliveredAt;
+
     @Column(name = "next_attempt_at", nullable = false)
     private LocalDateTime nextAttemptAt = LocalDateTime.now();
 
@@ -74,6 +78,8 @@ public class NotificationOutboxEvent {
     public void setLastError(String lastError) { this.lastError = lastError; }
     public LocalDateTime getFailedAt() { return failedAt; }
     public void setFailedAt(LocalDateTime failedAt) { this.failedAt = failedAt; }
+    public LocalDateTime getInAppDeliveredAt() { return inAppDeliveredAt; }
+    public void setInAppDeliveredAt(LocalDateTime inAppDeliveredAt) { this.inAppDeliveredAt = inAppDeliveredAt; }
     public LocalDateTime getNextAttemptAt() { return nextAttemptAt; }
     public void setNextAttemptAt(LocalDateTime nextAttemptAt) { this.nextAttemptAt = nextAttemptAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }

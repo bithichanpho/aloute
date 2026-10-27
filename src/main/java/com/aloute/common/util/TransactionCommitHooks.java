@@ -11,8 +11,25 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * responsible for the primary write has committed.
  */
 public final class TransactionCommitHooks {
+    private static final ThreadLocal<Boolean> AFTER_COMMIT_CALLBACK = ThreadLocal.withInitial(() -> false);
 
     private TransactionCommitHooks() {}
+
+    /** True only while running a callback after the original transaction has already committed. */
+    public static boolean isExecutingAfterCommitCallback() {
+        return Boolean.TRUE.equals(AFTER_COMMIT_CALLBACK.get());
+    }
+
+    private static void runAfterCommitCallback(Runnable action) {
+        boolean previous = isExecutingAfterCommitCallback();
+        AFTER_COMMIT_CALLBACK.set(true);
+        try {
+            action.run();
+        } finally {
+            if (previous) AFTER_COMMIT_CALLBACK.set(true);
+            else AFTER_COMMIT_CALLBACK.remove();
+        }
+    }
 
     public static void afterCommit(Runnable action) {
         if (action == null) return;
@@ -22,7 +39,7 @@ public final class TransactionCommitHooks {
                     new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
-                            action.run();
+                            runAfterCommitCallback(action);
                         }
                     });
         } else {

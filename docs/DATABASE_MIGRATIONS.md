@@ -15,6 +15,8 @@
 
 `FreshPostgresSchemaValidationIT` creates its own random local test database, applies Flyway and boots a JPA entity manager with `hibernate.hbm2ddl.auto=validate`. `MigrationCompatibilityIT` also checks upgrades with historical post/call data, a late V20261104.1, checksum rejection without repair/data changes, repeat startup and two concurrent migrators. Only randomly named databases created by these tests are dropped.
 
+`NotificationOutboxMigrationIT` checks V20261110 → V20261111 with existing notifications/outbox rows, repeat startup after V20261111, and pre-existing matching column/index. It also checks that the current JPA writer still works with the expanded schema and preserves a delivery checkpoint written by another compatible version. The Docker test script includes this suite.
+
 Maven Failsafe binds `*IT` tests to `integration-test`/`verify`. CI runs PostgreSQL 17 and 18 with a loopback `aloute_quality_*` test database URL, matching the integration-test safety guards. Hibernate validates the Flyway schema instead of recreating it. CI/test JVM timezone is UTC for reproducible JDBC startup across operating systems; application display/business time settings are unchanged.
 
 Local Windows run (requires Docker Desktop):
@@ -35,4 +37,6 @@ The script uses an available loopback port, runs the contract tests plus fresh/u
 
 ## Version note
 
-Versioned PostgreSQL migrations currently extend through `V20261110__reconcile_document_indexes.sql` (28 files including V20261104.1). V20261102 introduces the JSONB store; subsequent migrations preserve date compatibility, call history, the social read API and query indexes. Never rename these historical files to renumber the chain. Release sign-off includes fresh/upgrade validation and a schema diff against a sanitized production copy.
+Versioned PostgreSQL migrations currently extend through `V20261111__notification_outbox_in_app_delivery.sql` (29 files including V20261104.1). V20261102 introduces the JSONB store; subsequent migrations preserve date compatibility, call history, the social read API and query indexes. The original 28-file baseline remains unchanged. V20261111 matches the migration in the provided source archive and its normalized SHA-256 is pinned separately in `MigrationHistoryContractTest`. Never rename these historical files to renumber the chain. Release sign-off includes fresh/upgrade validation and a schema diff against a sanitized production copy.
+
+V20261111 is a schema expansion: it adds a nullable delivery-checkpoint column and an index without rewriting existing rows. The merged notification worker now uses that checkpoint to separate in-app delivery from Firebase retries, while preserving the existing Activity/private-request APIs. `NotificationDeliveryTransactionIT` verifies rollback, after-commit REQUIRES_NEW persistence and checkpoint idempotency on PostgreSQL. See [the two-machine synchronization guide](architecture/migration-sync-20261111.md) before running either source against a shared database.

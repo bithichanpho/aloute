@@ -14,6 +14,29 @@ import org.junit.jupiter.api.Test;
 
 class FollowRequestWorkflowTest {
     @Test
+    void realtimeRequestHintsWaitForTheBusinessCommit() {
+        var store = mock(PostgresDocumentStore.class); var users = mock(IUserRepository.class);
+        var events = mock(com.aloute.social.api.FollowRequestEvents.class);
+        var recipient = new User(); recipient.setId(2L); recipient.setPrivateAccount(true);
+        when(users.findById(2L)).thenReturn(Optional.of(recipient));
+        var service = new FriendService(mock(IFriendRepository.class), mock(Notifications.class),
+                mock(ContentAccessService.class), store, users);
+        service.setFollowRequestEvents(events);
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.toggleFollow(1L, 2L);
+            verifyNoInteractions(events);
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+            verify(events).publish(2L, "REQUEST_CREATED", 1L, 2L, "PENDING");
+            verify(events).publish(1L, "STATE_CHANGED", 1L, 2L, "PENDING");
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+            org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+    @Test
     void privateRequestQueuesIntentAndCancelDoesNotCreateFollowOrAnotherIntent() {
         var store = mock(PostgresDocumentStore.class); var users = mock(IUserRepository.class);
         var friends = mock(IFriendRepository.class); var notifications = mock(Notifications.class);
