@@ -1,0 +1,57 @@
+BEGIN
+SET
+PREPARE
+                                                                                                                         QUERY PLAN                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=13662.94..13668.64 rows=50 width=78) (actual time=8856.497..8867.803 rows=50.00 loops=1)
+   Buffers: shared hit=3491
+   ->  Gather Merge  (cost=13662.94..15942.36 rows=20000 width=78) (actual time=8856.494..8867.788 rows=50.00 loops=1)
+         Workers Planned: 1
+         Workers Launched: 1
+         Buffers: shared hit=3491
+         ->  Sort  (cost=12662.93..12692.35 rows=11765 width=78) (actual time=8844.784..8844.795 rows=37.50 loops=2)
+               Sort Key: (aloute_jsonb_local_datetime_key((d.payload -> 'createdAt'::text))) DESC, d.document_id DESC
+               Sort Method: top-N heapsort  Memory: 88kB
+               Buffers: shared hit=3491
+               Worker 0:  Sort Method: top-N heapsort  Memory: 93kB
+               ->  Parallel Seq Scan on app_document_records d  (cost=105.03..12272.11 rows=11765 width=78) (actual time=13.644..8730.218 rows=12500.00 loops=2)
+                     Filter: (((collection_name)::text = $1) AND (((payload ->> 'userId'::text) = $3) OR (ANY ((payload ->> 'userId'::text) = (hashed SubPlan 1).col1))) AND (aloute_jsonb_local_datetime_key((payload -> 'createdAt'::text)) IS NOT NULL))
+                     Rows Removed by Filter: 7500
+                     Buffers: shared hit=3438
+                     SubPlan 1
+                       ->  Index Scan using idx_friends_follower on friends  (cost=0.28..98.76 rows=2510 width=32) (actual time=0.128..4.210 rows=5000.00 loops=2)
+                             Index Cond: (follower_id = $2)
+                             Index Searches: 2
+                             Buffers: shared hit=85
+ Planning:
+   Buffers: shared hit=1079
+ Planning Time: 25.508 ms
+ Execution Time: 8869.771 ms
+(24 rows)
+
+PREPARE
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=105.45..143.98 rows=50 width=78) (actual time=6.199..33.718 rows=50.00 loops=1)
+   Buffers: shared hit=304
+   ->  Index Scan using ix_doc_posts_created_v2 on app_document_records d  (cost=105.45..15519.76 rows=20000 width=78) (actual time=6.197..33.670 rows=50.00 loops=1)
+         Index Cond: (aloute_jsonb_local_datetime_key((payload -> 'createdAt'::text)) IS NOT NULL)
+         Filter: (((payload ->> 'userId'::text) = $2) OR (ANY ((payload ->> 'userId'::text) = (hashed SubPlan 1).col1)))
+         Rows Removed by Filter: 3000
+         Index Searches: 1
+         Buffers: shared hit=304
+         SubPlan 1
+           ->  Index Scan using idx_friends_follower on friends  (cost=0.28..98.76 rows=2510 width=32) (actual time=0.024..2.966 rows=5000.00 loops=1)
+                 Index Cond: (follower_id = $1)
+                 Index Searches: 1
+                 Buffers: shared hit=42
+ Planning:
+   Buffers: shared hit=58
+ Planning Time: 2.350 ms
+ Execution Time: 33.921 ms
+(17 rows)
+
+DO
+DEALLOCATE
+DEALLOCATE
+ROLLBACK

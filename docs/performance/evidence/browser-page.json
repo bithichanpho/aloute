@@ -1,0 +1,12 @@
+{
+  "lcpMs": 2196,
+  "cls": 0.0009585354265528259,
+  "longTaskMs": 55,
+  "fcpMs": 2196,
+  "ttfbMs": 819.1999999880791,
+  "domNodes": 1239,
+  "sameOriginEncodedBytes": 441908,
+  "videos": 0,
+  "eagerVideos": 0,
+  "scope": "Single after-only desktop Chromium lab navigation; external providers blocked; no INP/field CWV claim"
+}

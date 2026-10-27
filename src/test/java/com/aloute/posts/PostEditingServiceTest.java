@@ -23,6 +23,17 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
 class PostEditingServiceTest {
+    @Test
+    void switchingToCloseFriendsPreservesModerationAndDoesNotReapproveContent() {
+        ownPost(); when(store.updateFirst(any(),any(),eq(Post.class))).thenReturn(new UpdateResult(1,1));
+        service.edit(1L,"p",command("text","CLOSE_FRIENDS"));
+        var update = ArgumentCaptor.forClass(Update.class);
+        verify(store).updateFirst(any(),update.capture(),eq(Post.class));
+        assertTrue(update.getValue().operations().stream().anyMatch(op -> op.field().equals("visibility") && op.value() == PostVisibility.CLOSE_FRIENDS));
+        assertTrue(update.getValue().operations().stream().noneMatch(op -> op.field().equals("moderationStatus")));
+        verifyNoInteractions(review);
+    }
+
     private final PostgresDocumentStore store = mock(PostgresDocumentStore.class);
     private final PostAccess access = mock(PostAccess.class);
     private final ActionRateLimit limits = mock(ActionRateLimit.class);

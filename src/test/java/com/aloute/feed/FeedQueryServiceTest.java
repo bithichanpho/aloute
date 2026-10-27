@@ -76,7 +76,7 @@ class FeedQueryServiceTest {
                 .thenReturn(candidates);
         var page = service.getCursorFeedForViewer(9L, "foryou", null, null, 1000);
         assertEquals(30, page.items().size());
-        verify(posts).attachRecentReposters(page.items());
+        verify(posts).attachRecentReposters(9L, page.items());
     }
 
     private Candidate candidate(String id, boolean readable) {

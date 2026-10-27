@@ -1,0 +1,50 @@
+[
+  {
+    "Path": "src/main/resources/static/js/auth-login.js",
+    "SHA256": "7A7C09D80C00DDD3B0D9B6F18E301D0584B01E3745647056885D53D249A21EA0"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-verify.js",
+    "SHA256": "02ED1C6E9A764229E479B8F1BC9B759B3B85B679E4BA01AA8A6F2A6ECA4ABCDD"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-forgot-password.js",
+    "SHA256": "22C2CC5F660511CB22F64FFCC61036C4AE1708A9D875AD380F990AA5E363D94A"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-reset-password.js",
+    "SHA256": "24A049F162D3FC4EF227BFD24CD6290092C00912981AFE0B2C3FDDE0E42C1F7A"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/login.html",
+    "SHA256": "B96EB5C0701D8B09F4184C6910FA76B70323BF6C368D1EDDA43467C98DD01B20"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/verify.html",
+    "SHA256": "49CB09BFEB60B32262D3A1EE8247E0F65E1DD87268E3415325F4958498E6AE92"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/forgot-password.html",
+    "SHA256": "2039DD600272F0F6BF4346597215B2EA67AB7E25A5A478BEC955511865D9248D"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/reset-password.html",
+    "SHA256": "10982CDB4D72D89BBF5277D81813BFEFFBF415A803B33C49524413DF0AA12737"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-form-feedback.js",
+    "SHA256": "B6DF9634C02B823966E926A171E447C9F5C1209717E676174F04BCCBCCCFAFAA"
+  },
+  {
+    "Path": "src/main/resources/static/css/auth-form-feedback.css",
+    "SHA256": "A26330546DD6E7F22E10D6C36D48B21E82E9C034EF76BAB7E86AE46127420D64"
+  },
+  {
+    "Path": "src/test/browser/auth-error-focus.cjs",
+    "SHA256": "31D6947F33BFD5CC25133D88E7CE3DDDD1406F762040308C07E6908B438A6AC8"
+  },
+  {
+    "Path": "docs/quality/auth-error-focus-report.md",
+    "SHA256": "986BD9B2E7161A97ACD13510A7E822E902A9176AE3F5633EE6322F56B9C997A5"
+  }
+]

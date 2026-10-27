@@ -1,0 +1,93 @@
+{
+  "configurations": 8,
+  "results": [
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "otpBeforePassword": true,
+      "expiredSessionHidden": true,
+      "passwordPolicy": true,
+      "noBrowserTokenStorage": true,
+      "singleFlight": true,
+      "errors": []
+    }
+  ]
+}

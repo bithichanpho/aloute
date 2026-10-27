@@ -36,6 +36,20 @@ class SocialFeatureServiceTest {
                     mock(NotificationService.class));
 
     @Test
+    void requestCursorBatchesLabelsOnlyForTheReturnedPage() {
+        var request=new FollowRequest(); request.setId("6:1"); request.setFollowerId(6L); request.setTargetId(1L);
+        var extra=new FollowRequest(); extra.setId("7:1"); extra.setFollowerId(7L); extra.setTargetId(1L);
+        when(documentStore.find(any(Query.class),eq(FollowRequest.class))).thenReturn(List.of(request,extra));
+        var label=mock(IUserRepository.ProfileLabelEntry.class); when(label.getId()).thenReturn(6L);
+        when(label.getUsername()).thenReturn("minhan"); when(label.getFullName()).thenReturn("Minh An"); when(label.getAvatarUrl()).thenReturn("/minhan.png");
+        when(users.findProfileLabels(List.of(6L))).thenReturn(List.of(label));
+        var page=service.requests(1L,null,1);
+        assertTrue(page.hasMore()); assertFalse(page.nextCursor().isEmpty()); assertEquals(1,page.items().size());
+        assertEquals("Minh An",page.items().getFirst().followerFullName()); assertEquals("minhan",page.items().getFirst().followerUsername());
+        assertEquals("/minhan.png",page.items().getFirst().followerAvatarUrl()); verify(users).findProfileLabels(List.of(6L)); verifyNoMoreInteractions(users);
+    }
+
+    @Test
     void ordinaryUserCannotViewModerationQueue() {
         User user = new User();
         user.setId(1L);
@@ -190,9 +204,56 @@ class SocialFeatureServiceTest {
 
         var page = service.blocks(1L, null, 1);
 
-        assertEquals(List.of(newest), page.items());
+        assertEquals(1,page.items().size());
+        assertEquals(newest.getId(),page.items().getFirst().id());
+        assertEquals(newest.getOwnerId(),page.items().getFirst().ownerId());
+        assertEquals(newest.getTargetId(),page.items().getFirst().targetId());
+        assertEquals(newest.getCreatedAt(),page.items().getFirst().createdAt());
         assertTrue(page.hasMore());
         assertFalse(page.nextCursor().isBlank());
+    }
+
+    @Test
+    void blockCursorBatchesOnlyReturnedTargetsAndKeepsOldFieldsWithoutInternalState() throws Exception {
+        var block = new UserBlock(); block.setId("1:6"); block.setOwnerId(1L); block.setTargetId(6L);
+        block.setRelationshipsSynced(true);
+        var extra = new UserBlock(); extra.setId("1:7"); extra.setOwnerId(1L); extra.setTargetId(7L);
+        when(documentStore.find(any(Query.class),eq(UserBlock.class))).thenReturn(List.of(block,extra));
+        var label = mock(IUserRepository.ProfileLabelEntry.class); when(label.getId()).thenReturn(6L);
+        when(label.getUsername()).thenReturn("alice"); when(label.getFullName()).thenReturn("Alice"); when(label.getAvatarUrl()).thenReturn("/alice.png");
+        when(users.findProfileLabels(List.of(6L))).thenReturn(List.of(label));
+        var page = service.blocks(1L,null,1);
+        var item = page.items().getFirst();
+        assertEquals("Alice",item.targetFullName()); assertEquals("alice",item.targetUsername());
+        assertEquals("/alice.png",item.targetAvatarUrl()); assertEquals("1:6",item.id());
+        assertEquals(1L,item.ownerId()); assertEquals(6L,item.targetId()); assertEquals(block.getCreatedAt(),item.createdAt());
+        assertTrue(page.hasMore()); assertFalse(page.nextCursor().isEmpty());
+        verify(users).findProfileLabels(List.of(6L)); verifyNoMoreInteractions(users);
+        var query = org.mockito.ArgumentCaptor.forClass(Query.class); verify(documentStore).find(query.capture(),eq(UserBlock.class));
+        assertTrue(query.getValue().criteria().nodes().stream().anyMatch(node -> node instanceof com.aloute.persistence.postgres.document.Criteria.ComparisonNode c && c.field().equals("ownerId") && c.value().equals(1L)));
+        var json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(item);
+        for (String forbidden:List.of("relationshipsSynced","password","email","token")) assertFalse(json.contains(forbidden));
+    }
+
+    @Test
+    void legacyBlockListHasSameLabelsAndMissingAccountKeepsDefaultAvatar() {
+        var known = new UserBlock(); known.setId("1:6"); known.setOwnerId(1L); known.setTargetId(6L);
+        var missing = new UserBlock(); missing.setId("1:7"); missing.setOwnerId(1L); missing.setTargetId(7L);
+        when(documentStore.find(any(Query.class),eq(UserBlock.class))).thenReturn(List.of(known,missing));
+        var label = mock(IUserRepository.ProfileLabelEntry.class); when(label.getId()).thenReturn(6L);
+        when(label.getUsername()).thenReturn("alice"); when(label.getFullName()).thenReturn("Alice");
+        when(users.findProfileLabels(List.of(6L,7L))).thenReturn(List.of(label));
+        var items = service.blocks(1L);
+        assertEquals("Alice",items.getFirst().targetFullName());
+        assertEquals("/images/avatar_default.png",items.getFirst().targetAvatarUrl());
+        assertNull(items.getLast().targetUsername()); assertEquals("/images/avatar_default.png",items.getLast().targetAvatarUrl());
+        verify(users).findProfileLabels(List.of(6L,7L)); verifyNoMoreInteractions(users);
+    }
+
+    @Test
+    void emptyBlocksDoNotLoadAccountLabels() {
+        assertTrue(service.blocks(1L).isEmpty()); assertTrue(service.blocks(1L,null,50).items().isEmpty());
+        verifyNoInteractions(users);
     }
 
     @Test

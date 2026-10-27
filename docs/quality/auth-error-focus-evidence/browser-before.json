@@ -1,0 +1,30 @@
+{
+  "before": true,
+  "configurations": 4,
+  "results": [
+    {
+      "kind": "login",
+      "before": true,
+      "active": "",
+      "invalidFields": 0
+    },
+    {
+      "kind": "verify",
+      "before": true,
+      "active": "",
+      "invalidFields": 0
+    },
+    {
+      "kind": "forgot-password",
+      "before": true,
+      "active": "submitBtn",
+      "invalidFields": 0
+    },
+    {
+      "kind": "reset-password",
+      "before": true,
+      "active": "",
+      "invalidFields": 0
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+[
+  {
+    "Path": "src/main/java/com/aloute/service/PasswordManagementService.java",
+    "SHA256": "B9E288319092481E1649C189E2772C6D0EC4718E55E2FADAFD783BB737873598"
+  },
+  {
+    "Path": "src/main/java/com/aloute/repository/IUserRepository.java",
+    "SHA256": "2761DF5BC48DE9E6ECD73F1C759CC978F5BD2FE88C32DB4697EE7D488A53206F"
+  },
+  {
+    "Path": "src/main/java/com/aloute/controller/ViewController.java",
+    "SHA256": "010E49FE6CD4F850C3EB9A6B1D8239EA84FBFC2E1465DE64ECFF0FF1FE9B4DB2"
+  },
+  {
+    "Path": "src/main/java/com/aloute/config/SecurityConfig.java",
+    "SHA256": "1553D956FDB5B09D9F431AE7E19CC930A964F88765174C6EDD9C1E8260A5ABBF"
+  },
+  {
+    "Path": "src/main/java/com/aloute/config/NoCacheViewConfig.java",
+    "SHA256": "6850A8CAD28DCD1C8FC935DA0B73969EDC38A8521C843F6AF971FCEA7EF4AE98"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-reset-password.js",
+    "SHA256": "8110EB368BA81E633F6FDD88013A0D77CD38CA1A15FF6490819B937196CE8169"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-forgot-password.js",
+    "SHA256": "22C2CC5F660511CB22F64FFCC61036C4AE1708A9D875AD380F990AA5E363D94A"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/reset-password.html",
+    "SHA256": "2FD650BB797FF903B780140E9864395C32D1C232C2181532E83EE8B5951FE999"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/forgot-password.html",
+    "SHA256": "68C6410988FE3D8AF7E0CA00F2486EA64D0D6BB5FAE441C2A31B1900F38759CB"
+  },
+  {
+    "Path": "src/test/java/com/aloute/service/PasswordManagementServiceTest.java",
+    "SHA256": "898F3D2CDCAC2CE0470C78E2BD86D82EA2FBA9B5F07439EDBDE6DE9AE5484B9C"
+  },
+  {
+    "Path": "src/test/java/com/aloute/AuthTemplateCspTest.java",
+    "SHA256": "E0F3C183AED867C4F745A9E94D9C3D7B52F76CCED9FD2DE5333C7C1054847D87"
+  },
+  {
+    "Path": "src/test/java/com/aloute/GlobalThemeTemplateTest.java",
+    "SHA256": "0C1F97D906AD6FC68605E54E672B69A409FC44D34EE6A65D397EFC68C5B03052"
+  },
+  {
+    "Path": "src/test/browser/auth-error-focus.cjs",
+    "SHA256": "85FEC48DAB2F672DD4A6C8DE9AAA3EA7C573509AB8B886026AAE7C56E022B8C5"
+  }
+]

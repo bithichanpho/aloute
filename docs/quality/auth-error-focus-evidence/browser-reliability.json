@@ -1,0 +1,39 @@
+{
+  "before": false,
+  "reliability": true,
+  "configurations": 4,
+  "results": [
+    {
+      "kind": "login",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    },
+    {
+      "kind": "verify",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    },
+    {
+      "kind": "forgot-password",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    },
+    {
+      "kind": "reset-password",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    }
+  ]
+}

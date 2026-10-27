@@ -1,0 +1,9 @@
+{
+  "backupFilesVerified": 2,
+  "jarResourcesVerified": 2,
+  "appJsUnchanged": true,
+  "changedRuntimeFiles": [
+    "src/main/resources/static/js/auth-forgot-password.js",
+    "src/main/resources/templates/auth/forgot-password.html"
+  ]
+}

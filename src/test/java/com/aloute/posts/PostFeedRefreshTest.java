@@ -43,7 +43,7 @@ class PostFeedRefreshTest {
         verify(store).find(query.capture(), eq(Post.class));
         assertEquals(3, query.getValue().limit());
         verify(access).forPosts(loaded, 1L);
-        verify(reposts).attachRecentReposters(List.of(cardA));
+        verify(reposts).attachRecentReposters(1L, List.of(cardA));
         verifyNoMoreInteractions(store, access);
     }
 

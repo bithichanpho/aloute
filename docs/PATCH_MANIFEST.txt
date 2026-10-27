@@ -1,34 +1,34 @@
-# ALOUTE merged source manifest
+# ALOUTE backend working-tree manifest
 
-This is a full merged source tree (CASO baseline + DEVELOP-only docs/tooling), not a delta ZIP.
+This repository is maintained as source code on the current Git branch. It is no longer distributed as a delta ZIP over an unnamed archive, so old file counts and manual copy/delete instructions are intentionally removed.
 
 ## Current backend baseline
 
 - Java 21 and Spring Boot 4.1.1.
-- PostgreSQL schema managed by Flyway.
-- Source migrations through V20261109; the V20261109 compatibility helper is kept because it was applied to the previously used shared DB.
-- JSONB document storage with temporal-key expression indexes from V20261106.
-- Redis used for cache, distributed rate limiting, presence and call-state mirroring according to environment policy.
-- PostgreSQL/JPA/JDBC transactions cover relational records and JSONB-backed aggregates.
-- Durable notification, moderation, account and community cleanup workers use bounded retries/leases.
+- PostgreSQL schema managed by Flyway through `V20261101`.
+- PostgreSQL JSONB indexes managed through Flyway migrations.
+- Redis used for cache, distributed rate limiting, presence and call state according to environment policy.
+- PostgreSQL/JPA/JDBC transactions cover relational records and JSONB-backed aggregate rows.
+- PostgreSQL outbox jobs coordinate cleanup across PostgreSQL and Cloudinary.
 
-## Main functionality / remediation areas
+## Main remediation areas
 
 - Request validation, authentication/OTP, token revocation and trusted-proxy handling.
-- Cursor pagination, query/read-view improvements for feed, profile, group, chat and notifications.
-- Durable call sessions/history and notification/account/community cleanup jobs.
+- Cursor pagination and query-budget improvements for feed, profile, group, chat and notifications.
+- Durable notification and account/community cleanup jobs.
 - Community-manager authorization and server-wide `ROLE_HOST` dashboard.
 - Repost presentation, group unread state and removed story functionality.
 - Central media lifecycle, hidden-post reconciliation and retryable Cloudinary deletion.
 - Bounded asynchronous moderation with lease recovery for posts and comments.
 - Explicit Redis outage behavior for cache, rate limits and presence.
-- Paginated community/search APIs, aggregated HOST metrics and audited ADMIN account control.
+- Paginated community/search APIs, database-aggregated HOST metrics and audited ADMIN account control.
 
 ## Validation commands
 
 ```powershell
-.\mvnw.cmd clean verify
+mvn clean test
+mvn verify
 .\deploy\scripts\validate-empty-schema.ps1
 ```
 
-The schema validation script accepts only a disposable PostgreSQL database on loopback. Do not run it against Supabase or another shared database. Keep `.env`, Firebase service-account JSON and local secrets outside the shared archive.
+The schema script accepts only a disposable PostgreSQL database on loopback. Do not run it against Supabase or another shared database.

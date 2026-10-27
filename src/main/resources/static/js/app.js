@@ -2,6 +2,13 @@
 
 window.Aloute = (function () {
 
+  function profileUrl(username, userId) {
+    if (typeof username === 'string' && username.length <= 255 && /^[A-Za-z0-9_.@-]+$/.test(username)
+        && !username.toLowerCase().startsWith('deleted_')) return '/@' + encodeURIComponent(username);
+    const id = String(userId == null ? '' : userId);
+    return /^[1-9]\d*$/.test(id) ? '/profile/' + encodeURIComponent(id) : '#';
+  }
+
   function csrfTokenFromCookie() {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
     if (!match) return '';
@@ -84,7 +91,9 @@ window.Aloute = (function () {
 
     if (!res.ok || (payload && payload.success === false)) {
       const message = (payload && payload.message) || ('Máy chủ trả về lỗi ' + res.status);
-      throw new Error(message);
+      const error = new Error(message);
+      error.status = res.status;
+      throw error;
     }
     return payload ? payload.data : null;
   }
@@ -388,16 +397,23 @@ window.Aloute = (function () {
     }
   }
 
+  function setReactionPickerOpen(picker, open) {
+    picker.classList.toggle('reaction-picker--open', open);
+    picker.inert = !open;
+    picker.setAttribute('aria-hidden', String(!open));
+    picker.parentElement?.querySelector('.action--like')?.setAttribute('aria-expanded', String(open));
+  }
+
   function closeAllReactionPickers(except) {
     document.querySelectorAll('.reaction-picker--open').forEach(picker => {
-      if (picker !== except) picker.classList.remove('reaction-picker--open');
+      if (picker !== except) setReactionPickerOpen(picker, false);
     });
   }
 
   document.addEventListener('click', (e) => {
     document.querySelectorAll('.reaction-picker--open').forEach(picker => {
       if (!picker.parentElement || !picker.parentElement.contains(e.target)) {
-        picker.classList.remove('reaction-picker--open');
+        setReactionPickerOpen(picker, false);
       }
     });
   });
@@ -613,7 +629,7 @@ window.Aloute = (function () {
         anchor.textContent = match[2] + match[3];
         anchor.href = match[2] === '#'
           ? '/hashtag/' + encodeURIComponent(match[3].toLocaleLowerCase())
-          : '/people/' + encodeURIComponent(match[3]);
+          : profileUrl(match[3], null);
         fragment.append(anchor);
         offset = index + match[0].length;
       }
@@ -637,7 +653,7 @@ window.Aloute = (function () {
     function appendActor(actor) {
       const link = document.createElement('a');
       link.className = 'post__repost-others-list__item';
-      link.href = '/profile/' + encodeURIComponent(actor.userId);
+      link.href = profileUrl(actor.username, actor.userId);
       const img = document.createElement('img');
       img.src = actor.userAvatarUrl || '/images/avatar_default.png';
       img.alt = '';
@@ -698,10 +714,18 @@ window.Aloute = (function () {
       }
     }
 
+    // Rê chuột (hoặc focus bằng bàn phím) là tải danh sách; CSS lo việc hiện/ẩn.
+    wrap.addEventListener('mouseenter', function() { if (!loaded) loadPage(); });
+    wrap.addEventListener('focusin', function() { if (!loaded) loadPage(); });
+
+    // Cảm ứng: chạm để mở/đóng. Chuột: hover đã đủ nên click không đóng danh sách đang hover.
     trigger.addEventListener('click', function(event) {
       event.stopPropagation();
       wrap.classList.toggle('is-open');
       if (wrap.classList.contains('is-open') && !loaded) loadPage();
+    });
+    document.addEventListener('click', function(event) {
+      if (!wrap.contains(event.target)) wrap.classList.remove('is-open');
     });
   }
 
@@ -782,6 +806,7 @@ window.Aloute = (function () {
           if (!picker) return;
           picker.querySelectorAll('.reaction-picker__emoji').forEach(btn => {
             btn.classList.toggle('is-selected', btn.dataset.reaction === state.desired);
+            btn.setAttribute('aria-checked', String(btn.dataset.reaction === state.desired));
           });
         }
         function openPicker() {
@@ -790,12 +815,20 @@ window.Aloute = (function () {
           clearTimeout(closeTimer);
           closeAllReactionPickers(picker);
           markSelected();
-          picker.classList.add('reaction-picker--open');
+          picker.style.setProperty('--reaction-offset', '0px');
+          picker.classList.toggle('reaction-picker--below', reaction.getBoundingClientRect().top < 110);
+          setReactionPickerOpen(picker, true);
+          // Measure the unscaled rail to keep it inside narrow screens and right-aligned cards.
+          const left = reaction.getBoundingClientRect().left - 8;
+          const railWidth = picker.offsetWidth * (canHover ? 1.025 : 1);
+          const viewportWidth = document.documentElement.clientWidth;
+          const clampedLeft = Math.max(8, Math.min(left, viewportWidth - railWidth - 8));
+          picker.style.setProperty('--reaction-offset', (clampedLeft - left) + 'px');
         }
         function closePicker() {
           clearTimeout(openTimer);
           clearTimeout(closeTimer);
-          if (picker) picker.classList.remove('reaction-picker--open');
+          if (picker) setReactionPickerOpen(picker, false);
         }
         function scheduleOpen() {
           clearTimeout(closeTimer);
@@ -818,9 +851,34 @@ window.Aloute = (function () {
         });
 
         if (picker) {
+          setReactionPickerOpen(picker, false);
+          likeBtn.setAttribute('aria-haspopup', 'menu');
+          picker.setAttribute('aria-label', 'Chọn cảm xúc');
+          likeBtn.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+            e.preventDefault(); openPicker();
+            const choices = picker.querySelectorAll('.reaction-picker__emoji');
+            (e.key === 'ArrowUp' ? choices[choices.length - 1] : choices[0])?.focus();
+          });
+          reaction.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); closePicker(); likeBtn.focus(); return; }
+            if (!e.target.matches('.reaction-picker__emoji') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+            const choices = [...picker.querySelectorAll('.reaction-picker__emoji')];
+            const index = choices.indexOf(e.target);
+            const next = e.key === 'Home' ? 0 : e.key === 'End' ? choices.length - 1
+              : (index + (e.key === 'ArrowRight' ? 1 : -1) + choices.length) % choices.length;
+            choices[next].focus();
+          });
+          reaction.addEventListener('focusout', e => {
+            if (!reaction.contains(e.relatedTarget)) closePicker();
+          });
           picker.querySelectorAll('.reaction-picker__emoji').forEach((emojiBtn, index) => {
 
             if (!emojiBtn.dataset.label) emojiBtn.dataset.label = emojiBtn.getAttribute('title') || '';
+            emojiBtn.setAttribute('aria-label', emojiBtn.dataset.label);
+            emojiBtn.setAttribute('role', 'menuitemradio');
+            emojiBtn.setAttribute('aria-checked', String(emojiBtn.dataset.reaction === state.desired));
             emojiBtn.removeAttribute('title');
             emojiBtn.style.setProperty('--i', String(index));
 
@@ -830,6 +888,7 @@ window.Aloute = (function () {
 
               state.desired = state.desired === type ? null : type;
               closePicker();
+              if (e.detail === 0) likeBtn.focus();
               render(true);
               flushReactionQueue();
             });
@@ -892,7 +951,7 @@ window.Aloute = (function () {
           }
         }
 
-        function updateRepostBanner(actors, totalCount) {
+        function updateRepostBanner(actors, otherCountFromServer) {
           let banner = postEl.querySelector('[data-repost-banner]');
           if (!Array.isArray(actors) || actors.length === 0) {
             if (banner) banner.remove();
@@ -917,19 +976,19 @@ window.Aloute = (function () {
             if (index > 0) names.appendChild(document.createTextNode(index === 2 ? ' và ' : ', '));
             const link = document.createElement('a');
             link.className = 'post__reposter';
-            link.href = '/profile/' + encodeURIComponent(actor.userId);
+            link.href = profileUrl(actor.username, actor.userId);
             link.textContent = actor.username || 'người dùng';
             names.appendChild(link);
           });
           banner.appendChild(names);
-          const otherCount = Math.max(0, (Number(totalCount) || actors.length) - actors.length);
+          const otherCount = Math.max(0, Number(otherCountFromServer) || 0);
           if (otherCount > 0) {
             banner.appendChild(document.createTextNode(' cùng '));
 
             const wrap = document.createElement('span');
             wrap.className = 'post__repost-others';
             wrap.dataset.repostersPostId = originalPostId;
-            wrap.dataset.repostersTotal = String(Number(totalCount) || actors.length);
+            wrap.dataset.repostersTotal = String(otherCount);
             const trigger = document.createElement('button');
             trigger.type = 'button';
             trigger.className = 'post__repost-others__trigger';
@@ -941,7 +1000,7 @@ window.Aloute = (function () {
             list.dataset.repostersList = '1';
             const status = document.createElement('span');
             status.className = 'post__repost-others-status';
-            status.textContent = 'Nhấn để xem danh sách';
+            status.textContent = 'Đang tải...';
             list.appendChild(status);
             wrap.appendChild(list);
             banner.appendChild(wrap);
@@ -967,7 +1026,7 @@ window.Aloute = (function () {
                 });
                 rState.serverState = !!result.reposted;
                 rState.serverCount = Number(result.repostCount) || 0;
-                updateRepostBanner(result.reposters || [], result.repostCount);
+                updateRepostBanner(result.reposters || [], result.otherReposterCount);
                 renderRepost(false);
               } catch (err) {
                 if (rState.desired === requested) {
@@ -1300,7 +1359,41 @@ window.Aloute = (function () {
 
   function initComposePage() {
     const form = document.getElementById('composeForm');
-    if (!form) return;
+    if (!form || form.dataset.composeBound === '1') return;
+    form.dataset.composeBound = '1';
+    const audienceValue = document.getElementById('postVisibility');
+    const audienceDialog = document.getElementById('postAudienceDialog');
+    const audienceTrigger = form.querySelector('[data-audience-open]');
+    if (audienceDialog && audienceTrigger && audienceValue) {
+      const choices = [...audienceDialog.querySelectorAll('input[name="postAudienceChoice"]')];
+      audienceTrigger.addEventListener('click', () => {
+        choices.forEach(choice => { choice.checked = choice.value === audienceValue.value; });
+        audienceDialog.showModal();
+        audienceTrigger.setAttribute('aria-expanded', 'true');
+        choices.find(choice => choice.checked)?.focus();
+      });
+      audienceDialog.querySelector('[data-audience-close]').addEventListener('click', () => audienceDialog.close());
+      audienceDialog.querySelector('[data-audience-apply]').addEventListener('click', () => {
+        const selected = choices.find(choice => choice.checked);
+        if (!selected) return;
+        audienceValue.value = selected.value;
+        audienceTrigger.querySelector('[data-audience-current-label]').textContent = selected.getAttribute('aria-label');
+        audienceTrigger.querySelector('[data-audience-current-icon]').innerHTML = postAudienceMarkup(selected.value);
+        audienceTrigger.setAttribute('aria-label', 'Ai có thể xem bài viết: ' + selected.getAttribute('aria-label'));
+        audienceValue.dispatchEvent(new Event('change', { bubbles: true }));
+        audienceDialog.close();
+      });
+      audienceDialog.addEventListener('close', () => {
+        audienceTrigger.setAttribute('aria-expanded', 'false');
+        audienceTrigger.focus();
+      });
+      audienceDialog.addEventListener('click', event => {
+        if (event.target !== audienceDialog) return;
+        const box = audienceDialog.getBoundingClientRect();
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)
+          audienceDialog.close();
+      });
+    }
 
     const textarea = document.getElementById('composeContent');
     const fileInput = document.getElementById('composeImageInput');
@@ -1407,6 +1500,7 @@ window.Aloute = (function () {
             const status = await api('/api/users/' + userId + '/follow-status');
             if (status === 'PENDING') btn.textContent = 'Đã gửi yêu cầu · Hủy';
           }
+          if (btn.closest('.profile-cover')?.querySelector('.profile-cover__badge')) location.reload();
         } catch (err) {
           toast(err.message, true);
         } finally {
@@ -1754,7 +1848,7 @@ window.Aloute = (function () {
 
     return (
       '<div class="discover-user">' +
-      '  <a class="discover-user__main" href="/profile/' + u.id + '">' +
+      '  <a class="discover-user__main" href="' + escapeHtml(profileUrl(u.username, u.id)) + '">' +
       '    <img class="discover-user__avatar" src="' + avatar + '" alt="avatar">' +
       '    <div class="discover-user__info">' +
       '      <div class="discover-user__name">' + escapeHtml(u.fullName || u.username) + '</div>' +
@@ -1790,6 +1884,30 @@ window.Aloute = (function () {
     );
   }
 
+  function postAudienceMarkup(visibility) {
+    const audience = visibility || 'PUBLIC';
+    const icons = {
+      PUBLIC: ['Công khai', '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/>'],
+      FRIENDS: ['Bạn bè', '<circle cx="9" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zm17 0v-3a9 9 0 0 0-1.5-5 6 6 0 0 1 6.5 6v2z"/>'],
+      CLOSE_FRIENDS: ['Bạn thân', '<circle cx="12" cy="12" r="9"/><path fill="currentColor" stroke="none" d="m12 5 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5.2 10l4.7-.7z"/>'],
+      ONLY_ME: ['Chỉ mình tôi', '<path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h8V7a4 4 0 0 0-8 0zm3 5v3h2v-3z"/>']
+    };
+    if (!Object.prototype.hasOwnProperty.call(icons, audience)) return '';
+    const [label, paths] = icons[audience];
+    return '<span class="post__audience" role="img" data-post-audience="' + audience + '" aria-label="' + label + '" title="' + label + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true" ' + (audience === 'PUBLIC' || audience === 'CLOSE_FRIENDS' ? 'fill="none" stroke="currentColor" stroke-width="1.8"' : 'fill="currentColor"') + '>' + paths + '</svg></span>';
+  }
+
+  function postReviewMarkup(post) {
+    if (String(post.userId) !== document.body.dataset.currentUserId) return '';
+    const status = post.moderationStatus;
+    if (status !== 'PENDING' && status !== 'FLAGGED') return '';
+    const label = status === 'PENDING' ? 'Đang kiểm duyệt · Chỉ bạn nhìn thấy bài viết này.'
+      : (post.moderationRetryAvailable ? 'Chưa duyệt được bài viết do mất kết nối. Chỉ bạn nhìn thấy bài viết này.' : 'Chờ xem xét · Chỉ bạn nhìn thấy bài viết này.');
+    return '<div class="post__review" role="status" data-post-review="' + status + '"><span>' + label + '</span>' +
+      (post.moderationRetryAvailable ? '<button type="button" class="post__review-retry" data-moderation-retry data-review-post-id="' + escapeHtml(post.id) + '">Thử duyệt lại</button>' : '') + '</div>';
+  }
+
   function renderSearchPostCard(post) {
     const avatar = escapeHtml(post.userAvatarUrl || DEFAULT_AVATAR);
     const when = escapeHtml(post.timeAgo || timeAgo(post.createdAt));
@@ -1798,13 +1916,15 @@ window.Aloute = (function () {
     return (
       '<div class="post" data-post-id="' + escapeHtml(post.id) + '" data-action-post-id="' + actionPostId + '">' +
       '  <div class="post__avatar-col">' +
-      '    <a href="/profile/' + post.userId + '"><img class="post__avatar" src="' + avatar + '" alt="avatar"></a>' +
+      '    <a href="' + escapeHtml(profileUrl(post.username, post.userId)) + '"><img class="post__avatar" src="' + avatar + '" alt="avatar"></a>' +
       '  </div>' +
       '  <div class="post__body">' +
       '    <div class="post__header">' +
-      '      <a href="/profile/' + post.userId + '" class="post__username">' + escapeHtml(post.username || '') + '</a>' +
+      '      <a href="' + escapeHtml(profileUrl(post.username, post.userId)) + '" class="post__username">' + escapeHtml(post.username || '') + '</a>' +
       '      <span class="post__time">' + when + '</span>' +
+      postAudienceMarkup(post.visibility) +
       '    </div>' +
+      postReviewMarkup(post) +
       '    <p class="post__content">' + escapeHtml(post.content || '') + '</p>' +
       (post.imageUrl ? '<img class="post__image" src="' + escapeHtml(post.imageUrl) + '" alt="ảnh bài viết">' : '') +
       (post.videoUrl ? '<video class="post__video" src="' + escapeHtml(post.videoUrl) + '" controls preload="none"></video>' : '') +
@@ -1846,7 +1966,7 @@ window.Aloute = (function () {
     return '<div class="discover-card"><div class="discover-card__body">' + row + row + row + '</div></div>';
   }
 
-  function renderUserRow(u) {
+  function renderUserRow(u, options = {}) {
     const followBtn = u.followedByCurrentUser
       ? '<button class="btn-follow is-following" data-user-id="' + u.id + '">Đang theo dõi</button>'
       : '<button class="btn-follow" data-user-id="' + u.id + '">Theo dõi</button>';
@@ -1860,9 +1980,14 @@ window.Aloute = (function () {
         'data-user-id="' + u.id + '" data-status="' + status + '">' + label + '</button>';
     }
 
+    const removeFollowerBtn = options.canRemoveFollower === true
+      ? '<button type="button" class="btn-remove-follower" data-remove-follower="' + escapeHtml(String(u.id)) +
+        '" title="Xóa người theo dõi" aria-label="Xóa @' + escapeHtml(u.username || '') + ' khỏi người theo dõi">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>' : '';
+
     return (
       '<div class="discover-user">' +
-      '  <a class="discover-user__main" href="/profile/' + u.id + '">' +
+      '  <a class="discover-user__main" href="' + escapeHtml(profileUrl(u.username, u.id)) + '">' +
       '    <img class="discover-user__avatar" src="' + escapeHtml(u.avatarUrl || DEFAULT_AVATAR) + '" alt="avatar">' +
       '    <div class="discover-user__info">' +
       '      <div class="discover-user__name">' + escapeHtml(u.fullName || u.username) + '</div>' +
@@ -1870,7 +1995,7 @@ window.Aloute = (function () {
       (u.bio ? '<div class="discover-user__bio">' + escapeHtml(u.bio) + '</div>' : '') +
       '    </div>' +
       '  </a>' +
-      '  <div class="discover-user__actions">' + followBtn + closeFriendBtn + '</div>' +
+      '  <div class="discover-user__actions">' + followBtn + closeFriendBtn + '</div>' + removeFollowerBtn +
       '</div>'
     );
   }
@@ -1888,13 +2013,19 @@ window.Aloute = (function () {
     const statsEl = document.querySelector('.profile-stats');
     const modal = document.getElementById('peopleModal');
     const body = document.getElementById('peopleModalBody');
-    if (!statsEl || !modal || !body) return;
+    if (!statsEl || !modal || !body || statsEl.dataset.peopleBound) return;
+    statsEl.dataset.peopleBound = 'true';
 
     const profileUserId = statsEl.dataset.profileUserId;
+    const currentUserId = document.body.dataset.currentUserId;
+    const canManageFollowers = !!currentUserId && profileUserId === currentUserId;
     const tabButtons = Array.from(modal.querySelectorAll('.people-tab'));
     const cache = {};
     let currentTab = null;
     let requestToken = 0;
+    let followersPage = 0, followersHasMore = false;
+    const removingFollowers = new Set();
+    const PEOPLE_PAGE_SIZE = 30;
 
     statsEl.querySelectorAll('[data-people-tab]').forEach(btn => {
       btn.addEventListener('click', () => openModal(btn.dataset.peopleTab));
@@ -1912,7 +2043,8 @@ window.Aloute = (function () {
       window.__aloutePeopleEscapeBound = true;
       document.addEventListener('keydown', (e) => {
         const activeModal = document.getElementById('peopleModal');
-        if (e.key === 'Escape' && activeModal && !activeModal.hidden) {
+        if (e.key === 'Escape' && activeModal && !activeModal.hidden
+            && !document.querySelector('#alouteConfirmModal.show')) {
           activeModal.hidden = true;
           document.body.classList.remove('no-scroll');
         }
@@ -1947,6 +2079,7 @@ window.Aloute = (function () {
         const users = await api(PEOPLE_TABS[tab].url(profileUserId));
         if (token !== requestToken || currentTab !== tab) return;
         cache[tab] = users || [];
+        if (tab === 'followers') { followersPage = 0; followersHasMore = cache[tab].length === PEOPLE_PAGE_SIZE; }
         paint(tab, cache[tab]);
       } catch (err) {
         if (token !== requestToken) return;
@@ -1959,10 +2092,67 @@ window.Aloute = (function () {
         body.innerHTML = discoverEmpty(PEOPLE_TABS[tab].title, PEOPLE_TABS[tab].empty);
         return;
       }
-      body.innerHTML = users.map(renderUserRow).join('');
+      body.innerHTML = users.map(user => renderUserRow(user,
+        { canRemoveFollower: canManageFollowers && tab === 'followers' })).join('');
+      body.querySelectorAll('[data-remove-follower]').forEach(button => {
+        button.disabled = removingFollowers.size > 0;
+      });
+      if (tab === 'followers' && followersHasMore && followersPage < 10000) {
+        const more = document.createElement('button'); more.type = 'button';
+        more.className = 'btn-outline people-load-more'; more.dataset.moreFollowers = '';
+        more.textContent = 'Xem thêm'; body.append(more);
+      }
       initFollowButtons();
       initCloseFriendButtons();
     }
+
+    body.addEventListener('click', async event => {
+      const more = event.target.closest('[data-more-followers]');
+      if (more) {
+        if (more.disabled || currentTab !== 'followers') return;
+        more.disabled = true;
+        const token = ++requestToken, nextPage = followersPage + 1;
+        try {
+          const users = await api(PEOPLE_TABS.followers.url(profileUserId) + '?page=' + nextPage + '&size=' + PEOPLE_PAGE_SIZE);
+          if (token !== requestToken || currentTab !== 'followers') return;
+          const seen = new Set(cache.followers.map(user => String(user.id)));
+          cache.followers.push(...(users || []).filter(user => !seen.has(String(user.id))));
+          followersPage = nextPage; followersHasMore = (users || []).length === PEOPLE_PAGE_SIZE;
+          paint('followers', cache.followers);
+        } catch (error) { toast(error.message, true); }
+        finally { more.disabled = false; }
+        return;
+      }
+      const button = event.target.closest('[data-remove-follower]');
+      if (!button || !canManageFollowers || currentTab !== 'followers') return;
+      const followerId = button.dataset.removeFollower;
+      if (removingFollowers.size > 0) return;
+      removingFollowers.add(followerId);
+      body.querySelectorAll('[data-remove-follower]').forEach(control => { control.disabled = true; });
+      try {
+        const confirmed = await window.AlouteUI.confirm({ title: 'Xóa người theo dõi?',
+          message: 'Người này sẽ ngừng theo dõi bạn. Nếu tài khoản của bạn riêng tư, họ cần gửi yêu cầu và được bạn chấp nhận lại.',
+          okText: 'Xóa', cancelText: 'Hủy' });
+        if (!confirmed) return;
+        const result = await api('/api/users/' + encodeURIComponent(profileUserId) + '/followers/' + encodeURIComponent(followerId), { method: 'DELETE' });
+        if (!statsEl.isConnected) return;
+        const count = Number(result.followerCount);
+        if (Number.isFinite(count)) {
+          statsEl.querySelector('[data-people-tab="followers"] strong').textContent = formatCount(count);
+          modal.querySelector('[data-tab="followers"] span').textContent = formatCount(count);
+        }
+        // Restart offset pagination after deletion, otherwise the next page can skip a shifted row.
+        ++requestToken;
+        delete cache.followers; delete cache.following; delete cache.close;
+        followersPage = 0; followersHasMore = false;
+        if (!modal.hidden) await selectTab(currentTab);
+        toast('Đã xóa người theo dõi');
+      } catch (error) { toast(error.message || 'Không thể xóa người theo dõi', true); }
+      finally {
+        removingFollowers.delete(followerId); button.disabled = false;
+        body.querySelectorAll('[data-remove-follower]').forEach(control => { control.disabled = false; });
+      }
+    });
   }
 
   function peopleSkeleton() {
@@ -2032,19 +2222,76 @@ window.Aloute = (function () {
     }
   }
 
+  function acknowledgeActivityNotifications() {
+    const userId = document.body.dataset.currentUserId;
+    if (!userId) return Promise.resolve(false);
+    if (notificationReadRequest?.userId === userId) return notificationReadRequest.promise;
+    if (navBadgeUser !== userId) {
+      navBadgeCounts.clear();
+      navBadgeRefreshAt = 0;
+      navBadgeUser = userId;
+    }
+    const previousCount = navBadgeCounts.get('notifUnreadBadge')
+      ?? (parseInt(document.getElementById('notifUnreadBadge')?.textContent, 10) || 0);
+    const request = { userId, promise: null };
+    notificationReadRequest = request;
+    notificationReadGeneration++;
+    // Clear at the click, before the destination HTML arrives. Restore on a failed write.
+    setBadge('notifUnreadBadge', 0);
+    request.promise = (async () => {
+      try {
+        await api('/api/notifications/read-all', { method: 'POST', keepalive: true });
+        if (document.body.dataset.currentUserId !== userId) return false;
+        notificationReadGeneration++;
+        if (notificationReadRequest === request) notificationReadRequest = null;
+        setBadge('notifUnreadBadge', 0);
+        await refreshNavBadges(true);
+        return true;
+      } catch (error) {
+        if (document.body.dataset.currentUserId === userId) {
+          notificationReadGeneration++;
+          if (notificationReadRequest === request) notificationReadRequest = null;
+          setBadge('notifUnreadBadge', previousCount);
+          toast(error.message, true);
+          await refreshNavBadges(true);
+        }
+        return false;
+      } finally {
+        if (notificationReadRequest === request) notificationReadRequest = null;
+      }
+    })();
+    return request.promise;
+  }
+
   function initActivityPage() {
     const markAllBtn = document.getElementById('markAllReadBtn');
-    if (markAllBtn) {
-      markAllBtn.addEventListener('click', async () => {
+    if (markAllBtn && markAllBtn.dataset.readBound !== '1') {
+      markAllBtn.dataset.readBound = '1';
+      const activityPage = markAllBtn.closest('section');
+      const entryRead = activityEntryRead;
+      activityEntryRead = null;
+      const markRead = async (showToast, existingRead) => {
+        if (markAllBtn.disabled) return;
+        const userId = document.body.dataset.currentUserId;
+        if (!userId) return;
+        const unreadItems = [...(activityPage || document).querySelectorAll('.notif-item--unread')];
+        markAllBtn.disabled = true;
         try {
-          await api('/api/notifications/read-all', { method: 'POST' });
-          document.querySelectorAll('.notif-item--unread').forEach(el => el.classList.remove('notif-item--unread'));
-          setBadge('notifUnreadBadge', 0);
-          toast('Da danh dau tat ca la da doc');
+          const read = await (existingRead || acknowledgeActivityNotifications());
+          if (!read) return;
+          if (document.body.dataset.currentUserId !== userId) return;
+          unreadItems.forEach(el => el.classList.remove('notif-item--unread'));
+          if (showToast && markAllBtn.isConnected) toast('Đã đánh dấu tất cả là đã đọc');
         } catch (err) {
-          toast(err.message, true);
+          if (document.body.dataset.currentUserId === userId && markAllBtn.isConnected) toast(err.message, true);
+        } finally {
+          markAllBtn.disabled = false;
         }
-      });
+      };
+      markAllBtn.addEventListener('click', () => markRead(true));
+      // Opening Activity acknowledges notifications through the existing authenticated POST.
+      // The page GET stays read-only, and pending follow-request actions remain untouched.
+      markRead(false, entryRead?.userId === document.body.dataset.currentUserId ? entryRead.promise : null);
     }
 
     document.querySelectorAll('.notif-item__actions[data-sender-id]').forEach(actions => {
@@ -2860,10 +3107,14 @@ window.Aloute = (function () {
   }
 
   const navBadgeCounts = new Map();
+  document.addEventListener('aloute:follow-request-resolved', () => refreshNavBadges(true));
   let navBadgeUser = null;
   let navBadgeRefreshAt = 0;
   let navBadgeRequest = null;
   let navBadgeForceAfterPending = false;
+  let notificationReadGeneration = 0;
+  let notificationReadRequest = null;
+  let activityEntryRead = null;
 
   function refreshNavBadges(force) {
     const userId = document.body.dataset.currentUserId;
@@ -2881,12 +3132,15 @@ window.Aloute = (function () {
     }
     if (!force && now - navBadgeRefreshAt < 30000) return;
 
+    const readGeneration = notificationReadGeneration;
     navBadgeRequest = Promise.allSettled([
-      api('/api/notifications/unread-count', { method: 'GET' }),
-      api('/api/chat/unread-count', { method: 'GET' })
+      api('/api/notifications/unread-count', { method: 'GET', cache: 'no-store' }),
+      api('/api/chat/unread-count', { method: 'GET', cache: 'no-store' })
     ]).then(function (results) {
       if (document.body.dataset.currentUserId !== userId) return;
-      if (results[0].status === 'fulfilled') setBadge('notifUnreadBadge', results[0].value?.count ?? results[0].value ?? 0);
+      if (results[0].status === 'fulfilled' && readGeneration === notificationReadGeneration
+          && notificationReadRequest?.userId !== userId)
+        setBadge('notifUnreadBadge', results[0].value?.count ?? results[0].value ?? 0);
       if (results[1].status === 'fulfilled') setBadge('chatUnreadBadge', results[1].value?.count ?? results[1].value ?? 0);
       navBadgeRefreshAt = Date.now();
     }).finally(function () {
@@ -2905,6 +3159,7 @@ window.Aloute = (function () {
   function canSoftNavigate(url) {
     if (url.origin !== window.location.origin) return false;
     if (url.pathname === '/chat' || url.pathname.startsWith('/chat/')) return false;
+    if (/^\/@[^/]+$/.test(url.pathname)) return true;
     if (!SOFT_NAV_ROUTES.some(function (p) { return url.pathname === p || url.pathname.startsWith(p + '/'); })) return false;
     return true;
   }
@@ -2980,7 +3235,7 @@ window.Aloute = (function () {
     initChangePasswordForm();
     initLogout();
     initSidebarNavigation();
-    refreshNavBadges();
+    refreshNavBadges(true);
     document.dispatchEvent(new Event('aloute:navigated'));
   }
 
@@ -2996,7 +3251,13 @@ window.Aloute = (function () {
       link.dataset.softNavBound = '1';
       link.addEventListener('click', function (e) {
         if (isModifiedClick(e)) return;
-        if (url.href === window.location.href) return;
+        if (softNavigationBusy) { e.preventDefault(); return; }
+        if (url.pathname === '/activity') {
+          const promise = acknowledgeActivityNotifications();
+          if (url.href !== window.location.href)
+            activityEntryRead = { userId: document.body.dataset.currentUserId, promise };
+        }
+        if (url.href === window.location.href) { e.preventDefault(); return; }
         e.preventDefault();
         navigateSoft(url, true);
       });
@@ -3008,6 +3269,11 @@ window.Aloute = (function () {
     if (!canSoftNavigate(url)) return;
     restoringHistory = true;
     navigateSoft(url, false);
+  });
+
+  // Back/forward may restore old HTML and JS state without DOMContentLoaded.
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) refreshNavBadges(true);
   });
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -3022,7 +3288,7 @@ window.Aloute = (function () {
   });
 
   return {
-    api, toast, timeAgo, escapeHtml, formatCount, csrfHeaders, fetchWithSessionRefresh,
+    api, toast, timeAgo, escapeHtml, formatCount, profileUrl, csrfHeaders, fetchWithSessionRefresh,
     onRealtimeReady, connectRealtime, refreshNavBadges,
     initFeedInteractions, initFollowButtons, initCloseFriendButtons
   };

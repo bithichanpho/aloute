@@ -40,7 +40,7 @@
               <th:block th:each="actor,stat : ${post.recentReposters}">
                 <span th:if="${stat.index > 0 and !stat.last}">, </span>
                 <span th:if="${stat.index > 0 and stat.last}"> và </span>
-                <a class="post__reposter" th:href="@{'/profile/' + ${actor.userId}}" th:text="${actor.username}">username</a>
+                <a class="post__reposter" th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(actor.username, actor.userId)}" th:href="@{${accountPath}}" th:text="${actor.username}">username</a>
               </th:block>
             </span>
             <th:block th:if="${post.otherReposterCount > 0}">
@@ -52,7 +52,7 @@
                         data-reposters-trigger
                         th:text="${post.otherReposterCount + ' người khác'}">2 người khác</button>
                 <div class="post__repost-others-list" data-reposters-list>
-                  <span class="post__repost-others-status">Nhấn để xem danh sách</span>
+                  <span class="post__repost-others-status">Đang tải...</span>
                 </div>
               </span>
             </th:block>
@@ -60,7 +60,7 @@
           </div>
 
           <div class="post__avatar-col">
-            <a th:href="@{'/profile/' + ${mainUserId}}">
+            <a th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(mainUsername, mainUserId)}" th:href="@{${accountPath}}">
               <img class="post__avatar"
                    th:src="${mainAvatarUrl != null ? mainAvatarUrl : '/images/avatar_default.png'}"
                    src="/images/avatar_default.png" alt="avatar" loading="lazy" decoding="async">
@@ -68,8 +68,9 @@
           </div>
           <div class="post__body">
             <div class="post__header">
-              <a th:href="@{'/profile/' + ${mainUserId}}" class="post__username" th:text="${mainUsername}">username</a>
+              <a th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(mainUsername, mainUserId)}" th:href="@{${accountPath}}" class="post__username" th:text="${mainUsername}">username</a>
               <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+          <span th:replace="~{fragments/post-metadata :: audience(${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility})}"></span>
               <div class="post__menu">
                 <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                         aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
@@ -85,7 +86,8 @@
               </div>
             </div>
 
-            <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
+            <div th:replace="~{fragments/post-metadata :: review(${post})}"></div>
+        <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
                th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
             <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
                  th:src="${isRepost ? post.repostOf.imageUrl : post.imageUrl}" alt="ảnh bài viết" th:loading="${postStat.first ? 'eager' : 'lazy'}" th:fetchpriority="${postStat.first ? 'high' : 'auto'}" decoding="async">
@@ -99,8 +101,9 @@
             <div class="repost-card" th:if="${isQuote and !post.repostOf.deleted}">
               <div class="repost-card__header">
                 <img th:src="${post.repostOf.userAvatarUrl != null ? post.repostOf.userAvatarUrl : '/images/avatar_default.png'}" alt="avatar" loading="lazy" decoding="async">
-                <a th:href="@{'/profile/' + ${post.repostOf.userId}}" th:text="${post.repostOf.username}">username</a>
+                <a th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(post.repostOf.username, post.repostOf.userId)}" th:href="@{${accountPath}}" th:text="${post.repostOf.username}">username</a>
                 <span th:text="${post.repostOf.timeAgo}">6 giờ</span>
+            <span th:replace="~{fragments/post-metadata :: audience(${post.repostOf.visibility})}"></span>
               </div>
               <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
               <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" th:loading="${postStat.first ? 'eager' : 'lazy'}" th:fetchpriority="${postStat.first ? 'high' : 'auto'}" decoding="async">
@@ -169,7 +172,7 @@
 
       <div class="feed-suggestions__list" th:if="${not #lists.isEmpty(suggestedUsers)}">
         <div class="feed-suggestion" th:each="user : ${suggestedUsers}">
-          <a class="feed-suggestion__profile" th:href="@{'/profile/' + ${user.id}}">
+          <a class="feed-suggestion__profile" th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(user.username, user.id)}" th:href="@{${accountPath}}">
             <img class="feed-suggestion__avatar"
                  th:src="${user.avatarUrl != null ? user.avatarUrl : '/images/avatar_default.png'}"
                  src="/images/avatar_default.png" alt="avatar" loading="lazy" decoding="async">

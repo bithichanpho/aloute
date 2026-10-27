@@ -1,0 +1,10 @@
+[
+  {
+    "Path": "src/test/browser/logout-regression.cjs",
+    "SHA256": "5E63CF40E7F9D89AEE7620751E19F76D80EA85818EB3056550758A7806292E28"
+  },
+  {
+    "Path": "docs/quality/logout-fix-report.md",
+    "SHA256": "4906384C598AB4FE4BDC186FC453FFC99B822B8C4EAFFE1D72F1FC94EF43D97F"
+  }
+]

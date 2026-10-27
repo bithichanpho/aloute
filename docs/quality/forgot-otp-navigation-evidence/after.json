@@ -1,0 +1,232 @@
+{
+  "baseline": false,
+  "configurations": 32,
+  "passed": 32,
+  "failed": 0,
+  "results": [
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "scenario": "rejected",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "suspended-timers",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "retained-document",
+      "passed": true
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "scenario": "rejected",
+      "passed": true
+    }
+  ]
+}

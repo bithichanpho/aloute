@@ -1,0 +1,17 @@
+[
+  {
+    "Source": "src/main/resources/templates/auth/register.html",
+    "SHA256": "C4634BF20BE594B9AAAA7A545C962EC6BCDC4262838562A89CAB6AE035B52675",
+    "JarMatchesSource": true
+  },
+  {
+    "Source": "src/main/resources/static/js/auth-register.js",
+    "SHA256": "C3824F1C98E4146AD8629C9C30EAC840F28414AD2FC00BA0FDD6C5D8AC5D20E6",
+    "JarMatchesSource": true
+  },
+  {
+    "Source": "src/main/resources/static/css/auth-register.css",
+    "SHA256": "0AACE114761433754C374A39839F5C510E61F4CAF636B75EE8C9027662546B8C",
+    "JarMatchesSource": true
+  }
+]

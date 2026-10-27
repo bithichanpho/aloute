@@ -92,6 +92,7 @@ class UserProfileQueryBudgetTest {
         when(friends.getProfileRelationshipStats(9L, 2L)).thenReturn(stats);
         when(stats.viewerFollows()).thenReturn(false);
         when(friendService.hasPendingFollowRequest(2L, 9L)).thenReturn(true);
+        when(friendService.hasPendingFollowRequest(9L, 2L)).thenReturn(true);
         when(closeFriends.getStatusMap(2L, List.of(9L))).thenReturn(Map.of());
 
         UserService service = new UserService(
@@ -105,6 +106,8 @@ class UserProfileQueryBudgetTest {
         var profile = service.getProfile(9L, 2L);
 
         assertTrue(profile.isFollowRequestPending());
+        assertEquals("9:2",profile.getIncomingFollowRequestId());
         verify(friendService).hasPendingFollowRequest(2L, 9L);
+        verify(friendService).hasPendingFollowRequest(9L, 2L);
     }
 }

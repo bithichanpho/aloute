@@ -75,6 +75,8 @@ public class FriendService {
                 request.setFollowerId(currentUserId);
                 request.setTargetId(targetUserId);
                 documentStore.save(request);
+                notificationService.notify(targetUserId, currentUserId, "FOLLOW_REQUEST",
+                        id + "|" + request.getCreatedAt(), "đã gửi yêu cầu theo dõi bạn");
             }
             return false;
         }
@@ -146,8 +148,36 @@ public class FriendService {
 
     public List<Long> getFollowerIds(Long userId, int page, int size) {
         return friendRepository.findByFollowedId(
-                        userId, org.springframework.data.domain.PageRequest.of(page, size))
+                        userId, org.springframework.data.domain.PageRequest.of(page, size,
+                                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("id"))))
                 .stream().map(Friend::getFollowerId).toList();
+    }
+
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "relationshipIds", key = "'following:' + #followerId"),
+        @CacheEvict(cacheNames = "relationshipIds", key = "'followers:' + #currentUserId"),
+        @CacheEvict(cacheNames = "suggestedUsers", key = "#followerId + ':' + T(com.aloute.service.DiscoveryService).FEED_SUGGESTION_LIMIT"),
+        @CacheEvict(cacheNames = "suggestedUsers", key = "#currentUserId + ':' + T(com.aloute.service.DiscoveryService).FEED_SUGGESTION_LIMIT")
+    })
+    @org.springframework.transaction.annotation.Transactional
+    public com.aloute.dto.response.FollowerRemovalResponse removeFollower(Long currentUserId, Long followerId) {
+        if (currentUserId == null) throw new com.aloute.common.exception.UnauthorizedException("Cần đăng nhập");
+        if (followerId == null || followerId <= 0 || currentUserId.equals(followerId))
+            throw new BadRequestException("Người theo dõi không hợp lệ");
+        access.requireProfile(currentUserId, currentUserId);
+        int removed = friendRepository.removeFollower(currentUserId, followerId);
+        // Remove a stale approved request in the same PostgreSQL transaction so it cannot be reused.
+        documentStore.remove(com.aloute.persistence.postgres.document.Query.query(
+                com.aloute.persistence.postgres.document.Criteria.where("_id").is(followerId + ":" + currentUserId)),
+                FollowRequest.class);
+        com.aloute.common.util.TransactionCommitHooks.afterCommit(() -> {
+            if (feedCacheInvalidator != null) {
+                feedCacheInvalidator.invalidateViewer(followerId);
+                feedCacheInvalidator.invalidateViewer(currentUserId);
+            }
+        });
+        return new com.aloute.dto.response.FollowerRemovalResponse(removed > 0,
+                friendRepository.countByFollowedId(currentUserId));
     }
 
     public boolean isFriend(Long userIdA, Long userIdB) {

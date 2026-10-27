@@ -38,7 +38,7 @@ The converter maps each exported `_id` to the model `id` field and the PostgreSQ
 
 ## 3. Apply the Flyway migration, then import
 
-Deploy the new build in a maintenance window so Flyway applies any new, reviewed migrations in order. `V20261102` creates the JSONB table and initial indexes; `V20261106` adds temporal-key index expressions. Do not change SQL for any migration already applied to a shared database. Stop the application before import so no requests race with backfill. Connect `psql` to the same database as `DB_URL` using the usual `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, and `PGPASSWORD` environment variables (or a configured libpq service):
+Deploy the new build in a maintenance window so Flyway applies `V20261102` and creates the JSONB table/indexes. Stop the application before import so no requests race with backfill. Connect `psql` to the same database as `DB_URL` using the usual `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, and `PGPASSWORD` environment variables (or a configured libpq service):
 
 ```bash
 export PGHOST='<postgres-host>' PGPORT='5432' PGDATABASE='<database>' PGUSER='<user>'

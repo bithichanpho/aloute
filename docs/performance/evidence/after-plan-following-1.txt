@@ -1,0 +1,17 @@
+Limit  (cost=137.66..190.26 rows=50 width=78) (actual time=3.541..8.833 rows=50.00 loops=1)
+  Buffers: shared hit=299
+  ->  Index Scan using ix_doc_posts_created_v2 on app_document_records d  (cost=137.66..15968.85 rows=15050 width=78) (actual time=3.538..8.818 rows=50.00 loops=1)
+        Index Cond: (aloute_jsonb_local_datetime_key((payload -> 'createdAt'::text)) IS NOT NULL)
+        Filter: ((((payload ->> 'userId'::text) = '1'::text) OR (ANY ((payload ->> 'userId'::text) = (hashed SubPlan 1).col1))) AND ((NOT jsonb_exists(payload, 'moderationStatus'::text)) OR ((payload -> 'moderationStatus'::text) = 'null'::jsonb) OR ((payload ->> 'moderationStatus'::text) <> 'HIDDEN'::text)) AND ((NOT jsonb_exists(payload, 'repostOfId'::text)) OR ((payload -> 'repostOfId'::text) = 'null'::jsonb) OR (jsonb_exists(payload, 'repostOfId'::text) AND ((payload -> 'repostOfId'::text) <> 'null'::jsonb) AND ((NOT jsonb_exists(payload, 'content'::text)) OR (jsonb_exists(payload, 'content'::text) AND ((payload -> 'content'::text) <> 'null'::jsonb) AND ((payload ->> 'content'::text) <> ''::text))))))
+        Rows Removed by Filter: 3000
+        Index Searches: 1
+        Buffers: shared hit=299
+        SubPlan 1
+          ->  Seq Scan on friends  (cost=0.00..124.75 rows=5000 width=32) (actual time=0.026..1.543 rows=5000.00 loops=1)
+                Filter: (follower_id = '1'::bigint)
+                Rows Removed by Filter: 20
+                Buffers: shared hit=37
+Planning:
+  Buffers: shared hit=34
+Planning Time: 1.815 ms
+Execution Time: 8.921 ms

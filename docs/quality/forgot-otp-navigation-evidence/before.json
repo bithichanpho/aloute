@@ -1,0 +1,38 @@
+{
+  "baseline": true,
+  "configurations": 4,
+  "passed": 2,
+  "failed": 2,
+  "results": [
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "normal",
+      "passed": true
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "suspended-timers",
+      "passed": false,
+      "error": "page.waitForURL: Timeout 3000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/verify-reset-code?email=*\" until \"load\"\n============================================================"
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "retained-document",
+      "passed": false,
+      "error": "page.waitForFunction: Timeout 3000ms exceeded."
+    },
+    {
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "scenario": "rejected",
+      "passed": true
+    }
+  ]
+}

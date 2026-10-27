@@ -1,0 +1,237 @@
+[
+  {
+    "Path": "docs/architecture/module-boundaries.md",
+    "Status": "Modified",
+    "SHA256": "16DABB3ED950249DCE14B78DB6038E795993A1EA370F3D77FFB56739590E2964"
+  },
+  {
+    "Path": "src/test/browser/realtime-smoke.cjs",
+    "Status": "Modified",
+    "SHA256": "437DFADAE427156FE4007A7D2612BED4C62D0F7E369B5491BA067FC033F6AEE1"
+  },
+  {
+    "Path": "src/test/browser/performance-search.cjs",
+    "Status": "New",
+    "SHA256": "B16CBAA960AD8BE86A9D3992DC6E3DD16AAF0A31B7C5B45E39B4C0A335780882"
+  },
+  {
+    "Path": "src/test/browser/performance-page.cjs",
+    "Status": "New",
+    "SHA256": "555EF162AC139008F98E5360B02E7FDECDBECFDBB3DD1537239BE423241A4E27"
+  },
+  {
+    "Path": "docs/performance/aloute-performance-optimization-report.md",
+    "Status": "New",
+    "SHA256": "8F5BAE6584213A185B31AD89A1DE6551C4878055E17D0126E1A115D1681346E3"
+  },
+  {
+    "Path": "docs/performance/evidence/union-regression.json",
+    "Status": "New",
+    "SHA256": "5D7E6377E10CC2A6D25DE42E4B4763EC4E1636E1ED4911FD5E25892D7CF0C990"
+  },
+  {
+    "Path": "docs/performance/evidence/test-results.json",
+    "Status": "New",
+    "SHA256": "2289100B280AF5D8CC630C24B7D08135463DB9B5552B4C8CC7E10DA2BA33A355"
+  },
+  {
+    "Path": "docs/performance/evidence/redis-memory-snapshot.txt",
+    "Status": "New",
+    "SHA256": "C4B71DD3051C8D8C97DCDFFE97F8ECA9D72FC5421CCAD31B450DA1CAEC0D7191"
+  },
+  {
+    "Path": "docs/performance/evidence/realtime-browser-final.log",
+    "Status": "New",
+    "SHA256": "A8ED5AB6FA0FC57036E6C498548371355FF7121D10E4BC73FDCE34363AAEA65B"
+  },
+  {
+    "Path": "docs/performance/evidence/prepared-plan-check.txt",
+    "Status": "New",
+    "SHA256": "0CBCD9DD4E7F4DD74E0E552A18BB5476FB77180945A0E8F20DD6AD22B8787CB6"
+  },
+  {
+    "Path": "docs/performance/evidence/prepared-plan-check.sql",
+    "Status": "New",
+    "SHA256": "E08DCC86E163CE7F346F50D87D5233FD24CBF91C656A379B5A4F1989108E0BCC"
+  },
+  {
+    "Path": "docs/performance/evidence/legacy-plan-one-500-author-batch.txt",
+    "Status": "New",
+    "SHA256": "9AAE398F39790A0F1BFDE311111DFD0B73DB634E8D7BE5D3898BA31A205D0C63"
+  },
+  {
+    "Path": "docs/performance/evidence/http-load-after.json",
+    "Status": "New",
+    "SHA256": "21A638CD9C40BD0B9E469FC14C9A282A118D759390F5FD8BA55D4AD7DBE73D1A"
+  },
+  {
+    "Path": "docs/performance/evidence/http-after.json",
+    "Status": "New",
+    "SHA256": "767C0500E5EDB4BD91B93B06C0A7E7C041A0FF4EEE49B5ED8C8FB400495A3B52"
+  },
+  {
+    "Path": "docs/performance/evidence/browser-page.log",
+    "Status": "New",
+    "SHA256": "1DF47CE5FDB5901C421BDA582F2595C7FCBA6EC3AF7A7063E921BE4EB5764CA9"
+  },
+  {
+    "Path": "docs/performance/evidence/browser-page.json",
+    "Status": "New",
+    "SHA256": "4718288FE6C980B102A8F8DBF2E0FCD651983ACCE46D7FE4C5D81FE768D561FD"
+  },
+  {
+    "Path": "docs/performance/evidence/browser-before.log",
+    "Status": "New",
+    "SHA256": "833CB9771885DFE1759B183C919974738E6A9830AEC21D3ED580593638D5D493"
+  },
+  {
+    "Path": "docs/performance/evidence/browser-after.log",
+    "Status": "New",
+    "SHA256": "DDEBF3A63FFA2472868CAB968E9353F471AFDA2ED4936EE1A07BB21E226CE29A"
+  },
+  {
+    "Path": "docs/performance/evidence/before.json",
+    "Status": "New",
+    "SHA256": "A8E454DFB12731040A653825467B98D67756FAA6B9E89808D9C719A902A453C5"
+  },
+  {
+    "Path": "docs/performance/evidence/after.json",
+    "Status": "New",
+    "SHA256": "00632D7E2AF975A5AC76A7BE3B9A9AC8C3E25059CE90AFED6FFB439F13836BEB"
+  },
+  {
+    "Path": "docs/performance/evidence/after-plan-following-3.txt",
+    "Status": "New",
+    "SHA256": "D91F22D58CE4C131671E2674028C9718A7D56EB5C6A93F68F5478070E0AB1334"
+  },
+  {
+    "Path": "docs/performance/evidence/after-plan-following-2.txt",
+    "Status": "New",
+    "SHA256": "B7E7C6A18AD9091305D277859F96DB8498C7147DE92FC65E078C5032919EB87A"
+  },
+  {
+    "Path": "docs/performance/evidence/after-plan-following-1.txt",
+    "Status": "New",
+    "SHA256": "3001EF4C049C7E105EEB0F2374D056F6C5E7B0C5EC24957D6470233F865B77FE"
+  },
+  {
+    "Path": "src/main/java/com/aloute/config/CacheConfig.java",
+    "Status": "Modified",
+    "SHA256": "715D679F942F93DFAEB2BD9E0A9963CCA4EE07864E980274241900914BD576C8"
+  },
+  {
+    "Path": "src/main/resources/templates/layout/base.html",
+    "Status": "Modified",
+    "SHA256": "20CA01754440A7B65BEB9918FE240677625C08EFA95D5D98622E630ECC9A5B04"
+  },
+  {
+    "Path": "src/main/resources/templates/feed/index.html",
+    "Status": "Modified",
+    "SHA256": "1437E726222252E4196E8E07FBFE41EB5ED00D9408262EA4BA4298EC84507C03"
+  },
+  {
+    "Path": "src/main/resources/static/js/app.js",
+    "Status": "Modified",
+    "SHA256": "01DED006CD33A455FB412D993B704E364F10CB0227595D515006F1DC6AA46666"
+  },
+  {
+    "Path": "src/main/resources/db/migration/V20261107__social_following_read_api.sql",
+    "Status": "New",
+    "SHA256": "6769E0F254CE3BE1F9C4514CD4CED63F6932B1C1A4928FFADEEF6F916A6A0711"
+  },
+  {
+    "Path": "src/main/java/com/aloute/repository/IFriendRepository.java",
+    "Status": "Modified",
+    "SHA256": "C8DF97C4BCFE280FBF458330C418F2246F17C25DB1F30D6D2CFA656CCC140753"
+  },
+  {
+    "Path": "src/main/java/com/aloute/social/api/FollowedAccounts.java",
+    "Status": "Modified",
+    "SHA256": "BFA4A6CE8A0B9E4E5AAB4DB216A4CA3C94AD78CBF2B0399D751E545C744EA1AC"
+  },
+  {
+    "Path": "src/main/java/com/aloute/social/infrastructure/JpaFollowedAccounts.java",
+    "Status": "Modified",
+    "SHA256": "F619DA2FEE3DBACA702965B5B48F79BE85053918DF0637D752A5EF981B3DF8E3"
+  },
+  {
+    "Path": "src/main/java/com/aloute/feed/application/FeedQueryService.java",
+    "Status": "Modified",
+    "SHA256": "47065BF641B1E10B83C6C59B46B030A27641C707E7F3B1CF29FB7DF28F611D0B"
+  },
+  {
+    "Path": "src/main/java/com/aloute/feed/application/FeedPageQuery.java",
+    "Status": "Modified",
+    "SHA256": "89A6080619DB5AB15982D446C5746A45057195B2B5C53C0932AADC4D5C7001E1"
+  },
+  {
+    "Path": "src/test/java/com/aloute/FullBackendContextIT.java",
+    "Status": "Modified",
+    "SHA256": "657C1071C248714A371025A817B8D52E2895B91737362D4CD0B7C33F8CDCCC5E"
+  },
+  {
+    "Path": "src/main/java/com/aloute/posts/api/FeedPostReader.java",
+    "Status": "Modified",
+    "SHA256": "6FC7BC6CE39C82CE06229A47B9BA241F5CD9C59D3504850E20FAFFE668F28A25"
+  },
+  {
+    "Path": "src/main/java/com/aloute/persistence/postgres/document/SqlCriteriaCompiler.java",
+    "Status": "Modified",
+    "SHA256": "4FB405D4BE7C9A913D944BB9EF10E734E30347379B5C53CE6318E7E26F13FB51"
+  },
+  {
+    "Path": "src/main/java/com/aloute/persistence/postgres/document/PostgresDocumentStore.java",
+    "Status": "Modified",
+    "SHA256": "992AD9A529FB4E94BEED6E3AABC3C46ED888A23EA4BFEC472EBD79616963EB93"
+  },
+  {
+    "Path": "src/main/java/com/aloute/persistence/postgres/document/Criteria.java",
+    "Status": "Modified",
+    "SHA256": "050B2B3BF872F93AAE2B33380F52D5DFFA30FC149800F964B628360F8CBE5B23"
+  },
+  {
+    "Path": "src/main/java/com/aloute/posts/infrastructure/PostFeedReader.java",
+    "Status": "Modified",
+    "SHA256": "593B5373672958C67C8ABADC206E8232E2181F862C6EAC08509131CBF5393AE9"
+  },
+  {
+    "Path": "src/test/java/com/aloute/feed/FeedCacheBoundaryTest.java",
+    "Status": "Modified",
+    "SHA256": "A930B047AF39328BC3B13291B447955CB3C2C87A492074EAAE49F30F78C2BC2D"
+  },
+  {
+    "Path": "src/test/java/com/aloute/PerformanceHttpIT.java",
+    "Status": "New",
+    "SHA256": "E24E84185F36CC62A2115AF168BE2F5B53E367DAC95597E140DE90029EEC2A9D"
+  },
+  {
+    "Path": "src/test/java/com/aloute/config/RedisFeedCacheIT.java",
+    "Status": "New",
+    "SHA256": "2F654FA0AC32C41DA05D9FDD51BC24335045153047273F039E23EE43731B94E5"
+  },
+  {
+    "Path": "src/test/java/com/aloute/config/CacheTtlTest.java",
+    "Status": "New",
+    "SHA256": "4FEDB7BFCB59E72A5A2721A8E7188E5D02BD738ADF80B2F6641D9356AAC25220"
+  },
+  {
+    "Path": "src/test/java/com/aloute/persistence/postgres/document/FollowingReadViewIT.java",
+    "Status": "New",
+    "SHA256": "6C6856E6A36852F32FD90CD399D8032CA3919147FCBB5F4FB9C96ACBD116C8B4"
+  },
+  {
+    "Path": "src/test/java/com/aloute/persistence/postgres/document/DocumentReadPlanTest.java",
+    "Status": "New",
+    "SHA256": "1711704D45604E384787B39DB7A4C0EB869098BE6E098258EEF892DD404DA467"
+  },
+  {
+    "Path": "src/test/java/com/aloute/persistence/postgres/document/DocumentPerformanceIT.java",
+    "Status": "New",
+    "SHA256": "080139A0416CA6ED36A1CB0993EF97D70E6FD45D7E686A4421D4E941238BCE35"
+  },
+  {
+    "Path": "src/test/java/com/aloute/service/FeedQueryBudgetTest.java",
+    "Status": "Modified",
+    "SHA256": "686CEF150E35AB2EBFA99C1DC09472A01AA55496F84D48D0FDBF7677E4BF8CE6"
+  }
+]

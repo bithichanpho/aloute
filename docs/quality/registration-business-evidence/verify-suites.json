@@ -1,0 +1,970 @@
+[
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.administration.AccountModerationServiceTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.AlouteApplicationTests",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 1
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.architecture.ModuleBoundaryTest",
+    "Tests": 12,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.AuthTemplateCspTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.common.util.LikePatternUtilTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.common.util.UsernamePolicyTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.communities.CommunityReviewAccessTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.AccountWebSocketGuardTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.AllowedOriginPolicyTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.CacheTtlTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.JwtHandshakeInterceptorTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.JwtUtilTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.ScheduledJobLockingTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.SystemHostInitializerTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.config.WebSocketConfigTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.AuthControllerWebTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.CallSignalingContractTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.ChatControllerStompTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.CommentControllerWebTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.ErrorPageControllerTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.NotificationControllerWebTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.PageDepthLimitTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.PaginationControllerTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.PostControllerWebTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.controller.UploadControllerTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.dto.response.AuthResponseSerializationTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.FeatureTemplateTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.feed.FeedCacheBoundaryTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.feed.FeedCachedVisibilityTest",
+    "Tests": 10,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.feed.FeedQueryServiceTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.feed.FeedWiringTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.GlobalThemeTemplateTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.HostDashboardTemplateTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.identity.SessionInvalidationTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.media.MediaDeletionPolicyTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.messaging.CallRegistryTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.messaging.CallRegistryWiringTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.notifications.NotificationAccountCleanupServiceTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.notifications.NotificationApplicationServiceTest",
+    "Tests": 10,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.notifications.NotificationBulkCleanupContractTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.notifications.NotificationCleanupServiceTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.notifications.NotificationWiringTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.persistence.postgres.document.DocumentDateTimeTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.persistence.postgres.document.DocumentReadPlanTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.posts.NotificationPostReaderTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.posts.PostEditingServiceTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.posts.PostFeedRefreshTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.posts.PostUseCaseWiringTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.posts.SavedPostsServiceTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.RealtimeDependencyTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.security.ClientIpResolverTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AccountDataCleanupRetryWorkerTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AccountDataCleanupServiceTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AccountSecurityServiceTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AdminAccountServiceTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AuthenticationUserCacheTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AuthRateLimitServiceTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AuthServiceRegisterTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AuthServiceVerifyEmailTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.AuthTokenServiceTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CacheConfigTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CallTimeoutDeliveryTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CallTimeoutServiceTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ChatServiceTest",
+    "Tests": 6,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CommentAsyncModerationTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CommentServiceReplyPaginationTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CommunityCleanupRetryWorkerTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CommunityDataCleanupServiceTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CommunityManagementServiceTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.CommunityServiceMediaCleanupTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ContentAccessBatchTest",
+    "Tests": 10,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ContentAccessServiceTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ContentTagServiceTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ConversationServicePaginationTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.FeedCacheInvalidatorTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.FeedQueryBudgetTest",
+    "Tests": 6,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.FirebaseAccountProvisioningServiceTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.GroupQueryBudgetTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.HostDashboardServiceTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.MediaAssetLifecycleServiceTest",
+    "Tests": 14,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.MediaUploadModerationServiceTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ModerationDispatchRecoveryServiceTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ModerationRetryPolicyTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.ModerationServiceTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.NotificationOutboxWorkerTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.NotificationServiceDeliveryTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PasswordManagementServiceTest",
+    "Tests": 6,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PostCreationModerationTest",
+    "Tests": 6,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PostDeletionCleanupTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PostEditModerationTest",
+    "Tests": 6,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PostModerationWorkerTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PostVisibilityCacheRegressionTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.PresenceServiceConfigurationTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.RefreshTokenServiceTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.RepostPresentationServiceTest",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.SocialFeatureAccountModerationTest",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.SocialFeatureServiceTest",
+    "Tests": 13,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.TotpServiceTest",
+    "Tests": 5,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.UploadContentValidatorTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.UploadPurposeTest",
+    "Tests": 11,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.UserProfileQueryBudgetTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.service.WebRtcIceServerServiceTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.users.CallParticipantsTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.users.UserAccountAdministrationTest",
+    "Tests": 4,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.users.UserDirectoryTest",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.validation.RegistrationBusinessValidationTest",
+    "Tests": 18,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "surefire",
+    "Suite": "com.aloute.validation.RequestValidationTest",
+    "Tests": 8,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.config.RedisFeedCacheIT",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.FullBackendContextIT",
+    "Tests": 3,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.messaging.CallHistoryMigrationIT",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.messaging.CallRecoveryIT",
+    "Tests": 16,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.PerformanceHttpIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 1
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.persistence.postgres.document.DocumentDateTimeIT",
+    "Tests": 28,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.persistence.postgres.document.DocumentDateTimeMigrationIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.persistence.postgres.document.DocumentPerformanceIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 1
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.persistence.postgres.document.FollowingReadViewIT",
+    "Tests": 2,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.realtime.RealtimeSmokeIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.RegistrationBusinessIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.schema.FreshPostgresSchemaValidationIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.schema.NotificationBulkCleanupIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  },
+  {
+    "Group": "failsafe",
+    "Suite": "com.aloute.schema.RegistrationEmailMigrationIT",
+    "Tests": 1,
+    "Failures": 0,
+    "Errors": 0,
+    "Skipped": 0
+  }
+]

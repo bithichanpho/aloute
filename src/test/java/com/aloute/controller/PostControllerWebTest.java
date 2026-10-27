@@ -28,6 +28,21 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class PostControllerWebTest {
+    @Test
+    void closeFriendAudienceIsAcceptedAndActorComesFromPrincipal() throws Exception {
+        User user = new User(); user.setId(7L); user.setUsername("alice"); user.setRole(new Role("ROLE_USER"));
+        var principal = new AloutePrincipal(user);
+        var authentication = new UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities());
+        var response = new PostResponse(); response.setId("close-post"); response.setVisibility(com.aloute.model.document.PostVisibility.CLOSE_FRIENDS);
+        when(posts.createPost(eq(7L),any(com.aloute.dto.request.CreatePostRequest.class))).thenReturn(response);
+        mvc.perform(post("/api/posts").principal(authentication).param("userId","999")
+                        .contentType("application/json").content("{\"content\":\"Close friends\",\"visibility\":\"CLOSE_FRIENDS\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.visibility").value("CLOSE_FRIENDS"));
+        var request = org.mockito.ArgumentCaptor.forClass(com.aloute.dto.request.CreatePostRequest.class);
+        verify(posts).createPost(eq(7L),request.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(com.aloute.model.document.PostVisibility.CLOSE_FRIENDS,request.getValue().getVisibility());
+    }
+
     private LikeService likes;
     private AuthRateLimitService limits;
     private FriendService friends;

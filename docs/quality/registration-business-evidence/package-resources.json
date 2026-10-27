@@ -1,0 +1,26 @@
+[
+  {
+    "File": "src/main/resources/static/js/auth-register.js",
+    "Entry": "BOOT-INF/classes/static/js/auth-register.js",
+    "SHA256": "CA57305EFB6B01098D7F3CDD72D1577D6FE8BAA3820B16151D3CC757D1C63F87",
+    "Matches": true
+  },
+  {
+    "File": "src/main/resources/templates/auth/register.html",
+    "Entry": "BOOT-INF/classes/templates/auth/register.html",
+    "SHA256": "F16AAF31940FA5667D4A9C811EB94508A80BF761523883AAE6A9F2C3165FD5E8",
+    "Matches": true
+  },
+  {
+    "File": "src/main/resources/db/migration/V20261108__expand_account_email_length.sql",
+    "Entry": "BOOT-INF/classes/db/migration/V20261108__expand_account_email_length.sql",
+    "SHA256": "002424691AE8DF8BC56D9FDB4BFD3227C452D07B2F932EAF156A7D26A89A8088",
+    "Matches": true
+  },
+  {
+    "File": "target/classes/com/aloute/validation/StrongPasswordValidator.class",
+    "Entry": "BOOT-INF/classes/com/aloute/validation/StrongPasswordValidator.class",
+    "SHA256": "AB792670C0BE79A7F05AAB53375B385C2E9E6F9297BF0BF4F0B5F5679FDA4D94",
+    "Matches": true
+  }
+]

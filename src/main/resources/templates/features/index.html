@@ -7,7 +7,7 @@
     <div class="feature-stack" th:if="${pageKind == 'saved'}">
       <div class="feature-empty" th:if="${#lists.isEmpty(savedPosts)}"><strong>Chưa có bài viết đã lưu</strong><span>Những bài bạn lưu sẽ xuất hiện tại đây.</span></div>
       <article class="feature-card feature-saved" th:each="post : ${savedPosts}" th:attr="data-saved-post=${post.id}">
-        <div class="feature-card__head"><div><strong th:text="${post.username}">Tác giả</strong><span th:text="${post.timeAgo}">Vừa xong</span></div><button type="button" data-action="unsave" th:attr="data-post-id=${post.id}">Bỏ lưu</button></div>
+        <div class="feature-card__head"><div><strong th:text="${post.username}">Tác giả</strong><span th:text="${post.timeAgo}">Vừa xong</span><span th:replace="~{fragments/post-metadata :: audience(${post.visibility})}"></span></div><button type="button" data-action="unsave" th:attr="data-post-id=${post.id}">Bỏ lưu</button></div>
         <p class="post__content" th:text="${post.content}">Nội dung</p><img th:if="${post.imageUrl != null and !post.imageUrl.isBlank()}" th:src="${post.imageUrl}" alt="Ảnh bài viết" loading="lazy"><video class="post__video" th:if="${post.videoUrl != null and !post.videoUrl.isBlank()}" th:src="${post.videoUrl}" controls preload="metadata"></video>
       </article>
     </div>
@@ -53,12 +53,36 @@
         </section>
         <section class="feature-card settings-panel" data-settings-panel="requests" hidden>
           <div class="feature-card__title"><span class="feature-icon">♙</span><div><h2>Yêu cầu theo dõi</h2><p>Duyệt người có thể xem tài khoản riêng tư.</p></div></div>
-          <div class="feature-list" id="followRequestList"><div class="feature-empty compact" th:if="${#lists.isEmpty(followRequests)}">Không có yêu cầu chờ duyệt.</div><div class="feature-list__row" th:each="request : ${followRequests}" th:attr="data-request-id=${request.id}"><a th:href="@{/profile/{id}(id=${request.followerId})}" th:text="${'Tài khoản #' + request.followerId}">Tài khoản</a><span><button type="button" data-action="accept-follow" th:attr="data-request-id=${request.id}">Chấp nhận</button><button type="button" data-action="reject-follow" th:attr="data-request-id=${request.id}">Từ chối</button></span></div></div>
+          <div class="feature-list" id="followRequestList">
+            <div class="feature-empty compact" th:if="${#lists.isEmpty(followRequests)}">Không có yêu cầu chờ duyệt.</div>
+            <div class="feature-list__row" th:each="request : ${followRequests}" th:attr="data-request-id=${request.id}">
+              <a class="feature-request-account" th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(request.followerUsername, request.followerId)}" th:href="@{${accountPath}}">
+                <img class="follow-request-avatar" th:src="${request.followerAvatarUrl ?: '/images/avatar_default.png'}" alt="Ảnh đại diện" loading="lazy">
+                <div class="follow-request-identity">
+                  <strong th:text="${!#strings.isEmpty(#strings.trim(request.followerFullName)) ? request.followerFullName : (!#strings.isEmpty(request.followerUsername) ? request.followerUsername : 'Tài khoản không còn khả dụng')}">Tên tài khoản</strong>
+                  <small th:if="${!#strings.isEmpty(request.followerUsername)}" th:text="${'@' + request.followerUsername}"></small>
+                </div>
+              </a>
+              <div th:replace="~{fragments/follow-request :: actions(${request.id}, false)}"></div>
+            </div>
+          </div>
           <button type="button" data-action="load-more-requests" th:if="${requestsHasMore}" th:attr="data-cursor=${requestsNextCursor}">Xem thêm</button>
         </section>
         <section class="feature-card settings-panel" data-settings-panel="blocked" hidden>
           <div class="feature-card__title"><span class="feature-icon">⊘</span><div><h2>Tài khoản đã chặn</h2><p>Quản lý những người không thể xem hồ sơ hoặc liên hệ với bạn.</p></div></div>
-          <div class="feature-list" id="blockedAccountList"><div class="feature-empty compact" th:if="${#lists.isEmpty(blocks)}">Bạn chưa chặn tài khoản nào.</div><div class="feature-list__row" th:each="block : ${blocks}" th:attr="data-block-id=${block.targetId}"><span th:text="${'Tài khoản #' + block.targetId}">Tài khoản</span><button type="button" data-action="unblock" th:attr="data-user-id=${block.targetId}">Bỏ chặn</button></div></div>
+          <div class="feature-list" id="blockedAccountList">
+            <div class="feature-empty compact" th:if="${#lists.isEmpty(blocks)}">Bạn chưa chặn tài khoản nào.</div>
+            <div class="feature-list__row" th:each="block : ${blocks}" th:attr="data-block-id=${block.targetId}">
+              <a class="feature-request-account" data-block-profile th:with="accountPath=${T(com.aloute.users.api.ProfileLinks).path(block.targetUsername, block.targetId)}" th:href="@{${accountPath}}" title="Bỏ chặn để xem trang cá nhân">
+                <img class="follow-request-avatar" th:src="${block.targetAvatarUrl ?: '/images/avatar_default.png'}" alt="Ảnh đại diện" loading="lazy">
+                <div class="follow-request-identity">
+                  <strong th:text="${!#strings.isEmpty(#strings.trim(block.targetFullName)) ? block.targetFullName : (!#strings.isEmpty(block.targetUsername) ? block.targetUsername : 'Tài khoản không còn khả dụng')}">Tên tài khoản</strong>
+                  <small th:if="${!#strings.isEmpty(block.targetUsername)}" th:text="${'@' + block.targetUsername}"></small>
+                </div>
+              </a>
+              <div class="follow-request-actions"><button type="button" data-action="unblock" th:attr="data-user-id=${block.targetId}">Bỏ chặn</button></div>
+            </div>
+          </div>
           <button type="button" data-action="load-more-blocks" th:if="${blocksHasMore}" th:attr="data-cursor=${blocksNextCursor}">Xem thêm</button>
         </section>
         <section class="feature-card feature-danger settings-panel" data-settings-panel="account" hidden>

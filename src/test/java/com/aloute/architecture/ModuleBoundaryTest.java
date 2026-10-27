@@ -11,6 +11,15 @@ import org.junit.jupiter.api.Test;
 
 /** Enforces migrated slices only. Legacy dependencies are explicit, never globally suppressed. */
 class ModuleBoundaryTest {
+    @Test
+    void postWebAdaptersDoNotAccessPersistenceOrOtherModuleInternals() {
+        classes().that().resideInAPackage("com.aloute.posts.web..")
+                .should().onlyDependOnClassesThat().resideInAnyPackage("java..", "org..",
+                        "com.aloute.posts.web..", "com.aloute.posts.application..", "com.aloute.posts.api..",
+                        "com.aloute.security..", "com.aloute.common.response..")
+                .check(MODULES);
+    }
+
     private static final JavaClasses MODULES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.aloute.notifications", "com.aloute.users",

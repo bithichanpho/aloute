@@ -1,0 +1,6 @@
+{
+  "controllerInJar": true,
+  "securityAllowsOtpRoute": true,
+  "newControllerRoute": true,
+  "currentForgotScript": true
+}

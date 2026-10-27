@@ -43,6 +43,11 @@ public interface IFriendRepository extends JpaRepository<Friend, Long> {
     boolean existsByFollowerIdAndFollowedId(Long followerId, Long followedId);
     boolean existsByFollowerId(Long followerId);
 
+    /** Idempotent removal of the incoming edge only; keep the owner's outgoing follow. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("delete from Friend f where f.followerId = :followerId and f.followedId = :ownerId")
+    int removeFollower(@Param("ownerId") Long ownerId, @Param("followerId") Long followerId);
+
     List<Friend> findByFollowerId(Long followerId);
 
     List<Friend> findByFollowerId(Long followerId, org.springframework.data.domain.Pageable pageable);
@@ -60,6 +65,8 @@ public interface IFriendRepository extends JpaRepository<Friend, Long> {
     List<Friend> findByFollowedId(Long followedId, org.springframework.data.domain.Pageable pageable);
 
     List<Friend> findByFollowerIdAndFollowedIdIn(Long followerId, Collection<Long> followedIds);
+
+    List<Friend> findByFollowerIdInAndFollowedIdIn(Collection<Long> followerIds, Collection<Long> followedIds);
 
     List<Friend> findByFollowedIdAndFollowerIdIn(Long followedId, Collection<Long> followerIds);
 

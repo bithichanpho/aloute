@@ -1,0 +1,40 @@
+{
+  "before": false,
+  "reliability": true,
+  "otpMotion": false,
+  "configurations": 4,
+  "results": [
+    {
+      "kind": "login",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    },
+    {
+      "kind": "verify",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    },
+    {
+      "kind": "forgot-password",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "singleFlight": true,
+      "readonly": true,
+      "timeoutAndNetworkRetry": true,
+      "lateResponseIgnored": true,
+      "deadlineAccelerated": true
+    }
+  ]
+}

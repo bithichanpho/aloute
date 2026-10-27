@@ -67,8 +67,8 @@ public class PostFeedReader implements FeedPostReader {
                 cards.get(post.getId()))).toList();
     }
 
-    public void attachRecentReposters(List<PostResponse> cards) {
-        reposts.attachRecentReposters(cards);
+    public void attachRecentReposters(Long viewerId, List<PostResponse> cards) {
+        reposts.attachRecentReposters(viewerId, cards);
     }
 
     public List<PostResponse> refreshCards(Long viewerId, List<String> postIds) {
@@ -96,7 +96,7 @@ public class PostFeedReader implements FeedPostReader {
         Map<String, PostResponse> cards = mapper.toReadableResponses(permissions.readable(loaded), viewerId, permissions)
                 .stream().collect(Collectors.toMap(PostResponse::getId, Function.identity()));
         List<PostResponse> refreshed = ids.stream().map(cards::get).filter(java.util.Objects::nonNull).toList();
-        reposts.attachRecentReposters(refreshed);
+        reposts.attachRecentReposters(viewerId, refreshed);
         return refreshed;
     }
 

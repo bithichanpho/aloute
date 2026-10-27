@@ -1,0 +1,80 @@
+[
+  {
+    "Path": "src/main/java/com/aloute/model/entity/PendingUser.java",
+    "BeforeSHA256": "D71487B103A7B40D06ED2460068DB57AAFE0411E2274C8834539F2B702E40577",
+    "AfterSHA256": "97BC7237C2DFA5199F32D0F0791C55C949A409C4B36806631A72CA880E394CF4",
+    "Kind": "Modified"
+  },
+  {
+    "Path": "src/main/java/com/aloute/model/entity/User.java",
+    "BeforeSHA256": "BD84EEC5CFDB314E40E4830A211E664435ECFDA63D7A7D1F4D0C38EE5275EA8B",
+    "AfterSHA256": "CDB2214BF81A8982FC12268DC88FFDA363ED92194DCE6C2C390B87846D765DDF",
+    "Kind": "Modified"
+  },
+  {
+    "Path": "src/main/java/com/aloute/validation/StrongPasswordValidator.java",
+    "BeforeSHA256": "30D4712FE5DF7224B36F72DD923F0FD5F6FF523899A488073C8D26A4D62F8277",
+    "AfterSHA256": "CD6DE8AFF8BB1087ABABC07A1C9A5931F60E74682EF92094328898272467B0D0",
+    "Kind": "Modified"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-register.js",
+    "BeforeSHA256": "C3824F1C98E4146AD8629C9C30EAC840F28414AD2FC00BA0FDD6C5D8AC5D20E6",
+    "AfterSHA256": "CA57305EFB6B01098D7F3CDD72D1577D6FE8BAA3820B16151D3CC757D1C63F87",
+    "Kind": "Modified"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/register.html",
+    "BeforeSHA256": "C4634BF20BE594B9AAAA7A545C962EC6BCDC4262838562A89CAB6AE035B52675",
+    "AfterSHA256": "F16AAF31940FA5667D4A9C811EB94508A80BF761523883AAE6A9F2C3165FD5E8",
+    "Kind": "Modified"
+  },
+  {
+    "Path": "src/test/browser/register-validation.cjs",
+    "BeforeSHA256": "DF54303F26D7145DEE0DFF9C6066D5774DE78D0B1D44C12048A6110D221F1ACB",
+    "AfterSHA256": "FD3C1BEDD898EC3FF6AD833EEDDE8877729546E618B0D6EFE83EADA20331AED6",
+    "Kind": "Modified"
+  },
+  {
+    "Path": "src/main/resources/db/migration/V20261108__expand_account_email_length.sql",
+    "BeforeSHA256": null,
+    "AfterSHA256": "002424691AE8DF8BC56D9FDB4BFD3227C452D07B2F932EAF156A7D26A89A8088",
+    "Kind": "New"
+  },
+  {
+    "Path": "src/test/resources/registration-validation-cases.json",
+    "BeforeSHA256": null,
+    "AfterSHA256": "45F15311A6EEA44A393B077484AE9C259EAB283D01C4DF63EBD9F227ECE77FFB",
+    "Kind": "New"
+  },
+  {
+    "Path": "src/test/java/com/aloute/validation/RegistrationBusinessValidationTest.java",
+    "BeforeSHA256": null,
+    "AfterSHA256": "15806F6444EBDEFDFEBFA08054C5026F21FC2253BC4F64949B96C2A4FB2CF415",
+    "Kind": "New"
+  },
+  {
+    "Path": "src/test/java/com/aloute/RegistrationBusinessIT.java",
+    "BeforeSHA256": null,
+    "AfterSHA256": "72422443C522BE89AFAE8FEDF21250AC2AE98A0119DB314B704E2335A4484214",
+    "Kind": "New"
+  },
+  {
+    "Path": "src/test/java/com/aloute/schema/RegistrationEmailMigrationIT.java",
+    "BeforeSHA256": null,
+    "AfterSHA256": "5B758D9C7F9A5BB72FD5DDDFB388161B511B244E054E8732BF13B05BC1CB6390",
+    "Kind": "New"
+  },
+  {
+    "Path": "src/test/browser/registration-business.cjs",
+    "BeforeSHA256": null,
+    "AfterSHA256": "E80BA85C7CF1050D861F887A0204392885EE18CE0AE43218E4525187209B7DAF",
+    "Kind": "New"
+  },
+  {
+    "Path": "docs/operations/account-email-length-check.sql",
+    "BeforeSHA256": null,
+    "AfterSHA256": "CD9BC487DFA8850BBB618F5808D632C9BD94AD53A37541CDE335A1757168C8E1",
+    "Kind": "New"
+  }
+]

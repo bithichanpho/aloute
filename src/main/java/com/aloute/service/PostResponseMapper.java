@@ -53,6 +53,8 @@ public class PostResponseMapper {
         dto.setVisibility(post.getVisibility());
         dto.setContent(post.getContent());
         dto.setModerationStatus(post.getModerationStatus());
+        dto.setModerationRetryAvailable(java.util.Objects.equals(currentUserId, Long.valueOf(post.getUserId()))
+                && com.aloute.posts.domain.PostReviewRetryPolicy.canRetry(post));
         dto.setCommunityPostStatus(post.getCommunityPostStatus());
         dto.setCreatedAt(post.getCreatedAt());
         dto.setTimeAgo(TimeAgoUtil.format(post.getCreatedAt()));
@@ -123,7 +125,7 @@ public class PostResponseMapper {
         if (post.getRepostOfId() != null) {
             dto.setRepostOf(buildRepostOrigin(post.getRepostOfId()));
         }
-        repostPresentationService.attachRecentReposters(java.util.List.of(dto));
+        repostPresentationService.attachRecentReposters(currentUserId, java.util.List.of(dto));
 
         return dto;
     }
@@ -150,6 +152,7 @@ public class PostResponseMapper {
         }
 
         origin.setContent(original.getContent());
+        origin.setVisibility(original.getVisibility());
         origin.setImageUrl(
                 CloudinaryUrlUtil.feedImage(original.getImageUrl()));
         origin.setVideoUrl(original.getVideoUrl());
@@ -219,6 +222,8 @@ public class PostResponseMapper {
 
                             dto.setId(post.getId());
                             dto.setVisibility(post.getVisibility());
+                            dto.setModerationRetryAvailable(java.util.Objects.equals(currentUserId, Long.valueOf(post.getUserId()))
+                                    && com.aloute.posts.domain.PostReviewRetryPolicy.canRetry(post));
                             dto.setContent(post.getContent());
                             dto.setModerationStatus(post.getModerationStatus());
                             dto.setCommunityPostStatus(post.getCommunityPostStatus());
@@ -294,6 +299,7 @@ public class PostResponseMapper {
                                     origin.setDeleted(true);
                                 } else {
                                     origin.setContent(original.getContent());
+                                    origin.setVisibility(original.getVisibility());
                                     origin.setImageUrl(
                                             CloudinaryUrlUtil.feedImage(
                                                     original.getImageUrl()));

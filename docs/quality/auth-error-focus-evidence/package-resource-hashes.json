@@ -1,0 +1,52 @@
+[
+  {
+    "Path": "static/js/auth-form-feedback.js",
+    "SHA256": "B6DF9634C02B823966E926A171E447C9F5C1209717E676174F04BCCBCCCFAFAA",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/css/auth-form-feedback.css",
+    "SHA256": "A26330546DD6E7F22E10D6C36D48B21E82E9C034EF76BAB7E86AE46127420D64",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-login.js",
+    "SHA256": "7A7C09D80C00DDD3B0D9B6F18E301D0584B01E3745647056885D53D249A21EA0",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-verify.js",
+    "SHA256": "02ED1C6E9A764229E479B8F1BC9B759B3B85B679E4BA01AA8A6F2A6ECA4ABCDD",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-forgot-password.js",
+    "SHA256": "22C2CC5F660511CB22F64FFCC61036C4AE1708A9D875AD380F990AA5E363D94A",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-reset-password.js",
+    "SHA256": "24A049F162D3FC4EF227BFD24CD6290092C00912981AFE0B2C3FDDE0E42C1F7A",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/login.html",
+    "SHA256": "B96EB5C0701D8B09F4184C6910FA76B70323BF6C368D1EDDA43467C98DD01B20",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/verify.html",
+    "SHA256": "49CB09BFEB60B32262D3A1EE8247E0F65E1DD87268E3415325F4958498E6AE92",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/forgot-password.html",
+    "SHA256": "2039DD600272F0F6BF4346597215B2EA67AB7E25A5A478BEC955511865D9248D",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/reset-password.html",
+    "SHA256": "10982CDB4D72D89BBF5277D81813BFEFFBF415A803B33C49524413DF0AA12737",
+    "JarMatches": true
+  }
+]

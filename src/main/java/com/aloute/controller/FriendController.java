@@ -12,6 +12,7 @@ import com.aloute.service.UserService;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -84,6 +85,16 @@ public class FriendController {
         userService.getProfile(userId, currentUserId);
         List<Long> ids = friendService.getMutualFriendIds(userId);
         return ApiResponse.success(toProfiles(ids, currentUserId));
+    }
+
+    @DeleteMapping("/followers/{followerId}")
+    public ApiResponse<com.aloute.dto.response.FollowerRemovalResponse> removeFollower(
+            Authentication authentication, @PathVariable @Positive Long userId,
+            @PathVariable @Positive Long followerId) {
+        Long currentUserId = requireUserId(authentication);
+        if (!currentUserId.equals(userId))
+            throw new com.aloute.common.exception.ForbiddenException("Chỉ được xóa người theo dõi của chính bạn");
+        return ApiResponse.success(friendService.removeFollower(currentUserId, followerId));
     }
 
     private List<UserProfileDto> toProfiles(List<Long> ids, Long currentUserId) {

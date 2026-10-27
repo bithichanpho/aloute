@@ -201,6 +201,7 @@ public class SecurityConfig {
                                                 "/reset-password",
                                                 "/verify-reset-code",
                                                 "/profile/**",
+                                                "/@*",
                                                 "/search",
                                                 "/css/**",
                                                 "/js/**",

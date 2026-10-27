@@ -2,6 +2,27 @@
   'use strict';
   const api = (url, method = 'GET', body) => Aloute.api(url, { method, body });
   const currentUser = document.body.dataset.currentUserId;
+  const reviewRetries = new Set();
+  document.addEventListener('click', async event => {
+    const trigger = event.target.closest('[data-moderation-retry]');
+    if (!trigger) return;
+    event.preventDefault();
+    const id = trigger.dataset.reviewPostId;
+    if (!id || reviewRetries.has(id)) return;
+    reviewRetries.add(id);
+    const buttons = [...document.querySelectorAll('[data-moderation-retry]')]
+      .filter(node => node.dataset.reviewPostId === id);
+    buttons.forEach(node => { node.disabled = true; });
+    try {
+      await api('/api/posts/' + encodeURIComponent(id) + '/moderation-retry', 'POST');
+      location.reload();
+    } catch (error) {
+      Aloute.toast(error.message, true);
+    } finally {
+      reviewRetries.delete(id);
+      buttons.forEach(node => { node.disabled = false; });
+    }
+  });
   const element = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text != null) node.textContent = text;
@@ -53,7 +74,7 @@
     for (const match of text.matchAll(pattern)) {
       fragment.append(document.createTextNode(text.slice(end, match.index)));
       const link = element('a', match[0], 'feature-tag');
-      link.href = match[3] === '@' ? '/people/' + encodeURIComponent(match[4]) : '/search?q=' + encodeURIComponent(match[0]); fragment.append(link);
+      link.href = match[3] === '@' ? Aloute.profileUrl(match[4], null) : '/search?q=' + encodeURIComponent(match[0]); fragment.append(link);
       end = match.index + match[0].length;
     }
     fragment.append(document.createTextNode(text.slice(end))); node.replaceChildren(fragment);
@@ -63,7 +84,7 @@
       const content = field(modal, 'Nội dung', 'textarea', post.content); content.maxLength = 2000;
       const label = element('label', 'Ai có thể xem?');
       const select = element('select');
-      [['PUBLIC', 'Công khai'], ['FRIENDS', 'Bạn bè'], ['ONLY_ME', 'Chỉ mình tôi']].forEach(([value, text]) => {
+      [['PUBLIC', 'Công khai'], ['FRIENDS', 'Bạn bè'], ['CLOSE_FRIENDS', 'Bạn thân'], ['ONLY_ME', 'Chỉ mình tôi']].forEach(([value, text]) => {
         const option = element('option', text); option.value = value; select.append(option);
       });
       select.value = post.visibility || 'PUBLIC'; label.append(select); modal.append(label);
@@ -292,19 +313,40 @@
     if (!list || !request || list.querySelector('[data-request-id="' + CSS.escape(String(request.id)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.requestId = request.id;
-    const link = element('a', 'Tài khoản #' + request.followerId); link.href = '/profile/' + encodeURIComponent(request.followerId);
-    const actions = element('span');
+    const link = element('a', null, 'feature-request-account'); link.href = Aloute.profileUrl(request.followerUsername, request.followerId);
+    const avatar = element('img', null, 'follow-request-avatar'); avatar.src = request.followerAvatarUrl || '/images/avatar_default.png'; avatar.alt = 'Ảnh đại diện'; avatar.loading = 'lazy';
+    const identity = element('div', null, 'follow-request-identity');
+    identity.append(element('strong', request.followerFullName?.trim() || request.followerUsername || 'Tài khoản không còn khả dụng'));
+    if (request.followerUsername) identity.append(element('small', '@' + request.followerUsername));
+    link.append(avatar, identity);
+    const actions = element('div', null, 'follow-request-actions'); actions.dataset.followRequestActions = request.id;
     const accept = element('button', 'Chấp nhận'); accept.type = 'button'; accept.dataset.action = 'accept-follow'; accept.dataset.requestId = request.id;
     const reject = element('button', 'Từ chối'); reject.type = 'button'; reject.dataset.action = 'reject-follow'; reject.dataset.requestId = request.id;
+    accept.dataset.followDecision = 'accept'; reject.dataset.followDecision = 'reject';
     actions.append(accept, reject); row.append(link, actions); list.appendChild(row);
   }
   function appendBlockedAccount(list, block) {
     if (!list || !block || list.querySelector('[data-block-id="' + CSS.escape(String(block.targetId)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.blockId = block.targetId;
-    const label = element('span', 'Tài khoản #' + block.targetId);
+    const account = element('a', null, 'feature-request-account');
+    account.href = Aloute.profileUrl(block.targetUsername, block.targetId);
+    account.dataset.blockProfile = ''; account.title = 'Bỏ chặn để xem trang cá nhân';
+    const avatar = element('img', null, 'follow-request-avatar');
+    avatar.src = block.targetAvatarUrl || '/images/avatar_default.png'; avatar.alt = 'Ảnh đại diện'; avatar.loading = 'lazy';
+    const identity = element('div', null, 'follow-request-identity');
+    identity.append(element('strong', String(block.targetFullName || '').trim() || block.targetUsername || 'Tài khoản không còn khả dụng'));
+    if (block.targetUsername) identity.append(element('small', '@' + block.targetUsername));
+    account.append(avatar, identity);
+    const actions = element('div', null, 'follow-request-actions');
     const unblock = element('button', 'Bỏ chặn'); unblock.type = 'button'; unblock.dataset.action = 'unblock'; unblock.dataset.userId = block.targetId;
-    row.append(label, unblock); list.appendChild(row);
+    actions.append(unblock); row.append(account, actions); list.appendChild(row);
+  }
+  function showEmptyBlockedState(host) {
+    if (!host) return;
+    const list = host.querySelector('#blockedAccountList');
+    if (list && !list.querySelector('[data-block-id], .feature-empty') && !host.querySelector('[data-action="load-more-blocks"]'))
+      list.append(element('div', 'Bạn chưa chặn tài khoản nào.', 'feature-empty compact'));
   }
   async function loadSocialPage(target, kind) {
     const cursor = target.dataset.cursor || '';
@@ -315,6 +357,7 @@
     });
     target.dataset.cursor = page && page.nextCursor ? page.nextCursor : '';
     if (!page || page.hasMore !== true) target.remove();
+    if (kind === 'blocks') showEmptyBlockedState(document.getElementById('featureContent'));
   }
   function bindFeaturePage() {
     const host = document.getElementById('featureContent');
@@ -349,12 +392,17 @@
       status.classList.toggle('is-enabled', value.enabled);
     }).catch(error => { status.textContent = error.message; });
     host.addEventListener('click', async event => {
-      const target = event.target.closest('[data-action]'); if (!target) return;
+      if (event.target.closest('[data-block-profile]')) {
+        event.preventDefault();
+        Aloute.toast('Bạn cần bỏ chặn để xem trang cá nhân này.');
+        return;
+      }
+      const target = event.target.closest('[data-action]'); if (!target || target.hasAttribute('data-follow-decision')) return;
       const action = target.dataset.action; target.disabled = true;
       try {
         if (action === 'unsave') { await api('/api/posts/' + target.dataset.postId + '/saved', 'DELETE'); target.closest('[data-saved-post]').remove(); }
         else if (action === 'accept-follow' || action === 'reject-follow') { await api('/api/follow-requests/' + encodeURIComponent(target.dataset.requestId), action === 'accept-follow' ? 'PUT' : 'DELETE'); target.closest('[data-request-id]').remove(); }
-        else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); }
+        else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); showEmptyBlockedState(host); }
         else if (action === 'load-more-requests') await loadSocialPage(target, 'follow-requests');
         else if (action === 'load-more-blocks') await loadSocialPage(target, 'blocks');
         else if (action === 'setup-2fa') await setupTwoFactor();
@@ -392,6 +440,49 @@
       requestAnimationFrame(() => { scheduled = false; enhance(); });
     }).observe(document.body, { childList: true, subtree: true });
   }
+  document.addEventListener('click', async event => {
+    const button = event.target.closest('[data-follow-decision]');
+    if (!button) return;
+    event.preventDefault();
+    const requestId = button.dataset.requestId;
+    const groups = [...document.querySelectorAll('[data-follow-request-actions]')]
+      .filter(group => group.dataset.followRequestActions === requestId);
+    if (!requestId || groups.some(group => group.dataset.busy === 'true')) return;
+    groups.forEach(group => {
+      group.dataset.busy = 'true';
+      group.querySelectorAll('button').forEach(control => { control.disabled = true; });
+    });
+    const decision = button.dataset.followDecision;
+    let expired = false;
+    try {
+      await api('/api/follow-requests/' + encodeURIComponent(requestId), decision === 'accept' ? 'PUT' : 'DELETE');
+    } catch (error) {
+      if (error.status === 404) expired = true;
+      else {
+        groups.forEach(group => {
+          delete group.dataset.busy;
+          group.querySelectorAll('button').forEach(control => { control.disabled = false; });
+        });
+        Aloute.toast(error.message, true);
+        return;
+      }
+    }
+    const reload = groups.some(group => group.dataset.followProfile === 'true');
+    const notifications = new Map();
+    groups.forEach(group => {
+      const notification = group.closest('[data-notification-id]');
+      if (notification) notifications.set(notification.dataset.notificationId, notification);
+      const row = group.closest('#followRequestList .feature-list__row');
+      if (row) row.remove();
+      else group.replaceWith(element('span', expired ? 'Yêu cầu không còn hiệu lực' : decision === 'accept' ? 'Đã chấp nhận' : 'Đã từ chối', 'follow-request-result'));
+    });
+    await Promise.allSettled([...notifications].map(async ([id, row]) => {
+      await api('/api/notifications/' + encodeURIComponent(id) + '/read', 'POST');
+      row.classList.remove('notif-item--unread');
+    }));
+    document.dispatchEvent(new CustomEvent('aloute:follow-request-resolved', { detail: { requestId, decision } }));
+    if (reload) location.reload();
+  });
   document.addEventListener('aloute:navigated', initializePage);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

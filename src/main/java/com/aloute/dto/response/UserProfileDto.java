@@ -17,6 +17,7 @@ public class UserProfileDto implements java.io.Serializable {
     private boolean privateAccount;
     private boolean canMessage;
     @lombok.Getter @lombok.Setter private boolean followRequestPending;
+    @lombok.Getter @lombok.Setter private String incomingFollowRequestId;
     private String suggestionReason;
 
     public Long getId() {

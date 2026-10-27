@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public class PostResponse implements java.io.Serializable {
     private static final long serialVersionUID = 1L;
     @lombok.Getter @lombok.Setter private PostVisibility visibility;
+    @lombok.Getter @lombok.Setter private boolean moderationRetryAvailable;
 
     private String id;
     private Long userId;
@@ -269,6 +270,7 @@ public class PostResponse implements java.io.Serializable {
 
     public static class RepostOrigin implements java.io.Serializable {
         private static final long serialVersionUID = 1L;
+        @lombok.Getter @lombok.Setter private PostVisibility visibility;
         private String postId;
         private boolean deleted;
         private Long userId;

@@ -22,6 +22,14 @@ public interface IUserRepository extends JpaRepository<User, Long> {
         String getUsername();
     }
 
+    interface ProfileLabelEntry extends DirectoryEntry {
+        String getFullName();
+        String getAvatarUrl();
+    }
+
+    @Query("select u.id as id, u.username as username, u.fullName as fullName, u.avatarUrl as avatarUrl from User u where u.id in :ids")
+    List<ProfileLabelEntry> findProfileLabels(@Param("ids") java.util.Collection<Long> ids);
+
     @Query("select u.username from User u where u.id = :id")
     Optional<String> findDirectoryUsername(@Param("id") Long id);
 

@@ -1,0 +1,12 @@
+{
+  "scope" : "after-only real HTTP, 8 JWT principals, 8 workers, 80 requests; PostgreSQL/local cache, desktop loopback; not production SLO proof",
+  "http-feed-8-users-8-workers" : {
+    "p99Ms" : 268.0579,
+    "p50Ms" : 120.5991,
+    "requests" : 80,
+    "throughputPerSecond" : 58.64318007304741,
+    "p95Ms" : 261.0002,
+    "errors" : 0
+  },
+  "localFeedCacheStats" : "CacheStats{hitCount=80, missCount=8, loadSuccessCount=8, loadFailureCount=0, totalLoadTime=927118400, evictionCount=0, evictionWeight=0}"
+}

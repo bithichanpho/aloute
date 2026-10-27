@@ -1,0 +1,74 @@
+{
+  "scope" : "after-only real HTTP, JWT, PostgreSQL; local cache; desktop loopback; 20 samples, not production SLO proof",
+  "/api/posts/feed/cursor?tab=following&size=20&cold=1" : {
+    "p50Ms" : 99.041,
+    "p95Ms" : 148.0883,
+    "p99Ms" : 153.1534,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 17895
+  },
+  "/api/posts/feed/cursor?tab=following&size=20" : {
+    "p50Ms" : 57.6588,
+    "p95Ms" : 70.4578,
+    "p99Ms" : 89.141,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 17895
+  },
+  "/api/posts/feed/cursor?tab=foryou&size=20&cold=1" : {
+    "p50Ms" : 71.5976,
+    "p95Ms" : 104.5166,
+    "p99Ms" : 157.5676,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 17895
+  },
+  "/api/posts/feed/cursor?tab=foryou&size=20" : {
+    "p50Ms" : 52.1844,
+    "p95Ms" : 70.454,
+    "p99Ms" : 110.6883,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 17895
+  },
+  "/api/users/10" : {
+    "p50Ms" : 49.3341,
+    "p95Ms" : 57.8972,
+    "p99Ms" : 77.8389,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 399
+  },
+  "/api/posts/perf-00040000" : {
+    "p50Ms" : 40.1505,
+    "p95Ms" : 52.4314,
+    "p99Ms" : 56.5725,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 923
+  },
+  "/api/search/users?q=perf-123&size=20" : {
+    "p50Ms" : 68.1233,
+    "p95Ms" : 96.3935,
+    "p99Ms" : 112.5923,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 4074
+  },
+  "/api/notifications" : {
+    "p50Ms" : 18.9366,
+    "p95Ms" : 22.3977,
+    "p99Ms" : 22.7472,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 41
+  },
+  "/api/chat/conversations" : {
+    "p50Ms" : 27.141,
+    "p95Ms" : 32.1711,
+    "p99Ms" : 32.4167,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 41
+  },
+  "/feed" : {
+    "p50Ms" : 298.1574,
+    "p95Ms" : 467.9067,
+    "p99Ms" : 480.3919,
+    "errorRate" : 0.0,
+    "meanResponseBytes" : 112031
+  },
+  "localFeedCacheStats" : "CacheStats{hitCount=73, missCount=42, loadSuccessCount=42, loadFailureCount=0, totalLoadTime=2727613100, evictionCount=0, evictionWeight=0}"
+}

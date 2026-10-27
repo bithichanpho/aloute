@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"><body>
+<span th:fragment="audience(visibility)" class="post__audience" role="img"
+      th:with="audience=${visibility != null ? visibility.name() : 'PUBLIC'}, label=${audience == 'FRIENDS' ? 'Bạn bè' : (audience == 'CLOSE_FRIENDS' ? 'Bạn thân' : (audience == 'ONLY_ME' ? 'Chỉ mình tôi' : 'Công khai'))}"
+      th:attr="data-post-audience=${audience},aria-label=${label},title=${label}">
+  <svg th:if="${audience == 'PUBLIC'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg>
+  <svg th:if="${audience == 'FRIENDS'}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zm17 0v-3a9 9 0 0 0-1.5-5 6 6 0 0 1 6.5 6v2z"/></svg>
+  <svg th:if="${audience == 'CLOSE_FRIENDS'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path fill="currentColor" stroke="none" d="m12 5 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5.2 10l4.7-.7z"/></svg>
+  <svg th:if="${audience == 'ONLY_ME'}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h8V7a4 4 0 0 0-8 0zm3 5v3h2v-3z"/></svg>
+</span>
+<div th:fragment="review(post)" class="post__review" role="status"
+     th:if="${currentUser != null and post.userId == currentUser.id and post.moderationStatus != null and (post.moderationStatus.name() == 'PENDING' or post.moderationStatus.name() == 'FLAGGED')}"
+     th:attr="data-post-review=${post.moderationStatus}">
+  <span th:text="${post.moderationStatus.name() == 'PENDING' ? 'Đang kiểm duyệt · Chỉ bạn nhìn thấy bài viết này.' : (post.moderationRetryAvailable ? 'Chưa duyệt được bài viết do mất kết nối. Chỉ bạn nhìn thấy bài viết này.' : 'Chờ xem xét · Chỉ bạn nhìn thấy bài viết này.')}"></span>
+  <button th:if="${post.moderationRetryAvailable}" type="button" class="post__review-retry"
+          data-moderation-retry th:attr="data-review-post-id=${post.id}">Thử duyệt lại</button>
+</div>
+</body></html>

@@ -1,0 +1,30 @@
+[
+  {
+    "Path": "src/main/resources/static/js/auth-login.js",
+    "SHA256": "E57DFC9B8F57858D2F1F23F84A459497E3F194959DD1CA4EAA135441D5CB3FB5"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-verify.js",
+    "SHA256": "02ED1C6E9A764229E479B8F1BC9B759B3B85B679E4BA01AA8A6F2A6ECA4ABCDD"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-reset-password.js",
+    "SHA256": "24A049F162D3FC4EF227BFD24CD6290092C00912981AFE0B2C3FDDE0E42C1F7A"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/login.html",
+    "SHA256": "1908D3DED68628E00C94C6921216E6A8363F57A3265D8876C449D115A2AABCC1"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/verify.html",
+    "SHA256": "F3866F83549D9837CFBD1DD972D1A68293D6D9410A8EC0AE0E18ABC99B79BCD7"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/reset-password.html",
+    "SHA256": "3473F0CB6D7993EBF9F409D8415C838D224C6B957DE652F9B21D3AE84FCD6330"
+  },
+  {
+    "Path": "src/test/browser/auth-error-focus.cjs",
+    "SHA256": "7A1E1F5022D7802CBC34B588CBDEE07A7D43506DC3DF3872D3938BD50A915204"
+  }
+]

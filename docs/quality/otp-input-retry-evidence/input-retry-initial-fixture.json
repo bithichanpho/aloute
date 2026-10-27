@@ -1,0 +1,136 @@
+{
+  "before": false,
+  "configurations": 16,
+  "passed": 0,
+  "failed": 16,
+  "results": [
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Malformed input must not consume a server attempt\n\n1 !== 0\n"
+    }
+  ]
+}

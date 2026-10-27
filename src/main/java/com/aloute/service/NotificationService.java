@@ -27,6 +27,14 @@ public class NotificationService extends NotificationApplicationService {
     public NotificationService(
             INotificationRepository notifications, UserDirectory users, PostNotificationLookup posts,
             SimpMessagingTemplate messaging, ProfileVisibility access,
+            ReliableNotificationPush push, NotificationIntents outbox,
+            com.aloute.social.api.FollowRequestLookup followRequests) {
+        super(notifications, users, posts, messaging, access, push, outbox, followRequests);
+    }
+
+    public NotificationService(
+            INotificationRepository notifications, UserDirectory users, PostNotificationLookup posts,
+            SimpMessagingTemplate messaging, ProfileVisibility access,
             ReliableNotificationPush push, NotificationIntents outbox) {
         super(notifications, users, posts, messaging, access, push, outbox);
     }
@@ -45,7 +53,11 @@ public class NotificationService extends NotificationApplicationService {
                 return users.findAllById(ids).stream()
                         .collect(Collectors.toUnmodifiableMap(User::getId, User::getUsername));
             }
+            public Map<Long, ProfileLabel> profileLabels(Collection<Long> ids) {
+                return new com.aloute.users.infrastructure.JpaUserDirectory(users).profileLabels(ids);
+            }
         }, new NotificationPostReader(posts, access), messaging,
-                new LegacyProfileVisibility(access), push, outbox);
+                new LegacyProfileVisibility(access), push, outbox,
+                new com.aloute.social.infrastructure.LegacyFollowRequestLookup(access));
     }
 }

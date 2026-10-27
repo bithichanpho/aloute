@@ -7,9 +7,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['17', '18']
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ matrix.postgres }}-alpine
         env:
           POSTGRES_DB: aloute
           POSTGRES_USER: aloute
@@ -31,14 +35,15 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      TZ: UTC
       DB_URL: jdbc:postgresql://localhost:5432/aloute
       DB_USERNAME: aloute
       DB_PASSWORD: aloute
-      DB_DDL_AUTO: create-drop
+      DB_DDL_AUTO: validate
       REDIS_URL: redis://localhost:6379
       REDIS_CACHE_ENABLED: true
       RATE_LIMIT_REDIS_REQUIRED: true
-      ALOUTE_SCHEMA_VALIDATION_URL: jdbc:postgresql://localhost:5432/aloute_schema_validation
+      ALOUTE_SCHEMA_VALIDATION_URL: jdbc:postgresql://127.0.0.1:5432/aloute_quality_schema_validation
       ALOUTE_SCHEMA_VALIDATION_USERNAME: aloute
       ALOUTE_SCHEMA_VALIDATION_PASSWORD: aloute
       ALOUTE_SEED_DEMO_DATA: false
@@ -54,12 +59,12 @@ jobs:
           java-version: 21
           cache: maven
       - name: Create a fresh database for Flyway/Hibernate schema validation
-        run: PGPASSWORD=aloute psql -h 127.0.0.1 -U aloute -d aloute -v ON_ERROR_STOP=1 -c "CREATE DATABASE aloute_schema_validation"
+        run: PGPASSWORD=aloute psql -h 127.0.0.1 -U aloute -d aloute -v ON_ERROR_STOP=1 -c "CREATE DATABASE aloute_quality_schema_validation"
       - name: Test, validate the fresh schema, and package
         run: ./mvnw --batch-mode -Pcoverage clean verify
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
-          name: jacoco-report
+          name: jacoco-report-postgres-${{ matrix.postgres }}
           path: target/site/jacoco
           if-no-files-found: error

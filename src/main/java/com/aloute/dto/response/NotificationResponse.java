@@ -5,6 +5,11 @@ import java.time.LocalDateTime;
 public class NotificationResponse {
 
     private Long id;
+    @lombok.Getter @lombok.Setter private Long senderId;
+    @lombok.Getter @lombok.Setter private String senderUsername;
+    @lombok.Getter @lombok.Setter private String senderFullName;
+    @lombok.Getter @lombok.Setter private String senderAvatarUrl;
+    @lombok.Getter @lombok.Setter private String followRequestId;
     private String type;
     private String content;
     private String referenceId;

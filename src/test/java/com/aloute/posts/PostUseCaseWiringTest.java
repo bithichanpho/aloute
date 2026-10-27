@@ -27,6 +27,7 @@ class PostUseCaseWiringTest {
     void productionFacadeUsesOwnedPostServicesAndFeedReceivesMinimalChangeEvent() {
         try (var context = context()) {
             assertEquals(1, context.getBeansOfType(PostEditing.class).size());
+            assertEquals(1, context.getBeansOfType(PostModerationRetryService.class).size());
             assertEquals(1, context.getBeansOfType(SavedPosts.class).size());
             assertEquals(1, context.getBeansOfType(FeedInvalidation.class).size());
             var cache = context.getBean(CacheManager.class).getCache("feedPages");
@@ -86,7 +87,7 @@ class PostUseCaseWiringTest {
             manager.afterPropertiesSet();
             return manager;
         });
-        context.register(PostEditingService.class, SavedPostsService.class, LegacyPostAccess.class,
+        context.register(PostEditingService.class, PostModerationRetryService.class, SavedPostsService.class, LegacyPostAccess.class,
                 FeedCacheInvalidator.class, PostFeedInvalidationListener.class, SocialFeatureService.class);
         context.refresh();
         return context;

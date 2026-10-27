@@ -1,0 +1,24 @@
+{
+  "before": true,
+  "configurations": 2,
+  "passed": 0,
+  "failed": 2,
+  "results": [
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Ignoring a letter must preserve the editing position\n+ actual - expected\n\n  [\n+   4,\n+   4\n-   2,\n-   2\n  ]\n"
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": false,
+      "error": "Ignoring a letter must preserve the editing position\n+ actual - expected\n\n  [\n+   4,\n+   4\n-   2,\n-   2\n  ]\n"
+    }
+  ]
+}

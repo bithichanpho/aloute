@@ -35,6 +35,8 @@ class NotificationWiringTest {
             context.registerBean(UserDirectory.class, () -> mock(UserDirectory.class));
             context.registerBean(PostNotificationLookup.class, () -> mock(PostNotificationLookup.class));
             context.registerBean(ProfileVisibility.class, () -> mock(ProfileVisibility.class));
+            context.registerBean(com.aloute.social.api.FollowRequestLookup.class,
+                    () -> mock(com.aloute.social.api.FollowRequestLookup.class));
             context.registerBean(ReliableNotificationPush.class, () -> mock(ReliableNotificationPush.class));
             context.registerBean(SimpMessagingTemplate.class, () -> mock(SimpMessagingTemplate.class));
             context.register(NotificationService.class, NotificationOutboxService.class,

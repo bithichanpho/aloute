@@ -1,0 +1,120 @@
+{
+  "before": false,
+  "configurations": 16,
+  "passed": 16,
+  "failed": 0,
+  "results": [
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "kind": "verify-reset-code",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "passed": true
+    }
+  ]
+}

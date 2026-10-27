@@ -1,0 +1,328 @@
+{
+  "before": false,
+  "reliability": false,
+  "otpMotion": false,
+  "configurations": 32,
+  "results": [
+    {
+      "kind": "login",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "dark",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "dark",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "dark",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "light",
+      "width": 1280,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "light",
+      "width": 1280,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "light",
+      "width": 320,
+      "motion": "no-preference",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "login",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "verify",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "forgot-password",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    },
+    {
+      "kind": "reset-password",
+      "theme": "light",
+      "width": 320,
+      "motion": "reduce",
+      "focusAndRetry": true,
+      "keyboard": true,
+      "contractsAndCsrf": true,
+      "errors": []
+    }
+  ]
+}

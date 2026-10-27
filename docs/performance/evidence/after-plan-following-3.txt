@@ -1,0 +1,11 @@
+Limit  (cost=0.41..276.04 rows=50 width=78) (actual time=0.033..0.034 rows=0.00 loops=1)
+  Buffers: shared hit=3
+  ->  Index Scan using ix_doc_posts_user_created_v2 on app_document_records d  (cost=0.41..827.28 rows=150 width=78) (actual time=0.032..0.032 rows=0.00 loops=1)
+        Index Cond: (((payload ->> 'userId'::text) = '3'::text) AND (aloute_jsonb_local_datetime_key((payload -> 'createdAt'::text)) IS NOT NULL))
+        Filter: (((NOT jsonb_exists(payload, 'moderationStatus'::text)) OR ((payload -> 'moderationStatus'::text) = 'null'::jsonb) OR ((payload ->> 'moderationStatus'::text) <> 'HIDDEN'::text)) AND ((NOT jsonb_exists(payload, 'repostOfId'::text)) OR ((payload -> 'repostOfId'::text) = 'null'::jsonb) OR (jsonb_exists(payload, 'repostOfId'::text) AND ((payload -> 'repostOfId'::text) <> 'null'::jsonb) AND ((NOT jsonb_exists(payload, 'content'::text)) OR (jsonb_exists(payload, 'content'::text) AND ((payload -> 'content'::text) <> 'null'::jsonb) AND ((payload ->> 'content'::text) <> ''::text))))))
+        Index Searches: 1
+        Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=34
+Planning Time: 1.981 ms
+Execution Time: 0.086 ms

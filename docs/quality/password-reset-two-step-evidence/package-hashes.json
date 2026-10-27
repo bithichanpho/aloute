@@ -1,0 +1,82 @@
+[
+  {
+    "Path": "static/js/auth-forgot-password.js",
+    "SHA256": "8166BA4F896F65E7A8FBFF914566926E93B59ACC1EFBAAD453F041F776863CDE",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-reset-password.js",
+    "SHA256": "33B1A9DBFAB03C61A3097C3F947E3609986B4339790EFF9FB416D4BF5ABF7D5C",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-verify-reset-code.js",
+    "SHA256": "D7EA940D578CF85D57B935FBE0CADFC2888579BB617CBF8FFE86BF3517393DED",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/forgot-password.html",
+    "SHA256": "5D0EA0219A08EED49E1035B4959F43DE6C97E7CFBC9DD7B28548DBBF5D82E2C5",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/reset-password.html",
+    "SHA256": "5C9571C7B22A7D4094C5B5E3AD44DAFD1DDADED3E4EB030C56B160F404F6571D",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/verify-reset-code.html",
+    "SHA256": "7885C4FD5213540615D54743590E21BE2E8D3BA187F01D9A27F3ED430C2C6758",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/service/PasswordManagementService.class",
+    "SHA256": "AA32FA7EF7102BF83717463569B00664446DCD801ED5C0FFC58C2E2A4E645272",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/service/PasswordManagementService$ResetProof.class",
+    "SHA256": "02B3B0BFB6F6461D51E181FBF0F4857A7E7F63BC2E52FC8171A28BA1E8C1DC11",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/service/PasswordResetFlowService.class",
+    "SHA256": "5CA9A5B41BEF63F94F991F0829A3306A168264FA9A5523FE13C0B3FD60E80CC7",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/controller/PasswordResetController.class",
+    "SHA256": "2C5D531FEAE18A0A30DFE4B60F2135BC1CD67A7B2855E54FA95A4F3B2FA4D399",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/controller/PasswordResetController$VerifyCode.class",
+    "SHA256": "67D1BDAE7B0DA87872734006E845991F3023BB0DBA32F9C69AD1AAC80E9B7C54",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/controller/PasswordResetController$Complete.class",
+    "SHA256": "46AFDC68DC3BEA4DFB6CFF4E28FBC64B0D086871AFE0E66F60C4E2D5F6CEBF9E",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/repository/IUserRepository.class",
+    "SHA256": "E08ED45564244DC0A238FBCFA9CEAE5E6E9155356F6612CE6F693EA5BD656D86",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/controller/ViewController.class",
+    "SHA256": "B93F2D6F2095F7FEA4EA7D5A090F5C21DBA8A179EF54F05E5D03561B7F3959F0",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/config/SecurityConfig.class",
+    "SHA256": "F9A85D45CCD023449CD257A5254223E5304C99F5C0D4077864262B71CAEC98E4",
+    "JarMatches": true
+  },
+  {
+    "Path": "com/aloute/config/NoCacheViewConfig.class",
+    "SHA256": "5D219DA67658269A6BC081AB4DAF3D2A3068E04D7B32F731D1A33FB1527E44B7",
+    "JarMatches": true
+  }
+]

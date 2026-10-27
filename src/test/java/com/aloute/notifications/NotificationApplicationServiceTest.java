@@ -133,7 +133,9 @@ class NotificationApplicationServiceTest {
         assertEquals(8L, page.nextCursor());
         assertTrue(page.hasMore());
         verify(access).visibleProfileIds(2L, List.of(1L, 3L));
-        verifyNoInteractions(users);
+        // Public labels are loaded once, after filtering invisible actors.
+        verify(users).profileLabels(List.of(1L));
+        verifyNoMoreInteractions(users);
     }
 
     @Test

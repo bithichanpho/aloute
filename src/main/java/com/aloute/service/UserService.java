@@ -98,6 +98,19 @@ public class UserService {
                         .findById(targetUserId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileOf(user, currentUserId);
+    }
+
+    public UserProfileDto getProfileByUsername(String username, Long currentUserId) {
+        if (!com.aloute.users.api.ProfileLinks.isHandle(username))
+            throw new ResourceNotFoundException("Không tìm thấy người dùng");
+        User user = userRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileOf(user, currentUserId);
+    }
+
+    private UserProfileDto profileOf(User user, Long currentUserId) {
+        Long targetUserId = user.getId();
         access.requireProfile(currentUserId, user);
         IFriendRepository.ProfileRelationshipStats relationshipStats =
                 friendRepository.getProfileRelationshipStats(targetUserId, currentUserId);
@@ -125,6 +138,10 @@ public class UserService {
             dto.setFollowRequestPending(
                     !followedByCurrentUser
                             && friendService.hasPendingFollowRequest(currentUserId, targetUserId));
+            if ((relationshipStats == null || !relationshipStats.targetFollowsViewer())
+                    && friendService.hasPendingFollowRequest(targetUserId, currentUserId)) {
+                dto.setIncomingFollowRequestId(targetUserId + ":" + currentUserId);
+            }
             dto.setCloseFriendStatus(
                     closeFriendService
                             .getStatusMap(currentUserId, List.of(targetUserId))

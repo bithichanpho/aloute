@@ -1,0 +1,90 @@
+[
+  {
+    "Path": "src/main/java/com/aloute/service/PasswordManagementService.java",
+    "SHA256": "FD27704DDF0BCB3DA292A0F4A1E6FFF9630CC940BEA439285EE16BEB2DB21059"
+  },
+  {
+    "Path": "src/main/java/com/aloute/repository/IUserRepository.java",
+    "SHA256": "674C5B626287B60D950634C3AF38C8617037407F1C7F1C68E5F513FFE03B1EC2"
+  },
+  {
+    "Path": "src/main/java/com/aloute/controller/ViewController.java",
+    "SHA256": "C29010E2C5A8133A64B775F2922F4A9CFAD4D7AD5386FE65BF2CE7B5AB7A9B2F"
+  },
+  {
+    "Path": "src/main/java/com/aloute/config/SecurityConfig.java",
+    "SHA256": "A1CB1811FD131AE13AD020FD71910F35064EE80A7B2F6DA2EA5C82B00152018C"
+  },
+  {
+    "Path": "src/main/java/com/aloute/config/NoCacheViewConfig.java",
+    "SHA256": "9A377A52EB5EF55D8C1BF890CFDD1E6C72C9481A4D2D735AE162202ED77D3442"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-reset-password.js",
+    "SHA256": "33B1A9DBFAB03C61A3097C3F947E3609986B4339790EFF9FB416D4BF5ABF7D5C"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-forgot-password.js",
+    "SHA256": "8166BA4F896F65E7A8FBFF914566926E93B59ACC1EFBAAD453F041F776863CDE"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/reset-password.html",
+    "SHA256": "5C9571C7B22A7D4094C5B5E3AD44DAFD1DDADED3E4EB030C56B160F404F6571D"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/forgot-password.html",
+    "SHA256": "5D0EA0219A08EED49E1035B4959F43DE6C97E7CFBC9DD7B28548DBBF5D82E2C5"
+  },
+  {
+    "Path": "src/test/java/com/aloute/service/PasswordManagementServiceTest.java",
+    "SHA256": "3F9CC36437D6486A55878F00BA200737D1CF43270DEF4949D47208765B7D1703"
+  },
+  {
+    "Path": "src/test/java/com/aloute/AuthTemplateCspTest.java",
+    "SHA256": "D82A823287B2A66E729FD7C76ED8C24F6B6FEC594DAB8813E7E59A793B6C5585"
+  },
+  {
+    "Path": "src/test/java/com/aloute/GlobalThemeTemplateTest.java",
+    "SHA256": "66C04ACECE61193BAF1EBF877B22AEEC6313305D2864B14836E0BB5954FD3B34"
+  },
+  {
+    "Path": "src/test/browser/auth-error-focus.cjs",
+    "SHA256": "C3C1BA7202FFE24E6421816731AE79B6D380243CC129958FCE33D07A872C470F"
+  },
+  {
+    "Path": "src/main/java/com/aloute/service/PasswordResetFlowService.java",
+    "SHA256": "0546BD7BBFDD5C79504696E10D317DA53A2C75C7E37A62E19CF1075DC3B3622B"
+  },
+  {
+    "Path": "src/main/java/com/aloute/controller/PasswordResetController.java",
+    "SHA256": "F5C907443179EB5F9090BF7D4988A4E0C2BADBDA40A8184BE298FC7D15137959"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-verify-reset-code.js",
+    "SHA256": "D7EA940D578CF85D57B935FBE0CADFC2888579BB617CBF8FFE86BF3517393DED"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/verify-reset-code.html",
+    "SHA256": "7885C4FD5213540615D54743590E21BE2E8D3BA187F01D9A27F3ED430C2C6758"
+  },
+  {
+    "Path": "src/test/java/com/aloute/service/PasswordResetFlowServiceTest.java",
+    "SHA256": "5BABB8FA3A2AAF14DC2415B1D049E3522539B409CB154BDA331DF1653145C378"
+  },
+  {
+    "Path": "src/test/java/com/aloute/controller/PasswordResetControllerTest.java",
+    "SHA256": "E75F4073E493C03B0229F7EDC7EF2987E773BCA35F2AC419777EA4E9F7069E28"
+  },
+  {
+    "Path": "src/test/java/com/aloute/PasswordResetFlowIT.java",
+    "SHA256": "FB46DD2689BBFC34FD1E7443301BBEC519D2B6A88AF4929916CA5547F6467157"
+  },
+  {
+    "Path": "src/test/browser/password-reset-flow.cjs",
+    "SHA256": "47D6ADFF15EA2DF606ADA798A2ACB67AEB5A35E681E0111E83EEC6B39F28D1FD"
+  },
+  {
+    "Path": "docs/quality/password-reset-two-step-report.md",
+    "SHA256": "B6E1C7EA62C658E34A459B5482732759C61A0C00C33096808EB44895E44F452B"
+  }
+]

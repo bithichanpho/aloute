@@ -14,6 +14,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import com.aloute.notifications.api.*;
 import com.aloute.posts.api.PostNotificationLookup;
 import com.aloute.social.api.ProfileVisibility;
+import com.aloute.social.api.FollowRequestLookup;
 import com.aloute.users.api.UserDirectory;
 
 public class NotificationApplicationService implements Notifications {
@@ -26,6 +27,7 @@ public class NotificationApplicationService implements Notifications {
     private final SimpMessagingTemplate messagingTemplate;
     private final ReliableNotificationPush pushNotificationService;
     private final NotificationIntents outboxService;
+    private final FollowRequestLookup followRequests;
 
     public NotificationApplicationService(
             INotificationRepository notificationRepository,
@@ -35,6 +37,15 @@ public class NotificationApplicationService implements Notifications {
             ProfileVisibility access,
             ReliableNotificationPush pushNotificationService,
             NotificationIntents outboxService) {
+        this(notificationRepository, userDirectory, posts, messagingTemplate, access,
+                pushNotificationService, outboxService, ids -> java.util.Set.of());
+    }
+
+    public NotificationApplicationService(
+            INotificationRepository notificationRepository, UserDirectory userDirectory,
+            PostNotificationLookup posts, SimpMessagingTemplate messagingTemplate,
+            ProfileVisibility access, ReliableNotificationPush pushNotificationService,
+            NotificationIntents outboxService, FollowRequestLookup followRequests) {
         this.access = access;
         this.notificationRepository = notificationRepository;
         this.userDirectory = userDirectory;
@@ -42,6 +53,7 @@ public class NotificationApplicationService implements Notifications {
         this.messagingTemplate = messagingTemplate;
         this.pushNotificationService = pushNotificationService;
         this.outboxService = outboxService;
+        this.followRequests = followRequests;
     }
 
     public void notifyPostLiked(String postId, Long likerId) {
@@ -84,18 +96,38 @@ public class NotificationApplicationService implements Notifications {
             userDirectory.username(event.getSenderId()).ifPresent(name -> names.put(event.getSenderId(), name));
             userDirectory.username(event.getReceiverId()).ifPresent(name -> names.put(event.getReceiverId(), name));
             return names;
-        });
+        }, null);
     }
 
     public void deliverQueued(NotificationOutboxEvent event, java.util.Map<Long, String> directory) {
-        deliverQueued(event, () -> directory);
+        deliverQueued(event, () -> directory, null);
+    }
+
+    public java.util.Set<String> pendingDeliveryRequests(List<NotificationOutboxEvent> events) {
+        var refs = events.stream().filter(event -> "FOLLOW_REQUEST".equals(event.getNotificationType()))
+                .map(NotificationOutboxEvent::getReferenceId).filter(java.util.Objects::nonNull).distinct().toList();
+        return refs.isEmpty() ? java.util.Set.of() : followRequests.pendingIds(refs);
+    }
+
+    public void deliverQueued(NotificationOutboxEvent event, java.util.Map<Long, String> directory,
+            java.util.Set<String> pendingRequests) {
+        deliverQueued(event, () -> directory, pendingRequests);
     }
 
     private void deliverQueued(NotificationOutboxEvent event,
-            java.util.function.Supplier<java.util.Map<Long, String>> directory) {
+            java.util.function.Supplier<java.util.Map<Long, String>> directory,
+            java.util.Set<String> pendingRequests) {
         if (event.getReceiverId().equals(event.getSenderId())
                 || !access.profileVisible(event.getReceiverId(), event.getSenderId())
                 || !access.profileVisible(event.getSenderId(), event.getReceiverId())) return;
+
+        if ("FOLLOW_REQUEST".equals(event.getNotificationType())) {
+            String canonical = event.getSenderId() + ":" + event.getReceiverId();
+            String ref = event.getReferenceId();
+            if (ref == null || !(ref.equals(canonical) || ref.startsWith(canonical + "|"))) return;
+            var pending = pendingRequests == null ? followRequests.pendingIds(List.of(ref)) : pendingRequests;
+            if (!pending.contains(ref)) return;
+        }
 
         // A queued mention/reaction must not reveal a post after access was revoked.
         // Community review uses the community owner's current manager policy instead.
@@ -137,8 +169,7 @@ public class NotificationApplicationService implements Notifications {
                 userId, notifications.stream().map(Notification::getSenderId).toList());
         return notifications.stream()
                 .filter(n -> visible.contains(n.getSenderId()))
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+                .collect(Collectors.collectingAndThen(Collectors.toList(), this::responses));
     }
 
     public NotificationCursorPage getMyNotifications(Long userId, Long beforeId, int requestedSize) {
@@ -152,10 +183,9 @@ public class NotificationApplicationService implements Notifications {
         if (hasMore) notifications = new java.util.ArrayList<>(notifications.subList(0, size));
         var visible = access.visibleProfileIds(
                 userId, notifications.stream().map(Notification::getSenderId).toList());
-        List<NotificationResponse> items = notifications.stream()
+        List<NotificationResponse> items = responses(notifications.stream()
                 .filter(n -> visible.contains(n.getSenderId()))
-                .map(this::toResponse)
-                .toList();
+                .toList());
         Long nextCursor = hasMore && !notifications.isEmpty()
                 ? notifications.get(notifications.size() - 1).getId()
                 : null;
@@ -185,6 +215,41 @@ public class NotificationApplicationService implements Notifications {
         notificationRepository.delete(notification);
     }
 
+    private String requestReference(Notification notification) {
+        String canonical = notification.getSenderId() + ":" + notification.getReceiverId();
+        if ("FOLLOW".equals(notification.getType())) return canonical;
+        String ref = notification.getReferenceId();
+        return "FOLLOW_REQUEST".equals(notification.getType()) && ref != null
+                && (ref.equals(canonical) || ref.startsWith(canonical + "|")) ? ref : null;
+    }
+
+    private List<NotificationResponse> responses(List<Notification> notifications) {
+        if (notifications.isEmpty()) return List.of();
+        var labels = userDirectory.profileLabels(notifications.stream().map(Notification::getSenderId)
+                .filter(java.util.Objects::nonNull).distinct().toList());
+        var refs = notifications.stream().map(this::requestReference)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        var pending = refs.isEmpty() ? java.util.Set.<String>of() : followRequests.pendingIds(refs);
+        return notifications.stream().map(notification -> {
+            var dto = toResponse(notification);
+            dto.setFollowRequestId(null);
+            var label = labels.get(notification.getSenderId());
+            if (label != null) {
+                dto.setSenderUsername(label.username());
+                dto.setSenderFullName(label.fullName());
+                dto.setSenderAvatarUrl(com.aloute.common.util.AvatarUtil.resolve(label.avatarUrl()));
+            }
+            String ref = requestReference(notification);
+            if (ref != null && pending.contains(ref)) {
+                dto.setFollowRequestId(notification.getSenderId() + ":" + notification.getReceiverId());
+                String name = label == null ? "Ai đó" : label.fullName() != null && !label.fullName().isBlank()
+                        ? label.fullName() : label.username();
+                dto.setContent(name + " đã gửi yêu cầu theo dõi bạn");
+            }
+            return dto;
+        }).toList();
+    }
+
     private NotificationResponse toResponse(Notification n) {
         NotificationResponse dto = new NotificationResponse();
         dto.setId(n.getId());
@@ -193,6 +258,9 @@ public class NotificationApplicationService implements Notifications {
         dto.setReferenceId(n.getReferenceId());
         dto.setRead(n.isRead());
         dto.setCreatedAt(n.getCreatedAt());
+        dto.setSenderId(n.getSenderId());
+        dto.setSenderAvatarUrl(com.aloute.common.util.AvatarUtil.DEFAULT_AVATAR);
+        if ("FOLLOW_REQUEST".equals(n.getType())) dto.setFollowRequestId(n.getSenderId() + ":" + n.getReceiverId());
         return dto;
     }
 }

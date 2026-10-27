@@ -37,16 +37,20 @@ public class NotificationDeliveryWorker {
                 PageRequest.of(0, DELIVERY_BATCH_SIZE));
         if (events.isEmpty()) return;
         java.util.Map<Long, String> directory = java.util.Map.of();
+        java.util.Set<String> pendingRequests = java.util.Set.of();
         RuntimeException directoryFailure = null;
         try {
             directory = notificationService.deliveryDirectory(events);
+            pendingRequests = notificationService.pendingDeliveryRequests(events);
         } catch (RuntimeException failure) {
             directoryFailure = failure;
         }
         for (NotificationOutboxEvent event : events) {
             try {
                 if (directoryFailure != null) throw directoryFailure;
-                notificationService.deliverQueued(event, directory);
+                if ("FOLLOW_REQUEST".equals(event.getNotificationType()))
+                    notificationService.deliverQueued(event, directory, pendingRequests);
+                else notificationService.deliverQueued(event, directory);
                 repository.deleteById(event.getId());
             } catch (RuntimeException failure) {
                 int attempts = event.getAttemptCount() + 1;

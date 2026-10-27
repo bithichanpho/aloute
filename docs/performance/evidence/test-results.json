@@ -1,0 +1,18 @@
+[
+  {
+    "Suite": "surefire",
+    "Total": 392,
+    "Passed": 391,
+    "Failed": 0,
+    "Errors": 0,
+    "Skipped": 1
+  },
+  {
+    "Suite": "failsafe",
+    "Total": 58,
+    "Passed": 58,
+    "Failed": 0,
+    "Errors": 0,
+    "Skipped": 0
+  }
+]

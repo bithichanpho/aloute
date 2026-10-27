@@ -1,0 +1,16 @@
+[
+  {
+    "Group": "failsafe",
+    "Tests": 59.0,
+    "Failures": 0.0,
+    "Errors": 0.0,
+    "Skipped": 2.0
+  },
+  {
+    "Group": "surefire",
+    "Tests": 392.0,
+    "Failures": 0.0,
+    "Errors": 0.0,
+    "Skipped": 1.0
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "origin": "http://localhost:8081",
+  "readOnly": true,
+  "passed": 4,
+  "failed": 0,
+  "results": [
+    {
+      "route": "/forgot-password",
+      "expectedStatus": 200,
+      "status": 200,
+      "passed": true
+    },
+    {
+      "route": "/verify-reset-code",
+      "expectedStatus": 200,
+      "status": 200,
+      "passed": true
+    },
+    {
+      "route": "/reset-password",
+      "expectedStatus": 302,
+      "status": 302,
+      "destination": "/verify-reset-code",
+      "passed": true
+    },
+    {
+      "route": "/feed",
+      "expectedStatus": 302,
+      "status": 302,
+      "destination": "/login",
+      "passed": true
+    }
+  ]
+}

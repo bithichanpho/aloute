@@ -19,7 +19,7 @@
             </a>
             <a class="sidebar__row" th:classappend="${activeNav == 'chat'} ? 'sidebar__row--active' : ''" th:href="@{/chat}" title="Tin nhắn">
                 <span class="sidebar__icon-wrap">
-                    <i class="bi bi-messenger" aria-hidden="true"></i>
+                    <i class="bi" th:classappend="${activeNav == 'chat'} ? 'bi-chat-dots-fill' : 'bi-chat-dots'" aria-hidden="true"></i>
                     <span id="chatUnreadBadge" class="badge" th:text="${unreadMessageCount > 99 ? '99+' : unreadMessageCount}" th:style="${unreadMessageCount > 0 ? '' : 'display:none'}">0</span>
                 </span>
                 <span class="sidebar__label">Tin nhắn</span>
@@ -39,7 +39,7 @@
                 <i class="bi" th:classappend="${activeNav == 'compose'} ? 'bi-plus-square-fill' : 'bi-plus-square'" aria-hidden="true"></i>
                 <span class="sidebar__label">Tạo</span>
             </a>
-            <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" th:href="@{/profile/me}" title="Trang cá nhân">
+            <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" th:with="accountPath=${currentUser != null ? T(com.aloute.users.api.ProfileLinks).path(currentUser.username, currentUser.id) : '/profile/me'}" th:href="@{${accountPath}}" title="Trang cá nhân">
                 <img src="/images/avatar_default.png" th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}" alt="avatar"/>
                 <span class="sidebar__label">Trang cá nhân</span>
             </a>

@@ -1,0 +1,44 @@
+{
+  "scope" : "candidate SQL + deserialize only; authorization/hydration doubles; not HTTP latency",
+  "posts" : 40000,
+  "pool" : 4,
+  "samples" : 30,
+  "following-5000" : {
+    "p50Ms" : 2531.1218,
+    "p95Ms" : 3316.0067,
+    "p99Ms" : 4828.4191,
+    "sqlStatementsPerRequest" : 1.0
+  },
+  "following-20" : {
+    "p50Ms" : 112.6475,
+    "p95Ms" : 473.1474,
+    "p99Ms" : 486.0997,
+    "sqlStatementsPerRequest" : 1.0
+  },
+  "following-0" : {
+    "p50Ms" : 3.2652,
+    "p95Ms" : 4.7046,
+    "p99Ms" : 4.8311,
+    "sqlStatementsPerRequest" : 1.0
+  },
+  "foryou" : {
+    "p50Ms" : 8.9644,
+    "p95Ms" : 11.797,
+    "p99Ms" : 13.3829,
+    "sqlStatementsPerRequest" : 1.0
+  },
+  "exists-40000-matches" : {
+    "p50Ms" : 0.926,
+    "p95Ms" : 1.8538,
+    "p99Ms" : 1.9795,
+    "sqlStatementsPerRequest" : 1.0
+  },
+  "following-5000-concurrent" : {
+    "p50Ms" : 6921.1419,
+    "p95Ms" : 10892.7407,
+    "p99Ms" : 10999.7579,
+    "concurrency" : 8,
+    "requests" : 80,
+    "throughputPerSecond" : 1.1207670374938759
+  }
+}

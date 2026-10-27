@@ -1,0 +1,14 @@
+[
+  {
+    "Source": "src/main/resources/static/js/app.js",
+    "Entry": "BOOT-INF/classes/static/js/app.js",
+    "SHA256": "16D1889CBC9F693B404CFBA26E2168AB6D620D45714A70590503B18F59D7C005",
+    "MatchesSource": true
+  },
+  {
+    "Source": "src/main/resources/templates/layout/base.html",
+    "Entry": "BOOT-INF/classes/templates/layout/base.html",
+    "SHA256": "8143B270B6AEC50EB21B38C8E3C054B05CB038715DE20BDB9A6AA1334D77A5F9",
+    "MatchesSource": true
+  }
+]

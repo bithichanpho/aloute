@@ -1,0 +1,34 @@
+[
+  {
+    "Path": "src/main/resources/static/js/auth-login.js",
+    "SHA256": "CA377A2C10E53016E631BDA9E81B0A9BFA361ECC0CCAA525E5C1AD721F7B3117"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-verify.js",
+    "SHA256": "7D010BD1F2331ACE2F0C7E7B85E90ED43E84754C986D354BB0DCBA99E863C9D2"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-forgot-password.js",
+    "SHA256": "E661B61AB92732E2D9267E8ED722B372D1E2AA9BE0CA09F8264FF2F56F819489"
+  },
+  {
+    "Path": "src/main/resources/static/js/auth-reset-password.js",
+    "SHA256": "1D91C64B776A78611941C8A6E2B4C305BF4779EF020F202BC4E42DC6E415B193"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/login.html",
+    "SHA256": "6985B2FBBA888BE7807436A45234B0F519D9305FE2FEF1224743C3AE4BE3FAAF"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/verify.html",
+    "SHA256": "ECFBB1DB72FDF041193DB705B0CAFBAA62CF93CCB318476AE1A8BCBF1B3C3DD8"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/forgot-password.html",
+    "SHA256": "814FBF01C0CF9DAD165F935EA114E1C554F40CC5F96DB95B96387554D67A580D"
+  },
+  {
+    "Path": "src/main/resources/templates/auth/reset-password.html",
+    "SHA256": "CE507909BB2CBCB78F294A67FB9DCCF0846811B5DFBC027019475F228A922694"
+  }
+]

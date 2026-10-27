@@ -39,6 +39,8 @@ public class NoCacheViewConfig implements WebMvcConfigurer {
                         "/feed",
                         "/chat",
                         "/profile/**",
+                        "/@*",
+                        "/people/**",
                         "/compose",
                         "/search",
                         "/activity",

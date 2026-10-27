@@ -225,21 +225,15 @@ public class ViewController {
             @PathVariable @Size(min = 3, max = 50, message = "Tên đăng nhập không hợp lệ") String username) {
         Long viewer = requireLogin(authentication);
         if (viewer == null) return "redirect:/login";
-        return userService.searchUsers(username, viewer).stream()
-                .filter(u -> u.getUsername().equalsIgnoreCase(username))
-                .findFirst()
-                .map(u -> "redirect:/profile/" + u.getId())
-                .orElseThrow(
-                        () ->
-                                new ResourceNotFoundException(
-                                        "Không tìm thấy tài khoản"));
+        var profile = userService.getProfileByUsername(username, viewer);
+        return "redirect:" + com.aloute.users.api.ProfileLinks.path(profile.getUsername(), profile.getId());
     }
 
     @GetMapping("/profile/me")
     public String myProfile(Authentication authentication, Model model) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
-        return renderProfile(userId, userId, model);
+        return userProfile(authentication, userId, model);
     }
 
     @GetMapping("/profile/{userId}")
@@ -249,7 +243,19 @@ public class ViewController {
             Model model) {
         Long currentUserId = requireLogin(authentication);
         if (currentUserId == null) return "redirect:/login";
-        return renderProfile(userId, currentUserId, model);
+        var profile = userService.getProfile(userId, currentUserId);
+        if (com.aloute.users.api.ProfileLinks.isHandle(profile.getUsername()))
+            return "redirect:" + com.aloute.users.api.ProfileLinks.path(profile.getUsername(), profile.getId());
+        return renderProfile(profile, currentUserId, model);
+    }
+
+    @GetMapping("/@{username}")
+    public String usernameProfile(Authentication authentication,
+            @PathVariable @Size(min = 1, max = 255, message = "Tên đăng nhập không hợp lệ") String username,
+            Model model) {
+        Long currentUserId = requireLogin(authentication);
+        if (currentUserId == null) return "redirect:/login";
+        return renderProfile(userService.getProfileByUsername(username, currentUserId), currentUserId, model);
     }
 
     @GetMapping("/profile/edit")
@@ -347,7 +353,14 @@ public class ViewController {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
-        model.addAttribute("notifications", notificationService.getMyNotifications(userId));
+        var notifications = notificationService.getMyNotifications(userId);
+        model.addAttribute("notifications", notifications);
+        var actionIds = notifications.stream().map(com.aloute.dto.response.NotificationResponse::getFollowRequestId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        var requests = socialFeatureService.requests(userId, null, 50);
+        model.addAttribute("activityFollowRequests", requests.items().stream()
+                .filter(request -> !actionIds.contains(request.id())).toList());
+        model.addAttribute("activityRequestsHasMore", requests.hasMore());
         addCommonAttributes(model, userId, "activity");
         return "activity/index";
     }
@@ -411,8 +424,8 @@ public class ViewController {
         return "feed/index :: .post";
     }
 
-    private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
-        UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
+    private String renderProfile(UserProfileDto profile, Long currentUserId, Model model) {
+        Long profileUserId = profile.getId();
         var postPage = postService.getPostsByUserCursor(profileUserId, currentUserId, null, 20);
         List<PostResponse> userPosts = postPage.items();
 

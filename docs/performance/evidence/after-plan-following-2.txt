@@ -1,0 +1,18 @@
+Limit  (cost=5.20..57.79 rows=50 width=78) (actual time=0.346..26.266 rows=50.00 loops=1)
+  Buffers: shared hit=2049
+  ->  Index Scan using ix_doc_posts_created_v2 on app_document_records d  (cost=5.20..15836.39 rows=15050 width=78) (actual time=0.344..26.239 rows=50.00 loops=1)
+        Index Cond: (aloute_jsonb_local_datetime_key((payload -> 'createdAt'::text)) IS NOT NULL)
+        Filter: ((((payload ->> 'userId'::text) = '2'::text) OR (ANY ((payload ->> 'userId'::text) = (hashed SubPlan 1).col1))) AND ((NOT jsonb_exists(payload, 'moderationStatus'::text)) OR ((payload -> 'moderationStatus'::text) = 'null'::jsonb) OR ((payload ->> 'moderationStatus'::text) <> 'HIDDEN'::text)) AND ((NOT jsonb_exists(payload, 'repostOfId'::text)) OR ((payload -> 'repostOfId'::text) = 'null'::jsonb) OR (jsonb_exists(payload, 'repostOfId'::text) AND ((payload -> 'repostOfId'::text) <> 'null'::jsonb) AND ((NOT jsonb_exists(payload, 'content'::text)) OR (jsonb_exists(payload, 'content'::text) AND ((payload -> 'content'::text) <> 'null'::jsonb) AND ((payload ->> 'content'::text) <> ''::text))))))
+        Rows Removed by Filter: 23940
+        Index Searches: 1
+        Buffers: shared hit=2049
+        SubPlan 1
+          ->  Index Only Scan using uk_friends_follower_followed on friends  (cost=0.28..4.73 rows=20 width=32) (actual time=0.014..0.020 rows=20.00 loops=1)
+                Index Cond: (follower_id = '2'::bigint)
+                Heap Fetches: 0
+                Index Searches: 1
+                Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=34
+Planning Time: 1.443 ms
+Execution Time: 26.342 ms

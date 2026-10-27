@@ -119,6 +119,7 @@ class FeedQueryBudgetTest {
 
         when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(loaded);
         when(access.forPosts(loaded, 2L)).thenReturn(permissions);
+        when(access.profileContentVisible(2L, 2L)).thenReturn(true);
         when(mapper.toReadableResponses(loaded, 2L, permissions))
                 .thenReturn(List.of(firstResponse, secondResponse));
 

@@ -1,0 +1,36 @@
+{
+  "origin": "http://localhost:8081",
+  "readOnly": true,
+  "passed": 2,
+  "failed": 2,
+  "results": [
+    {
+      "route": "/forgot-password",
+      "expectedStatus": 200,
+      "status": 200,
+      "passed": true
+    },
+    {
+      "route": "/verify-reset-code",
+      "expectedStatus": 200,
+      "status": 302,
+      "destination": "/login",
+      "passed": false,
+      "error": "Expected values to be strictly equal:\n\n302 !== 200\n"
+    },
+    {
+      "route": "/reset-password",
+      "expectedStatus": 302,
+      "status": 200,
+      "passed": false,
+      "error": "Expected values to be strictly equal:\n\n200 !== 302\n"
+    },
+    {
+      "route": "/feed",
+      "expectedStatus": 302,
+      "status": 302,
+      "destination": "/login",
+      "passed": true
+    }
+  ]
+}

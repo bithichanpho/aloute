@@ -1,0 +1,21 @@
+{
+  "origin": "http://localhost:8081",
+  "results": [
+    {
+      "route": "/verify-reset-code",
+      "status": 200,
+      "letterIgnored": true,
+      "selectionPreserved": true,
+      "pastePreserved": true,
+      "noWrites": true
+    },
+    {
+      "route": "/verify-email",
+      "status": 200,
+      "letterIgnored": true,
+      "selectionPreserved": true,
+      "pastePreserved": true,
+      "noWrites": true
+    }
+  ]
+}

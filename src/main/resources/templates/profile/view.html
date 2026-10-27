@@ -3,7 +3,8 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title th:text="${profileUser != null ? profileUser.fullName + ' — ALOUTE' : 'Hồ sơ — ALOUTE'}">Hồ sơ — ALOUTE</title></head>
 <body>
-<section class="content-inner content-inner--profile">
+<section class="content-inner content-inner--profile"
+         th:with="canViewContent=${profileUser != null and (!profileUser.privateAccount or isOwnProfile or profileUser.followedByCurrentUser)}">
 
   <div class="profile-cover" th:if="${profileUser != null}">
 
@@ -82,7 +83,12 @@
       </div>
     </div>
 
-    <div class="profile-views">
+    <div class="profile-follow-request-bar" th:if="${!isOwnProfile and profileUser.incomingFollowRequestId != null}">
+      <span>Người này đã gửi yêu cầu theo dõi bạn.</span>
+      <div th:replace="~{fragments/follow-request :: actions(${profileUser.incomingFollowRequestId}, true)}"></div>
+    </div>
+
+    <div class="profile-views" th:if="${canViewContent}">
       <button type="button" class="profile-view is-active" data-profile-view="list">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 6h16M4 12h16M4 18h16"/>
@@ -108,7 +114,9 @@
 
   <div th:if="${profileUser == null}" class="empty-state">Không tìm thấy người dùng này.</div>
 
-  <div class="profile-posts" id="profilePosts" th:if="${profileUser != null}">
+  <div class="empty-state profile-private-notice" th:if="${profileUser != null and !canViewContent}">Đây là tài khoản riêng tư.</div>
+
+  <div class="profile-posts" id="profilePosts" th:if="${canViewContent}">
 
     <div th:if="${#lists.isEmpty(userPosts)}" class="empty-state">
       <span th:if="${isOwnProfile}">Bạn chưa có bài viết nào. <a th:href="@{/compose}" style="color:inherit;text-decoration:underline;">Đăng bài đầu tiên</a> nhé!</span>
@@ -138,6 +146,7 @@
         <div class="post__header">
           <span class="post__username" th:text="${mainUsername}">username</span>
           <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+          <span th:replace="~{fragments/post-metadata :: audience(${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility})}"></span>
           <div class="post__menu">
             <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                     aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
@@ -153,6 +162,7 @@
           </div>
         </div>
 
+        <div th:replace="~{fragments/post-metadata :: review(${post})}"></div>
         <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
            th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
         <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
@@ -169,6 +179,7 @@
             <img th:src="${post.repostOf.userAvatarUrl != null ? post.repostOf.userAvatarUrl : '/images/avatar_default.png'}" alt="avatar" loading="lazy" decoding="async">
             <span th:text="${post.repostOf.username}">username</span>
             <span th:text="${post.repostOf.timeAgo}">6 giờ</span>
+            <span th:replace="~{fragments/post-metadata :: audience(${post.repostOf.visibility})}"></span>
           </div>
           <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
           <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">
@@ -225,7 +236,7 @@
             th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'},data-cursor=${profilePostsNextCursor}">Tải thêm</button>
   </div>
 
-  <div class="profile-grid-wrap" id="profileGridWrap" th:if="${profileUser != null}" hidden>
+  <div class="profile-grid-wrap" id="profileGridWrap" th:if="${canViewContent}" hidden>
     <div th:if="${#lists.isEmpty(mediaPosts)}" class="empty-state">
       Chưa có bài viết nào kèm ảnh hoặc video.
     </div>
@@ -248,7 +259,7 @@
     </div>
   </div>
 
-  <div class="profile-posts profile-reposts-wrap" id="profileRepostsWrap" th:if="${profileUser != null}" hidden>
+  <div class="profile-posts profile-reposts-wrap" id="profileRepostsWrap" th:if="${canViewContent}" hidden>
 
     <div th:if="${#lists.isEmpty(repostPosts)}" class="empty-state"
          data-profile-reposts-empty th:hidden="${profileRepostsDeferred}">
@@ -279,6 +290,7 @@
         <div class="post__header">
           <span class="post__username" th:text="${mainUsername}">username</span>
           <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+          <span th:replace="~{fragments/post-metadata :: audience(${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility})}"></span>
           <div class="post__menu">
             <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                     aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
@@ -294,6 +306,7 @@
           </div>
         </div>
 
+        <div th:replace="~{fragments/post-metadata :: review(${post})}"></div>
         <p class="post__content" th:if="${!isQuote and (isRepost ? post.repostOf.content : post.content) != null}"
            th:text="${isRepost ? post.repostOf.content : post.content}">Nội dung bài viết</p>
         <img class="post__image" th:if="${!isQuote and (isRepost ? post.repostOf.imageUrl : post.imageUrl) != null}"
@@ -310,6 +323,7 @@
             <img th:src="${post.repostOf.userAvatarUrl != null ? post.repostOf.userAvatarUrl : '/images/avatar_default.png'}" alt="avatar" loading="lazy" decoding="async">
             <span th:text="${post.repostOf.username}">username</span>
             <span th:text="${post.repostOf.timeAgo}">6 giờ</span>
+            <span th:replace="~{fragments/post-metadata :: audience(${post.repostOf.visibility})}"></span>
           </div>
           <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
           <img class="repost-card__image" th:if="${post.repostOf.imageUrl != null}" th:src="${post.repostOf.imageUrl}" alt="ảnh bài viết" loading="lazy" decoding="async">

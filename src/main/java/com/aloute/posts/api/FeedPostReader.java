@@ -14,7 +14,8 @@ public interface FeedPostReader {
     List<Candidate> readBatch(Long viewerId, List<String> followed, boolean streamFollowing,
             boolean followingOnly, String normalizedTag, Position before, int limit);
 
-    void attachRecentReposters(List<PostResponse> cards);
+    /** Adds the reposters visible to {@code viewerId} (self + followed accounts). */
+    void attachRecentReposters(Long viewerId, List<PostResponse> cards);
 
     /** Reload at most 30 cached IDs with current object authorization and nested content. */
     List<PostResponse> refreshCards(Long viewerId, List<String> postIds);

@@ -30,6 +30,7 @@ public class ChatMessage {
     private String callId;
     private String callType;
     private String callStatus;
+    private Long callDurationSeconds;
 
     private boolean read = false;
     private boolean delivered = false;
@@ -172,6 +173,14 @@ public class ChatMessage {
 
     public void setCallStatus(String callStatus) {
         this.callStatus = callStatus;
+    }
+
+    public Long getCallDurationSeconds() {
+        return callDurationSeconds;
+    }
+
+    public void setCallDurationSeconds(Long callDurationSeconds) {
+        this.callDurationSeconds = callDurationSeconds;
     }
 
     public boolean isRead() {

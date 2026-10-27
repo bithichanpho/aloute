@@ -1,0 +1,32 @@
+[
+  {
+    "Path": "static/js/auth-form-feedback.js",
+    "SHA256": "F68D131D1323D33FD0DEE953A0E46057D903AB045AB62EF75439C93E0A99B1F7",
+    "JarMatches": true
+  },
+  {
+    "Path": "static/js/auth-login.js",
+    "SHA256": "E57DFC9B8F57858D2F1F23F84A459497E3F194959DD1CA4EAA135441D5CB3FB5",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/login.html",
+    "SHA256": "1908D3DED68628E00C94C6921216E6A8363F57A3265D8876C449D115A2AABCC1",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/verify.html",
+    "SHA256": "F3866F83549D9837CFBD1DD972D1A68293D6D9410A8EC0AE0E18ABC99B79BCD7",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/forgot-password.html",
+    "SHA256": "68C6410988FE3D8AF7E0CA00F2486EA64D0D6BB5FAE441C2A31B1900F38759CB",
+    "JarMatches": true
+  },
+  {
+    "Path": "templates/auth/reset-password.html",
+    "SHA256": "3473F0CB6D7993EBF9F409D8415C838D224C6B957DE652F9B21D3AE84FCD6330",
+    "JarMatches": true
+  }
+]

@@ -26,16 +26,50 @@
           <span>Video</span>
         </label>
         <input type="file" id="composeVideoInput" accept="video/*" hidden>
-        <label class="compose-page__visibility" for="postVisibility">
-          <span>Hiển thị</span>
-          <select id="postVisibility" aria-label="Ai có thể xem bài viết">
-            <option value="PUBLIC">Công khai</option>
-            <option value="FRIENDS">Bạn bè</option>
-            <option value="ONLY_ME">Chỉ mình tôi</option>
-          </select>
-        </label>
+        <div class="compose-page__visibility">
+          <input type="hidden" id="postVisibility" name="visibility" value="PUBLIC">
+          <button type="button" class="post-audience-trigger" data-audience-open
+                  aria-haspopup="dialog" aria-controls="postAudienceDialog" aria-expanded="false"
+                  aria-label="Ai có thể xem bài viết: Công khai">
+            <span data-audience-current-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg></span>
+            <span data-audience-current-label>Công khai</span>
+            <svg class="post-audience-trigger__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+        </div>
       </div>
       <button type="submit" class="btn-post" id="composeSubmit" disabled>Đăng</button>
     </div>
   </form>
+  <dialog id="postAudienceDialog" class="post-audience-dialog" aria-labelledby="postAudienceTitle">
+    <div class="post-audience-dialog__header">
+      <h2 id="postAudienceTitle">Đối tượng của bài viết</h2>
+      <button type="button" class="post-audience-dialog__close" data-audience-close aria-label="Đóng">×</button>
+    </div>
+    <p class="post-audience-dialog__intro">Ai có thể xem bài viết của bạn?</p>
+    <fieldset class="post-audience-options">
+      <legend class="visually-hidden">Chọn người có thể xem bài viết</legend>
+      <label class="post-audience-option">
+        <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg></span>
+        <span class="post-audience-option__text"><strong>Công khai</strong><span>Mọi người trên ALOUTE</span></span>
+        <input type="radio" name="postAudienceChoice" value="PUBLIC" aria-label="Công khai" checked>
+      </label>
+      <label class="post-audience-option">
+        <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zm17 0v-3a9 9 0 0 0-1.5-5 6 6 0 0 1 6.5 6v2z"/></svg></span>
+        <span class="post-audience-option__text"><strong>Bạn bè</strong><span>Những người theo dõi lẫn nhau</span></span>
+        <input type="radio" name="postAudienceChoice" value="FRIENDS" aria-label="Bạn bè">
+      </label>
+      <label class="post-audience-option">
+        <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path fill="currentColor" stroke="none" d="m12 5 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5.2 10l4.7-.7z"/></svg></span>
+        <span class="post-audience-option__text"><strong>Bạn thân</strong><span>Bạn thân đã được chấp nhận</span></span>
+        <input type="radio" name="postAudienceChoice" value="CLOSE_FRIENDS" aria-label="Bạn thân">
+      </label>
+      <label class="post-audience-option">
+        <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+        <span class="post-audience-option__text"><strong>Chỉ mình tôi</strong><span>Chỉ bạn có thể xem bài viết này</span></span>
+        <input type="radio" name="postAudienceChoice" value="ONLY_ME" aria-label="Chỉ mình tôi">
+      </label>
+    </fieldset>
+    <p class="post-audience-dialog__private-note" th:if="${currentUser != null and currentUser.privateAccount}">Tài khoản riêng tư: chỉ người theo dõi đã được chấp nhận mới có thể xem bài viết của bạn.</p>
+    <div class="post-audience-dialog__footer"><button type="button" class="post-audience-dialog__done" data-audience-apply>Xong</button></div>
+  </dialog>
 </div>

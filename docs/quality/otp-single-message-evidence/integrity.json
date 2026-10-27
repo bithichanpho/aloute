@@ -1,0 +1,19 @@
+{
+  "backupFilesVerified": 12,
+  "jarResourcesVerified": 11,
+  "appJsUnchanged": true,
+  "changedFiles": [
+    "src/main/resources/static/js/auth-form-feedback.js",
+    "src/main/resources/static/js/auth-otp.js",
+    "src/main/resources/static/js/auth-verify.js",
+    "src/main/resources/static/js/auth-verify-reset-code.js",
+    "src/main/resources/static/js/auth-login.js",
+    "src/main/resources/static/css/auth-otp.css",
+    "src/main/resources/templates/auth/login.html",
+    "src/main/resources/templates/auth/verify.html",
+    "src/main/resources/templates/auth/verify-reset-code.html",
+    "src/main/resources/templates/auth/forgot-password.html",
+    "src/main/resources/templates/auth/reset-password.html",
+    "src/test/browser/auth-error-focus.cjs"
+  ]
+}

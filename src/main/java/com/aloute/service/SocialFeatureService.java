@@ -164,12 +164,12 @@ public class SocialFeatureService {
         posts.invalidateViewerFeedCache(target);
     }
 
-    public List<UserBlock> blocks(Long user) {
-        return documentStore.find(
-                Query.query(Criteria.where("ownerId").is(user)).limit(200), UserBlock.class);
+    public List<com.aloute.dto.response.BlockedAccountResponse> blocks(Long user) {
+        return blockResponses(documentStore.find(
+                Query.query(Criteria.where("ownerId").is(user)).limit(200), UserBlock.class));
     }
 
-    public SocialCursorPage<UserBlock> blocks(Long user, String cursor, int requestedSize) {
+    public SocialCursorPage<com.aloute.dto.response.BlockedAccountResponse> blocks(Long user, String cursor, int requestedSize) {
         int size = Math.max(1, Math.min(100, requestedSize));
         SocialCursor point = decodeSocialCursor(cursor);
         Query query = Query.query(Criteria.where("ownerId").is(user));
@@ -183,15 +183,28 @@ public class SocialFeatureService {
                 ? encodeSocialCursor(items.get(items.size() - 1).getCreatedAt(),
                         items.get(items.size() - 1).getId())
                 : "";
-        return new SocialCursorPage<>(items, next, hasMore);
+        return new SocialCursorPage<>(blockResponses(items), next, hasMore);
     }
 
-    public List<FollowRequest> requests(Long user) {
-        return documentStore.find(
-                Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class);
+    private List<com.aloute.dto.response.BlockedAccountResponse> blockResponses(List<UserBlock> blocks) {
+        if (blocks.isEmpty()) return List.of();
+        var labels = users.profileLabels(blocks.stream().map(UserBlock::getTargetId)
+                .filter(java.util.Objects::nonNull).distinct().toList());
+        return blocks.stream().map(block -> {
+            var label = block.getTargetId() == null ? null : labels.get(block.getTargetId());
+            return new com.aloute.dto.response.BlockedAccountResponse(block.getId(), block.getOwnerId(),
+                    block.getTargetId(), block.getCreatedAt(), label == null ? null : label.username(),
+                    label == null ? null : label.fullName(),
+                    com.aloute.common.util.AvatarUtil.resolve(label == null ? null : label.avatarUrl()));
+        }).toList();
     }
 
-    public SocialCursorPage<FollowRequest> requests(
+    public List<com.aloute.dto.response.FollowRequestResponse> requests(Long user) {
+        return requestResponses(documentStore.find(
+                Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class));
+    }
+
+    public SocialCursorPage<com.aloute.dto.response.FollowRequestResponse> requests(
             Long user, String cursor, int requestedSize) {
         int size = Math.max(1, Math.min(100, requestedSize));
         SocialCursor point = decodeSocialCursor(cursor);
@@ -206,7 +219,19 @@ public class SocialFeatureService {
                 ? encodeSocialCursor(items.get(items.size() - 1).getCreatedAt(),
                         items.get(items.size() - 1).getId())
                 : "";
-        return new SocialCursorPage<>(items, next, hasMore);
+        return new SocialCursorPage<>(requestResponses(items), next, hasMore);
+    }
+
+    private List<com.aloute.dto.response.FollowRequestResponse> requestResponses(List<FollowRequest> requests) {
+        if (requests.isEmpty()) return List.of();
+        var labels = users.profileLabels(requests.stream().map(FollowRequest::getFollowerId).distinct().toList());
+        return requests.stream().map(request -> {
+            var label = labels.get(request.getFollowerId());
+            return new com.aloute.dto.response.FollowRequestResponse(request.getId(), request.getFollowerId(),
+                    request.getTargetId(), request.getCreatedAt(), label == null ? null : label.username(),
+                    label == null ? null : label.fullName(),
+                    com.aloute.common.util.AvatarUtil.resolve(label == null ? null : label.avatarUrl()));
+        }).toList();
     }
 
     private String encodeSocialCursor(java.time.Instant createdAt, String id) {
