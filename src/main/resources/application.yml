@@ -8,6 +8,10 @@ springdoc:
 spring:
   application:
     name: aloute
+  docker:
+    compose:
+      # Opt in when Spring Boot should manage local containers.
+      enabled: ${SPRING_DOCKER_COMPOSE_ENABLED:false}
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -87,7 +91,7 @@ spring:
       - application-actuator.yml
 
 server:
-  port: 8080
+  port: 8081
 
   compression:
     enabled: true

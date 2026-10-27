@@ -74,6 +74,19 @@ public class AuthService {
 
     private static final String USERNAME_TAKEN = "Tên đăng nhập đã được sử dụng";
 
+    /** Read-only preflight; registration still rechecks availability before writing. */
+    @Transactional(readOnly = true)
+    public boolean registrationUsernameAvailable(String rawUsername, String rawEmail) {
+        String username = rawUsername.trim().toLowerCase(Locale.ROOT);
+        String email = rawEmail == null ? "" : rawEmail.trim().toLowerCase(Locale.ROOT);
+        if (UsernamePolicy.isReserved(username) || userRepository.existsByUsernameIgnoreCase(username)) return false;
+        LocalDateTime now = LocalDateTime.now();
+        return pendingUserRepository.findByUsernameIgnoreCase(username)
+                .filter(pending -> pending.getExpiresAt().isAfter(now))
+                .filter(pending -> !email.equalsIgnoreCase(pending.getEmail()))
+                .isEmpty();
+    }
+
     /**
      * Registers an account without revealing whether the email already has one.
      *

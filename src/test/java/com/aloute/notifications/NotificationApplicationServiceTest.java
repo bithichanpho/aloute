@@ -203,12 +203,12 @@ class NotificationApplicationServiceTest {
     }
 
     @Test
-    void removedCloseFriendNotificationsAreHiddenAndNotCountedAsUnread() {
+    void removedFollowRequestNotificationsAreHiddenAndNotCountedAsUnread() {
         Notification legacy = new Notification();
         legacy.setId(20L);
         legacy.setReceiverId(2L);
         legacy.setSenderId(1L);
-        legacy.setType("CLOSE_FRIEND_REQUEST");
+        legacy.setType("FOLLOW_REQUEST");
         legacy.setContent("alice muốn kết bạn thân với bạn");
 
         Notification follow = new Notification();

@@ -38,4 +38,18 @@ public class JpaUserDirectory implements UserDirectory {
         }
         return Map.copyOf(result);
     }
+
+    @Override
+    public Map<Long, ProfileLabel> profileLabels(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) return Map.of();
+        var ids = userIds.stream().filter(Objects::nonNull).distinct().toList();
+        Map<Long, ProfileLabel> result = new HashMap<>();
+        for (int start = 0; start < ids.size(); start += 500) {
+            users.findProfileLabels(ids.subList(start, Math.min(start + 500, ids.size())))
+                    .forEach(entry -> result.put(entry.getId(), new ProfileLabel(
+                            entry.getUsername(), entry.getFullName(),
+                            com.aloute.common.util.AvatarUtil.resolve(entry.getAvatarUrl()))));
+        }
+        return Map.copyOf(result);
+    }
 }

@@ -12,15 +12,14 @@
   <title>Đăng nhập / ALOUTE</title>
   <link rel="stylesheet" th:href="@{/css/main.css?v=20261027-bird-privacy-v1}">
   <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
-  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261027-bird-privacy-v1}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261027-moon-sun-switch-v3}">
   <link rel="stylesheet" th:href="@{/css/auth-form-feedback.css?v=20261025-focus-v1}">
   <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261027-email-otp-6digit-v3}">
   <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}" defer></script>
 </head>
 <body class="auth-body">
   <button type="button" class="auth-theme-toggle" data-theme-toggle aria-label="Chuyển giao diện sáng/tối" title="Chuyển giao diện sáng/tối">
-    <i class="bi bi-moon-stars theme-icon theme-icon--to-dark" aria-hidden="true"></i>
-    <i class="bi bi-sun theme-icon theme-icon--to-light" aria-hidden="true"></i>
+    <span th:replace="~{fragments/theme-switch :: icon}"></span>
   </button>
 
   <div class="auth-shell">

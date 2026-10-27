@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"><body>
+<div th:fragment="actions(requestId, profile)" class="follow-request-actions"
+     th:attr="data-follow-request-actions=${requestId},data-follow-profile=${profile}">
+  <button type="button" data-action="accept-follow" data-follow-decision="accept" th:attr="data-request-id=${requestId}">Chấp nhận</button>
+  <button type="button" data-action="reject-follow" data-follow-decision="reject" th:attr="data-request-id=${requestId}">Từ chối</button>
+</div>
+</body></html>

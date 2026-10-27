@@ -359,13 +359,9 @@ public class ViewController {
     public String followRequests(Authentication authentication, Model model) {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
+        socialFeatureService.markRequestsSeen(userId);
         var requestPage = socialFeatureService.requests(userId, null, 50);
-        var requesterIds = requestPage.items().stream().map(com.aloute.model.document.FollowRequest::getFollowerId)
-                .distinct().toList();
-        java.util.Map<Long, UserProfileDto> requesterProfiles = new java.util.HashMap<>();
-        userService.getProfiles(requesterIds, userId).forEach(profile -> requesterProfiles.put(profile.getId(), profile));
         model.addAttribute("followRequests", requestPage.items());
-        model.addAttribute("requestProfiles", requesterProfiles);
         model.addAttribute("requestsNextCursor", requestPage.nextCursor());
         model.addAttribute("requestsHasMore", requestPage.hasMore());
         model.addAttribute("pageTitle", "Yêu cầu theo dõi");
@@ -462,7 +458,7 @@ public class ViewController {
         model.addAttribute("profileRepostsDeferred", !privateContentRestricted);
         model.addAttribute("profileRepostsNextCursor", "");
         model.addAttribute("profileRepostsHasMore", !privateContentRestricted);
-        model.addAttribute("postCount", privateContentRestricted ? 0L : postService.countPostsByUser(profileUserId));
+        model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
         model.addAttribute("isOwnProfile", isOwnProfile);
         if (currentUserId != null) {
             addCommonAttributes(model, currentUserId, "profile");
@@ -489,6 +485,10 @@ public class ViewController {
         model.addAttribute("pageTitle", settingsPage ? "Cài đặt và an toàn" : "Kiểm duyệt và báo cáo vi phạm");
         model.addAttribute("pageKind", pageKind);
         if (settingsPage) {
+            var requestPage = socialFeatureService.requests(userId, null, 50);
+            model.addAttribute("followRequests", requestPage.items());
+            model.addAttribute("requestsNextCursor", requestPage.nextCursor());
+            model.addAttribute("requestsHasMore", requestPage.hasMore());
             var blockPage = socialFeatureService.blocks(userId, null, 50);
             model.addAttribute("blocks", blockPage.items());
             model.addAttribute("blocksNextCursor", blockPage.nextCursor());
@@ -521,7 +521,7 @@ public class ViewController {
 
         model.addAttribute("unreadCount", 0L);
         model.addAttribute("unreadMessageCount", 0L);
-        model.addAttribute("followRequestCount", socialFeatureService.countRequests(currentUserId));
+        model.addAttribute("followRequestCount", socialFeatureService.countUnreadRequests(currentUserId));
     }
 
     private boolean isLoggedIn(Authentication authentication) {

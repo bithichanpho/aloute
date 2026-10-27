@@ -78,8 +78,7 @@
         <div class="sidebar__footer">
             <!-- Công tắc sáng/tối: ui.js bắt sự kiện bằng data-theme-toggle (delegation) -->
             <button type="button" class="sidebar__row sidebar__theme" data-theme-toggle title="Chuyển giao diện sáng/tối" aria-label="Chuyển giao diện sáng/tối">
-                <i class="bi bi-moon-stars theme-icon theme-icon--to-dark" aria-hidden="true"></i>
-                <i class="bi bi-sun theme-icon theme-icon--to-light" aria-hidden="true"></i>
+                <span th:replace="~{fragments/theme-switch :: icon}"></span>
                 <span class="sidebar__label">
                     <span class="theme-text theme-text--to-dark">Giao diện tối</span>
                     <span class="theme-text theme-text--to-light">Giao diện sáng</span>
@@ -103,8 +102,7 @@
     <div class="mobile-topbar__actions">
         <a class="mobile-topbar__btn" th:href="@{/search}" aria-label="Tìm kiếm"><i class="bi bi-search"></i></a>
         <button type="button" class="mobile-topbar__btn" data-theme-toggle aria-label="Chuyển giao diện sáng/tối">
-            <i class="bi bi-moon-stars theme-icon theme-icon--to-dark"></i>
-            <i class="bi bi-sun theme-icon theme-icon--to-light"></i>
+            <span th:replace="~{fragments/theme-switch :: icon}"></span>
         </button>
         <div class="dropdown">
             <button type="button" class="mobile-topbar__btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Thêm">

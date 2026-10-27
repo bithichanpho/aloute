@@ -84,7 +84,9 @@ window.Aloute = (function () {
 
     if (!res.ok || (payload && payload.success === false)) {
       const message = (payload && payload.message) || ('Máy chủ trả về lỗi ' + res.status);
-      throw new Error(message);
+      const error = new Error(message);
+      error.status = res.status;
+      throw error;
     }
     return payload ? payload.data : null;
   }
@@ -284,6 +286,10 @@ window.Aloute = (function () {
           });
         }
         if (targetId === currentUserId) {
+          if (payload.eventType === 'REQUESTS_SEEN') {
+            followRequestBadgeRevision++;
+            setBadge('followRequestBadge', 0);
+          }
           document.dispatchEvent(new CustomEvent('aloute:follow-requests-changed', { detail: payload }));
           refreshNavBadges(true);
         }
@@ -1349,6 +1355,73 @@ window.Aloute = (function () {
     const form = document.getElementById('composeForm');
     if (!form) return;
 
+    const audienceValue = document.getElementById('postVisibility');
+    const audienceMenu = document.getElementById('postAudienceMenu');
+    const audienceTrigger = form.querySelector('[data-audience-open]');
+    if (audienceMenu && audienceTrigger && audienceValue) {
+      const choices = [...audienceMenu.querySelectorAll('[data-audience-value]')];
+      const positionMenu = () => {
+        const anchor = audienceTrigger.getBoundingClientRect();
+        const box = audienceMenu.getBoundingClientRect();
+        const left = Math.max(8, Math.min(anchor.left, window.innerWidth - box.width - 8));
+        const top = anchor.bottom + 6 + box.height <= window.innerHeight - 8
+          ? anchor.bottom + 6 : Math.max(8, anchor.top - box.height - 6);
+        audienceMenu.style.left = left + 'px';
+        audienceMenu.style.top = top + 'px';
+      };
+      const openMenu = () => {
+        choices.forEach(choice => choice.setAttribute('aria-selected', String(choice.dataset.audienceValue === audienceValue.value)));
+        audienceMenu.showPopover();
+        audienceTrigger.setAttribute('aria-expanded', 'true');
+        positionMenu();
+        choices.find(choice => choice.dataset.audienceValue === audienceValue.value)?.focus();
+      };
+      const closeMenu = () => {
+        audienceMenu.hidePopover();
+        audienceTrigger.setAttribute('aria-expanded', 'false');
+      };
+      audienceTrigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        openMenu();
+      });
+      choices.forEach(choice => choice.addEventListener('click', () => {
+        audienceValue.value = choice.dataset.audienceValue;
+        choices.forEach(option => option.setAttribute('aria-selected', String(option === choice)));
+        audienceTrigger.querySelector('[data-audience-current-label]').textContent = choice.getAttribute('aria-label');
+        audienceTrigger.querySelector('[data-audience-current-icon]').innerHTML = postAudienceMarkup(audienceValue.value);
+        audienceTrigger.setAttribute('aria-label', 'Ai có thể xem bài viết: ' + choice.getAttribute('aria-label'));
+        audienceValue.dispatchEvent(new Event('change', { bubbles: true }));
+        closeMenu();
+        audienceTrigger.focus();
+      }));
+      audienceMenu.addEventListener('keydown', event => {
+        const index = choices.indexOf(document.activeElement);
+        let next;
+        if (event.key === 'ArrowDown') next = (index + 1) % choices.length;
+        else if (event.key === 'ArrowUp') next = (index + choices.length - 1) % choices.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = choices.length - 1;
+        else if (event.key === 'Escape' || event.key === 'Tab') {
+          closeMenu();
+          if (event.key === 'Escape') { event.preventDefault(); audienceTrigger.focus(); }
+          return;
+        } else return;
+        event.preventDefault();
+        choices[next].focus();
+      });
+      audienceMenu.addEventListener('toggle', () => {
+        const isOpen = audienceMenu.matches(':popover-open');
+        audienceTrigger.setAttribute('aria-expanded', String(isOpen));
+        if (isOpen) {
+          positionMenu();
+          choices.find(choice => choice.dataset.audienceValue === audienceValue.value)?.focus();
+        }
+      });
+      window.addEventListener('resize', () => { if (audienceMenu.matches(':popover-open')) positionMenu(); });
+      window.addEventListener('scroll', () => { if (audienceMenu.matches(':popover-open')) positionMenu(); }, true);
+    }
+
     const textarea = document.getElementById('composeContent');
     const fileInput = document.getElementById('composeImageInput');
     const videoInput = document.getElementById('composeVideoInput');
@@ -1471,6 +1544,7 @@ window.Aloute = (function () {
           document.dispatchEvent(new CustomEvent('aloute:follow-request-updated', {
             detail: { targetId: Number(userId), status: status }
           }));
+          if (btn.closest('.profile-cover')?.querySelector('.profile-cover__badge')) location.reload();
         } catch (err) {
           toast(err.message, true);
         } finally {
@@ -1493,6 +1567,106 @@ window.Aloute = (function () {
 
   function applyFollowState(btn, following) {
     applyFollowStatus(btn, following ? 'FOLLOWING' : 'NONE');
+  }
+
+  function initCloseFriendButtons() {
+    document.querySelectorAll('.btn-close-friend[data-user-id]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCloseFriendClick(btn);
+      });
+    });
+
+    document.querySelectorAll('.close-friend-request-bar[data-user-id]').forEach(bar => {
+      if (bar.dataset.bound) return;
+      bar.dataset.bound = '1';
+      const userId = bar.dataset.userId;
+      const acceptBtn = bar.querySelector('.close-friend-request-bar__accept');
+      const declineBtn = bar.querySelector('.close-friend-request-bar__decline');
+
+      if (acceptBtn) {
+        acceptBtn.addEventListener('click', async () => {
+          acceptBtn.disabled = true;
+          if (declineBtn) declineBtn.disabled = true;
+          try {
+            await api('/api/close-friends/' + userId + '/accept', { method: 'POST' });
+            toast('Đã chấp nhận kết bạn thân');
+            location.reload();
+          } catch (err) {
+            toast(err.message, true);
+            acceptBtn.disabled = false;
+            if (declineBtn) declineBtn.disabled = false;
+          }
+        });
+      }
+      if (declineBtn) {
+        declineBtn.addEventListener('click', async () => {
+          if (!(await AlouteUI.confirm({ title: 'Từ chối lời mời', message: 'Từ chối lời mời kết bạn thân này?', okText: 'Từ chối' }))) return;
+          if (acceptBtn) acceptBtn.disabled = true;
+          declineBtn.disabled = true;
+          try {
+            await api('/api/close-friends/' + userId, { method: 'DELETE' });
+            toast('Đã từ chối lời mời');
+            location.reload();
+          } catch (err) {
+            toast(err.message, true);
+            if (acceptBtn) acceptBtn.disabled = false;
+            declineBtn.disabled = false;
+          }
+        });
+      }
+    });
+  }
+
+  async function handleCloseFriendClick(btn) {
+    const userId = btn.dataset.userId;
+    const status = btn.dataset.status || 'NONE';
+    btn.disabled = true;
+    try {
+      if (status === 'NONE') {
+        const result = await api('/api/close-friends/' + userId + '/request', { method: 'POST' });
+        applyCloseFriendState(btn, result);
+        toast(result === 'ACCEPTED' ? 'Đã trở thành bạn thân' : 'Đã gửi lời mời kết bạn thân');
+      } else if (status === 'PENDING_SENT') {
+        if (!(await AlouteUI.confirm({ title: 'Hủy lời mời', message: 'Hủy lời mời kết bạn thân đã gửi?', okText: 'Hủy lời mời' }))) return;
+        await api('/api/close-friends/' + userId, { method: 'DELETE' });
+        applyCloseFriendState(btn, 'NONE');
+        toast('Đã hủy lời mời');
+      } else if (status === 'PENDING_RECEIVED') {
+        await api('/api/close-friends/' + userId + '/accept', { method: 'POST' });
+        applyCloseFriendState(btn, 'ACCEPTED');
+        toast('Đã chấp nhận kết bạn thân');
+      } else if (status === 'ACCEPTED') {
+        if (!(await AlouteUI.confirm({ title: 'Xóa bạn thân', message: 'Xóa khỏi danh sách bạn thân?', okText: 'Xóa' }))) return;
+        await api('/api/close-friends/' + userId, { method: 'DELETE' });
+        applyCloseFriendState(btn, 'NONE');
+        toast('Đã xóa khỏi bạn thân');
+      }
+      if (btn.closest('.profile-cover')) location.reload();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function applyCloseFriendState(btn, status) {
+    btn.dataset.status = status;
+    btn.classList.remove('is-close', 'is-pending');
+    if (status === 'ACCEPTED') {
+      btn.classList.add('is-close');
+      btn.textContent = '★ Bạn thân';
+    } else if (status === 'PENDING_SENT') {
+      btn.classList.add('is-pending');
+      btn.textContent = 'Đã gửi lời mời';
+    } else if (status === 'PENDING_RECEIVED') {
+      btn.textContent = 'Chấp nhận bạn thân';
+    } else {
+      btn.textContent = '+ Bạn thân';
+    }
   }
 
   function initSearchPage() {
@@ -1567,7 +1741,10 @@ window.Aloute = (function () {
           if (tab.dataset.tab === currentTab) return;
           currentTab = tab.dataset.tab;
           setActiveTab(currentTab);
-          if (keyword) runSearch();
+          clearTimeout(debounceTimer);
+          keyword = input.value.trim();
+          if (keyword || currentTab === 'posts') runSearch();
+          else showDiscover();
         });
       });
     }
@@ -1581,6 +1758,7 @@ window.Aloute = (function () {
         const query = trigger.dataset.searchQuery || '';
         if (!query) return;
 
+        clearTimeout(debounceTimer);
         input.value = query;
         keyword = query.trim();
         if (clearBtn) clearBtn.hidden = false;
@@ -1599,6 +1777,7 @@ window.Aloute = (function () {
     }
 
     function resetSearch() {
+      clearTimeout(debounceTimer);
       input.value = '';
       keyword = '';
       if (clearBtn) clearBtn.hidden = true;
@@ -1606,10 +1785,14 @@ window.Aloute = (function () {
     }
 
     function showDiscover() {
+      if (currentTab === 'posts') {
+        runSearch();
+        return;
+      }
       cancelSearch();
       resultsEl.hidden = true;
       resultsEl.innerHTML = '';
-      if (tabsEl) tabsEl.hidden = true;
+      if (tabsEl) tabsEl.hidden = false;
       if (discoverEl) discoverEl.hidden = false;
     }
 
@@ -1627,6 +1810,7 @@ window.Aloute = (function () {
 
       const tab = currentTab;
       const key = keyword;
+      const browsingPosts = tab === 'posts' && !key;
       const token = ++requestToken;
 
       // A fresh query revalidates visibility; cached items only preserve pagination state.
@@ -1635,16 +1819,22 @@ window.Aloute = (function () {
 
       if (!append) resultsEl.innerHTML = searchSkeleton(tab);
       try {
-        const url = (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=')
-          + encodeURIComponent(key) + '&page=' + page + '&size=' + SEARCH_PAGE_SIZE;
+        // Reuse the authorized cursor feed for an empty Posts tab; search APIs keep their contract.
+        const cursor = append && cache.posts[key] ? cache.posts[key].nextCursor : null;
+        const url = browsingPosts
+          ? '/api/posts/feed/cursor?tab=foryou&size=' + SEARCH_PAGE_SIZE
+            + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '')
+          : (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=')
+            + encodeURIComponent(key) + '&page=' + page + '&size=' + SEARCH_PAGE_SIZE;
         const data = await api(url, { signal: controller.signal });
         if (token !== requestToken) return;
-        const batch = data || [];
+        const batch = browsingPosts ? (data?.items || []) : (data || []);
         const existing = append && cache[tab][key] ? cache[tab][key].items : [];
         cache[tab][key] = {
           items: existing.concat(batch),
           page,
-          hasMore: batch.length === SEARCH_PAGE_SIZE
+          hasMore: browsingPosts ? Boolean(data?.hasMore && data?.nextCursor) : batch.length === SEARCH_PAGE_SIZE,
+          nextCursor: browsingPosts ? data?.nextCursor : null
         };
         const keys = Object.keys(cache[tab]);
         if (keys.length > 20) {
@@ -1664,7 +1854,9 @@ window.Aloute = (function () {
     function paint(tab, items, hasMore, page) {
       if (!items.length) {
         resultsEl.innerHTML = tab === 'posts'
-          ? discoverEmpty('Chưa có bài viết nào khớp', 'Thử một từ khóa ngắn hơn hoặc kiểm tra lại chính tả.')
+          ? (keyword
+            ? discoverEmpty('Chưa có bài viết nào khớp', 'Thử một từ khóa ngắn hơn hoặc kiểm tra lại chính tả.')
+            : discoverEmpty('Chưa có bài viết nào', 'Các bài viết bạn có quyền xem sẽ xuất hiện ở đây.'))
           : discoverEmpty('Không tìm thấy ai', 'Bạn có thể tìm theo họ tên hoặc @username.');
         return;
       }
@@ -1764,6 +1956,20 @@ window.Aloute = (function () {
     );
   }
 
+  function postAudienceMarkup(visibility) {
+    const audience = visibility || 'PUBLIC';
+    const icons = {
+      PUBLIC: ['Công khai', '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/>'],
+      FRIENDS: ['Bạn bè', '<circle cx="9" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zm17 0v-3a9 9 0 0 0-1.5-5 6 6 0 0 1 6.5 6v2z"/>'],
+      CLOSE_FRIENDS: ['Bạn thân', '<circle cx="12" cy="12" r="9"/><path fill="currentColor" stroke="none" d="m12 5 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5.2 10l4.7-.7z"/>'],
+      ONLY_ME: ['Chỉ mình tôi', '<path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h8V7a4 4 0 0 0-8 0zm3 5v3h2v-3z"/>']
+    };
+    if (!Object.prototype.hasOwnProperty.call(icons, audience)) return '';
+    const [label, paths] = icons[audience];
+    return '<span class="post__audience" role="img" data-post-audience="' + audience + '" aria-label="' + label + '" title="' + label + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true" ' + (audience === 'PUBLIC' || audience === 'CLOSE_FRIENDS' ? 'fill="none" stroke="currentColor" stroke-width="1.8"' : 'fill="currentColor"') + '>' + paths + '</svg></span>';
+  }
+
   function renderVisibilityBadge(visibility, moderationStatus) {
     const moderation = moderationStatus == null ? '' : String(moderationStatus).trim().toUpperCase();
     // Unknown moderation state must fail closed too. Only an explicit APPROVED state may
@@ -1789,6 +1995,9 @@ window.Aloute = (function () {
     }
     if (status === 'FRIENDS') {
       return '<span class="post__visibility post__visibility--private" title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"><i class="bi bi-people-fill" aria-hidden="true"></i></span>';
+    }
+    if (status === 'CLOSE_FRIENDS') {
+      return '<span class="post__visibility post__visibility--private" title="Bạn thân" aria-label="Bài viết dành cho bạn thân"><i class="bi bi-star-fill" aria-hidden="true"></i></span>';
     }
     if (status === 'ONLY_ME') {
       return '<span class="post__visibility post__visibility--private" title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>';
@@ -2123,7 +2332,7 @@ window.Aloute = (function () {
     const type = item.dataset.notificationType || '';
     const referenceId = (item.dataset.referenceId || '').trim();
     if (!referenceId) return null;
-    if (type === 'FOLLOW' || type === 'FOLLOW_REQUEST_ACCEPTED') {
+    if (['FOLLOW', 'FOLLOW_REQUEST_ACCEPTED', 'CLOSE_FRIEND_REQUEST', 'CLOSE_FRIEND_ACCEPTED'].includes(type)) {
       return /^\d+$/.test(referenceId) ? '/profile/' + encodeURIComponent(referenceId) : null;
     }
     if (['LIKE', 'COMMENT', 'REPOST', 'MENTION', 'POST_MODERATION_FLAGGED', 'POST_MODERATION_HIDDEN'].includes(type)) {
@@ -3046,6 +3255,7 @@ window.Aloute = (function () {
   let navBadgeRefreshAt = 0;
   let navBadgeRequest = null;
   let navBadgeForceAfterPending = false;
+  let followRequestBadgeRevision = 0;
 
   function refreshNavBadges(force) {
     const userId = document.body.dataset.currentUserId;
@@ -3063,6 +3273,7 @@ window.Aloute = (function () {
     }
     if (!force && now - navBadgeRefreshAt < 30000) return;
 
+    const requestRevision = followRequestBadgeRevision;
     navBadgeRequest = Promise.allSettled([
       api('/api/notifications/unread-count', { method: 'GET' }),
       api('/api/chat/unread-count', { method: 'GET' }),
@@ -3071,7 +3282,8 @@ window.Aloute = (function () {
       if (document.body.dataset.currentUserId !== userId) return;
       if (results[0].status === 'fulfilled') setBadge('notifUnreadBadge', results[0].value?.count ?? results[0].value ?? 0);
       if (results[1].status === 'fulfilled') setBadge('chatUnreadBadge', results[1].value?.count ?? results[1].value ?? 0);
-      if (results[2].status === 'fulfilled') setBadge('followRequestBadge', results[2].value?.count ?? results[2].value ?? 0);
+      if (results[2].status === 'fulfilled' && requestRevision === followRequestBadgeRevision)
+        setBadge('followRequestBadge', results[2].value?.count ?? results[2].value ?? 0);
       navBadgeRefreshAt = Date.now();
     }).finally(function () {
       navBadgeRequest = null;
@@ -3158,6 +3370,7 @@ window.Aloute = (function () {
     initCommunityPages();
     initComposePage();
     initFollowButtons();
+    initCloseFriendButtons();
     initSearchPage();
     initProfileActionMenu();
     initProfilePeoplePanel();
@@ -3167,7 +3380,12 @@ window.Aloute = (function () {
     initChangePasswordForm();
     initLogout();
     initSidebarNavigation();
-    refreshNavBadges();
+    if (document.querySelector('.follow-requests-page')) {
+      followRequestBadgeRevision++;
+      const serverCount = parseInt(document.getElementById('followRequestBadge')?.textContent, 10) || 0;
+      setBadge('followRequestBadge', serverCount);
+      refreshNavBadges(true);
+    } else refreshNavBadges();
     document.dispatchEvent(new Event('aloute:navigated'));
   }
 

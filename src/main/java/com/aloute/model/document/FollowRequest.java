@@ -9,4 +9,5 @@ public class FollowRequest {
     private Long followerId;
     private Long targetId;
     private java.time.Instant createdAt = java.time.Instant.now();
+    private java.time.Instant seenAt;
 }

@@ -1015,7 +1015,22 @@ img { display: block; }
 .compose-page__image:hover { color:var(--text-primary); background:var(--bg-hover); }
 .compose-page__image span,.compose-page__visibility span { font-size:13px; }
 .compose-page__visibility { gap:7px; padding-left:10px; border-left:1px solid var(--border); }
-.compose-page__visibility select { padding:7px 28px 7px 9px; color:var(--text-primary); background:var(--bg-panel); border:1px solid var(--border); border-radius:9px; outline:none; }
+.post__audience { display:inline-flex; align-items:center; flex-shrink:0; }
+.post__audience svg { width:14px; height:14px; }
+.post-audience-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: var(--text-primary); background: var(--bg-pill); border: 1px solid var(--border); border-radius: 9px; font: inherit; cursor: pointer; }
+.post-audience-trigger [data-audience-current-icon] { display: inline-flex; }
+.post-audience-trigger svg { width: 18px; height: 18px; }
+.post-audience-trigger .post-audience-trigger__chevron { width: 14px; height: 14px; }
+.post-audience-menu { box-sizing: border-box; position: fixed; inset: auto; width: 208px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; margin: 0; padding: 5px; color: var(--text-primary); background: var(--bg-pill); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: var(--shadow-md); }
+.post-audience-menu::backdrop { background: transparent; }
+.post-audience-option { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 6px; color: inherit; background: transparent; text-align: left; font: inherit; font-size: 14px; cursor: pointer; }
+.post-audience-option:hover, .post-audience-option:focus-visible { background: var(--bg-hover); }
+.post-audience-option[aria-selected="true"] { color: var(--accent, #1877f2); background: var(--bg-hover); }
+.post-audience-option__icon { display: inline-flex; flex: 0 0 18px; }
+.post-audience-option__icon svg { width: 18px; height: 18px; stroke-width: 1.8; }
+.post-audience-trigger:focus-visible, .post-audience-option:focus-visible { outline: 2px solid #1877f2; outline-offset: -2px; }
+@media (max-width: 480px) { .compose-page__footer { gap: 12px; padding-inline: 14px; } .compose-page__tools { min-width: 0; flex: 1; } }
+
 .compose-page .btn-post { width:auto; min-width:84px; padding:9px 22px; }
 
 .profile-header__stats { display: flex; gap: 14px; }
@@ -2289,6 +2304,8 @@ img { display: block; }
 
 .search-results { margin-top: 18px; }
 .search-results .feed-panel { padding: 4px 0; }
+
+.search-page [hidden] { display: none !important; }
 
 .search-discover {
   display: flex;

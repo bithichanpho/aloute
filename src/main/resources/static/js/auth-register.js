@@ -89,7 +89,7 @@
   function state() {
     const bad = [];
     fields.forEach(field => {
-      const message = validationMessage(field);
+      const message = validationMessage(field) || field.serverMessage || '';
       const wrong = !!message;
       field.element.classList.toggle('is-bad', wrong);
       field.element.classList.toggle('is-good', !wrong && field.input.value.length > 0);
@@ -124,6 +124,10 @@
   fields.forEach(field => field.input.addEventListener('input', () => {
     // A correction must not be interrupted by an earlier scheduled focus/scroll.
     scrollVersion++;
+    if (field.serverMessage && errorBox.textContent === field.serverMessage) errorBox.hidden = true;
+    field.serverMessage = '';
+    // A pending registration can reuse its own email, so availability depends on both values.
+    if (field.id === 'email') fields.find(field => field.id === 'username').serverMessage = '';
     if (tried) state();
   }));
 
@@ -136,12 +140,12 @@
     else form.removeAttribute('aria-busy');
   }
 
-  async function postWithDeadline(url, body) {
+  async function postWithDeadline(url, body, timeoutMessage) {
     const controller = new AbortController();
     let timer;
     const expired = new Promise((_, reject) => {
       timer = setTimeout(() => {
-        reject(new Error('Yêu cầu quá thời gian chờ, chưa xác định được kết quả. Vui lòng kiểm tra email hoặc thử lại sau.'));
+        reject(new Error(timeoutMessage || 'Yêu cầu quá thời gian chờ, chưa xác định được kết quả. Vui lòng kiểm tra email hoặc thử lại sau.'));
         controller.abort();
       }, 30000);
     });
@@ -180,7 +184,30 @@
     errorBox.hidden = true;
     pendingVerificationBox.hidden = true;
     tried = true;
-    const bad = state();
+    let bad = state();
+    const usernameField = fields.find(field => field.id === 'username');
+    const emailField = fields.find(field => field.id === 'email');
+    let availabilityFailed = false;
+    if (!validationMessage(usernameField) && !usernameField.serverMessage) {
+      setBusy(true);
+      submitBtn.textContent = 'Đang kiểm tra...';
+      try {
+        const result = await postWithDeadline('/api/auth/register/username-availability', {
+          username: usernameField.input.value.trim(),
+          email: validationMessage(emailField) ? null : emailField.input.value.trim()
+        }, 'Không thể kiểm tra tên đăng nhập lúc này. Vui lòng thử lại.');
+        if (result?.available === false) usernameField.serverMessage = 'Tên đăng nhập đã được sử dụng';
+        else if (result?.available !== true) throw new Error('Không thể kiểm tra tên đăng nhập lúc này. Vui lòng thử lại.');
+      } catch (err) {
+        availabilityFailed = true;
+        errorBox.textContent = err.message || 'Không thể kiểm tra tên đăng nhập lúc này. Vui lòng thử lại.';
+        errorBox.hidden = false;
+      } finally {
+        setBusy(false);
+        submitBtn.textContent = 'Đăng ký';
+      }
+      bad = state();
+    }
     if (bad.length) {
       bad.forEach(field => {
         field.element.classList.remove('is-shake');
@@ -193,6 +220,7 @@
       }, reducedMotion.matches ? 0 : 200);
       return;
     }
+    if (availabilityFailed) { goTo(errorBox); return; }
 
     setBusy(true);
     submitBtn.textContent = 'Đang tạo tài khoản...';
@@ -212,7 +240,13 @@
       if (message.toLowerCase().includes('chờ xác thực')) pendingVerificationBox.hidden = false;
       setBusy(false);
       submitBtn.textContent = 'Đăng ký';
-      goTo(errorBox);
+      if (message.trim().toLowerCase().replace(/[.!]$/, '') === 'tên đăng nhập đã được sử dụng') {
+        errorBox.hidden = true;
+        const field = fields.find(field => field.id === 'username');
+        field.serverMessage = message;
+        state();
+        goTo(field.input);
+      } else goTo(errorBox);
     }
   });
 })();

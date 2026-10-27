@@ -41,6 +41,9 @@ public class NotificationService extends NotificationApplicationService {
             public Optional<String> username(Long id) {
                 return users.findById(id).map(User::getUsername);
             }
+            public Map<Long, ProfileLabel> profileLabels(Collection<Long> ids) {
+                return new com.aloute.users.infrastructure.JpaUserDirectory(users).profileLabels(ids);
+            }
             public Map<Long, String> usernames(Collection<Long> ids) {
                 return users.findAllById(ids).stream()
                         .collect(Collectors.toUnmodifiableMap(User::getId, User::getUsername));

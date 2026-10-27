@@ -19,7 +19,7 @@ import com.aloute.users.api.UserDirectory;
 
 public class NotificationApplicationService implements Notifications {
     private static final java.util.Set<String> REMOVED_FEATURE_NOTIFICATION_TYPES =
-            java.util.Set.of("CLOSE_FRIEND_REQUEST", "CLOSE_FRIEND_ACCEPTED", "FOLLOW_REQUEST");
+            java.util.Set.of("FOLLOW_REQUEST");
     private static final java.util.Set<String> SYSTEM_NOTIFICATION_TYPES = java.util.Set.of(
             "POST_MODERATION_FLAGGED", "POST_MODERATION_HIDDEN", "FOLLOW_REQUEST_ACCEPTED");
     private static final Logger log = LoggerFactory.getLogger(NotificationApplicationService.class);
@@ -215,8 +215,8 @@ public class NotificationApplicationService implements Notifications {
                 userId, notifications.stream().map(Notification::getSenderId)
                         .filter(java.util.Objects::nonNull).toList());
         return notifications.stream()
-                .filter(n -> !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType()))
-                .filter(n -> SYSTEM_NOTIFICATION_TYPES.contains(n.getType()) || visible.contains(n.getSenderId()))
+                .filter(n -> (n.getType() == null || !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType())))
+                .filter(n -> (n.getType() != null && SYSTEM_NOTIFICATION_TYPES.contains(n.getType())) || visible.contains(n.getSenderId()))
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -234,8 +234,8 @@ public class NotificationApplicationService implements Notifications {
                 userId, notifications.stream().map(Notification::getSenderId)
                         .filter(java.util.Objects::nonNull).toList());
         List<NotificationResponse> items = notifications.stream()
-                .filter(n -> !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType()))
-                .filter(n -> SYSTEM_NOTIFICATION_TYPES.contains(n.getType()) || visible.contains(n.getSenderId()))
+                .filter(n -> (n.getType() == null || !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType())))
+                .filter(n -> (n.getType() != null && SYSTEM_NOTIFICATION_TYPES.contains(n.getType())) || visible.contains(n.getSenderId()))
                 .map(this::toResponse)
                 .toList();
         Long nextCursor = hasMore && !notifications.isEmpty()

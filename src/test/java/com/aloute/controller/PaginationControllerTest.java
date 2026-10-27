@@ -42,9 +42,11 @@ class PaginationControllerTest {
 
         controller.searchUsers(authentication, request, "alice", 2, 15);
         controller.searchPosts(authentication, request, "spring", 4, 10);
+        controller.searchPosts(authentication, request, "  #ALOUTE  ", 1, 20);
 
         verify(users).searchUsersExcludingCurrentUser("alice", 5L, 2, 15);
         verify(posts).searchPosts("spring", 5L, 4, 10);
+        verify(posts).searchPosts("#ALOUTE", 5L, 1, 20);
     }
 
     private Authentication authentication(Long userId) {

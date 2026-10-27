@@ -321,11 +321,42 @@ body { background: var(--bg); }
   background: var(--danger);
 }
 
-/* Công tắc theme: hiện mặt trời khi đang tối, mặt trăng khi đang sáng */
-[data-bs-theme="dark"] .theme-icon--to-dark,
+/* The text describes the mode the button will switch to. */
 [data-bs-theme="dark"] .theme-text--to-dark,
-[data-bs-theme="light"] .theme-icon--to-light,
 [data-bs-theme="light"] .theme-text--to-light { display: none !important; }
+
+/* Adapted from Uiverse.io by Creatlydev; scoped to ALOUTE's existing theme buttons. */
+.theme-switch__disc {
+  background: transparent;
+  color: var(--text-primary);
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  line-height: 1;
+  pointer-events: none;
+}
+.theme-switch__icon {
+  grid-column: 1 / 1;
+  grid-row: 1 / 1;
+  width: 22px;
+  height: 22px;
+  transition: transform 500ms;
+  line-height: .1;
+}
+.theme-switch__icon--moon { transition-delay: 200ms; }
+.theme-switch__icon--sun { transform: scale(0); }
+/* Match the icon to the destination mode named by the adjacent text. */
+[data-bs-theme="dark"] .theme-switch__icon--moon { transform: rotate(360deg) scale(0); }
+[data-bs-theme="dark"] .theme-switch__icon--sun { transition-delay: 200ms; transform: scale(1) rotate(360deg); }
+.mobile-topbar__btn[data-theme-toggle] { padding: 0; }
+.mobile-topbar__btn .theme-switch__icon { width: 20px; height: 20px; }
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch__icon { transition: none !important; transition-delay: 0s !important; }
+}
 
 /* ---------- 5. Shell: desktop ---------- */
 .main-column { padding-left: var(--rail-width); min-width: 0; }
@@ -765,13 +796,9 @@ body.page-chat .main-column { min-width: 0; }
 .btn-primary { color: #fff; background: var(--accent-gradient); border-radius: var(--ui-control-radius); min-height: 46px; }
 .auth-theme-toggle {
   position: fixed; z-index: 10; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
-  width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); border-radius: 50%; color: var(--text-primary); background: var(--bg-panel);
-  box-shadow: var(--shadow-sm); cursor: pointer; transition: transform var(--ui-motion), background-color var(--ui-motion);
+  width: 42px; height: 42px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; cursor: pointer;
 }
-.auth-theme-toggle:hover { background: var(--bg-hover); transform: translateY(-1px); }
-[data-bs-theme="dark"] .auth-theme-toggle .theme-icon--to-dark,
-[data-bs-theme="light"] .auth-theme-toggle .theme-icon--to-light { display: none; }
 
 /* Toasts, dialogs, dropdowns and forms */
 .modal-content { border: 1px solid var(--border); box-shadow: var(--shadow-md); }

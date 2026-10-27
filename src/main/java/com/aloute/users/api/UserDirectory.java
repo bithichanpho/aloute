@@ -10,4 +10,10 @@ public interface UserDirectory {
     boolean exists(Long userId);
 
     Map<Long, String> usernames(Collection<Long> userIds);
+
+    Map<Long, ProfileLabel> profileLabels(Collection<Long> userIds);
+
+    record ProfileLabel(String username, String fullName, String avatarUrl) {
+        public ProfileLabel(String username, String fullName) { this(username, fullName, null); }
+    }
 }

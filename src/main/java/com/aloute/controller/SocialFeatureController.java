@@ -71,7 +71,7 @@ public class SocialFeatureController {
 
     @GetMapping("/follow-requests/unread-count")
     public ApiResponse<java.util.Map<String, Long>> pendingFollowRequestCount(Authentication a) {
-        return ApiResponse.success(java.util.Map.of("count", service.countRequests(user(a))));
+        return ApiResponse.success(java.util.Map.of("count", service.countUnreadRequests(user(a))));
     }
 
     @GetMapping("/follow-requests")

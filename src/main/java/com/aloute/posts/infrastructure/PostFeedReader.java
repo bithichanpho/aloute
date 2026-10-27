@@ -51,7 +51,7 @@ public class PostFeedReader implements FeedPostReader {
                 new Criteria().andOperator(
                         Criteria.where("repostOfId").ne(null),
                         Criteria.where("content").nin(null, ""))));
-        if (!normalizedTag.isBlank()) clauses.add(Criteria.where("hashtags").is(normalizedTag));
+        if (!normalizedTag.isBlank()) clauses.add(PostHashtagQuery.matching(normalizedTag));
         if (before != null) {
             clauses.add(Criteria.keysetBefore("createdAt", before.createdAt(), "id", before.id()));
         }

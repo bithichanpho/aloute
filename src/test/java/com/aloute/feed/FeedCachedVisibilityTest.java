@@ -32,7 +32,7 @@ import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class FeedCachedVisibilityTest {
-    enum Revocation { ONLY_ME, PRIVATE_ACCOUNT, BLOCK, LEFT_COMMUNITY, ORIGINAL_PRIVATE, DELETED, HIDDEN, INACTIVE }
+    enum Revocation { ONLY_ME, PRIVATE_ACCOUNT, PRIVATE_FOLLOWER_REMOVED, BLOCK, LEFT_COMMUNITY, ORIGINAL_PRIVATE, DELETED, HIDDEN, INACTIVE, CLOSE_FRIEND_REMOVED }
 
     @ParameterizedTest
     @EnumSource(Revocation.class)
@@ -40,17 +40,26 @@ class FeedCachedVisibilityTest {
         try (Fixture fixture = new Fixture()) {
             if (reason == Revocation.ORIGINAL_PRIVATE) fixture.post.setRepostOfId("origin");
             if (reason == Revocation.LEFT_COMMUNITY) fixture.post.setCommunityId("7");
+            if (reason == Revocation.PRIVATE_FOLLOWER_REMOVED) {
+                fixture.author.setPrivateAccount(true); fixture.following.add(2L);
+            }
+            if (reason == Revocation.CLOSE_FRIEND_REMOVED) {
+                fixture.post.setVisibility(PostVisibility.CLOSE_FRIENDS);
+                fixture.following.add(2L); fixture.followers.add(2L); fixture.closeFriends.add(2L);
+            }
             FeedCursorPage initial = fixture.read();
             assertEquals(1, initial.items().size());
             switch (reason) {
                 case ONLY_ME -> fixture.post.setVisibility(PostVisibility.ONLY_ME);
                 case PRIVATE_ACCOUNT -> fixture.author.setPrivateAccount(true);
+                case PRIVATE_FOLLOWER_REMOVED -> fixture.following.clear();
                 case BLOCK -> fixture.blocked.add(2L);
                 case LEFT_COMMUNITY -> fixture.denied.add("7");
                 case ORIGINAL_PRIVATE -> fixture.original.setVisibility(PostVisibility.ONLY_ME);
                 case DELETED -> fixture.deleted = true;
                 case HIDDEN -> fixture.post.setModerationStatus(ModerationStatus.HIDDEN);
                 case INACTIVE -> fixture.author.setActive(false);
+                case CLOSE_FRIEND_REMOVED -> fixture.closeFriends.clear();
             }
             assertEquals(1, fixture.cached().items().size());
             FeedCursorPage refreshed = fixture.read();
@@ -92,6 +101,7 @@ class FeedCachedVisibilityTest {
         final User author = new User();
         final Set<Long> blocked = new HashSet<>();
         final Set<String> denied = new HashSet<>();
+        final Set<Long> following = new HashSet<>(), followers = new HashSet<>(), closeFriends = new HashSet<>();
         boolean deleted;
         final PostgresDocumentStore store = mock(PostgresDocumentStore.class);
         final AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
@@ -107,7 +117,7 @@ class FeedCachedVisibilityTest {
             when(store.find(any(Query.class), eq(Post.class))).thenAnswer(call -> deleted ? List.of() : List.of(post));
             when(access.forPosts(anyCollection(), eq(1L))).thenAnswer(call ->
                     new ContentAccessService.AccessBatch(1L, Map.of(2L, author), blocked,
-                            Set.of(), Set.of(), Map.of("origin", original), denied));
+                            following, followers, Map.of("origin", original), denied, closeFriends));
             context.register(FeedWiringTest.CacheConfiguration.class);
             context.registerBean(CacheManager.class, () -> new CaffeineCacheManager("feedPages"));
             context.registerBean(FeedPostReader.class, () -> new PostFeedReader(
