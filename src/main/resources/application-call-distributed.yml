@@ -1,0 +1,33 @@
+# For two independent local Aloute backends that must share call signaling.
+# Both machines must point to the SAME PostgreSQL database, Redis, RabbitMQ STOMP broker,
+# and public TURN server. This profile intentionally fails fast when shared infrastructure is missing.
+spring:
+  data:
+    redis:
+      # No localhost fallback in this profile: localhost on each laptop is a different Redis.
+      url: ${REDIS_URL}
+
+app:
+  websocket:
+    broker-relay:
+      enabled: true
+      # Must be the shared broker host reachable from BOTH machines (prefer a private VPN IP).
+      host: ${APP_WEBSOCKET_BROKER_RELAY_HOST:}
+      port: ${APP_WEBSOCKET_BROKER_RELAY_PORT:61613}
+      username: ${RABBITMQ_USER:}
+      password: ${RABBITMQ_PASSWORD:}
+      virtual-host: ${RABBITMQ_VHOST:/}
+  calls:
+    # Call offers/answers must be validated against the same durable call registry on both nodes.
+    distributed-state-enabled: true
+  security:
+    rate-limit:
+      # Do not silently downgrade to per-process rate limiting in this profile.
+      redis-required: true
+  webrtc:
+    # A public TURN address is required for reliable calls across unrelated NATs/firewalls.
+    turn-urls: ${APP_WEBRTC_TURN_URLS:}
+    turn-shared-secret: ${TURN_SHARED_SECRET:}
+  cors:
+    # Set the actual HTTPS browser origins for every frontend explicitly.
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}

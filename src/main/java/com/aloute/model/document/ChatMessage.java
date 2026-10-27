@@ -180,7 +180,7 @@ public class ChatMessage {
     }
 
     public void setCallDurationSeconds(Long callDurationSeconds) {
-        this.callDurationSeconds = callDurationSeconds;
+        this.callDurationSeconds = callDurationSeconds == null ? null : Math.max(0L, callDurationSeconds);
     }
 
     public boolean isRead() {

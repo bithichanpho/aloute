@@ -28,3 +28,10 @@ target/
 credentials/
 **/*firebase-adminsdk*.json
 **/*service-account*.json
+
+# Locally generated LAN TLS material (never distributed in source archives)
+dev-certs/
+
+# Python moderation test/runtime artifacts
+__pycache__/
+.pytest_cache/

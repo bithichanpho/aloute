@@ -188,7 +188,9 @@ class CallRecoveryIT {
         assertEquals("ENDED", sessions.finish(ended, 1L, 2L).orElseThrow().state());
         registry().processDistributedTimeouts();
         for (String id : List.of(cancelled, declined, ended)) {
-            assertEquals(0, historyCount(id)); assertEquals(0, outboxCount(id));
+            // Newly supported terminal histories are CALL messages, never missed-call notifications.
+            assertEquals(1, historyCount(id)); assertEquals(0, outboxCount(id));
+            assertEquals("COMPLETED", value(id, "processing_status"));
             assertFalse(sessions.answer(id, 2L, 1L)); assertFalse(sessions.register(id, 1L, 2L, "audio"));
             assertTrue(sessions.finish(id, 1L, 2L).isEmpty());
         }
@@ -271,7 +273,52 @@ class CallRecoveryIT {
         String id=fresh(); assertTrue(sessions.answer(id,2L,1L));
         jdbc.update("UPDATE call_sessions SET answered_at=now()-interval '3 hours' WHERE call_id=?",id);
         registry().processDistributedTimeouts();
-        assertEquals("ENDED",value(id,"state")); assertEquals(0,historyCount(id)); assertEquals(0,outboxCount(id));
+        assertEquals("ENDED",value(id,"state")); assertEquals(1,historyCount(id)); assertEquals(0,outboxCount(id));
+    }
+
+    @Test
+    void endedHistoryUsesAnsweredDurationAndRejectsOtherParticipants() {
+        String id=fresh(); assertTrue(sessions.answer(id,2L,1L));
+        jdbc.update("UPDATE call_sessions SET answered_at=now()-interval '87.9 seconds' WHERE call_id=?",id);
+        assertThrows(ForbiddenException.class, () -> history.createCallHistoryMessage(1L,2L,id));
+        sessions.finish(id,2L,1L);
+        jdbc.update("UPDATE call_sessions SET answered_at=ended_at-interval '87.9 seconds' WHERE call_id=?",id);
+        assertEquals("PENDING",value(id,"processing_status"));
+        assertThrows(ForbiddenException.class, () -> history.createCallHistoryMessage(3L,2L,id));
+        registry().processDistributedTimeouts();
+        var record=history.createCallHistoryMessage(1L,2L,id);
+        assertEquals("ENDED",record.getCallStatus()); assertEquals(87L,record.getCallDurationSeconds());
+        assertEquals(1,historyCount(id)); assertEquals(0,outboxCount(id));
+        verify(ws,never()).convertAndSendToUser(anyString(),eq("/queue/call"),any());
+        registry().processDistributedTimeouts(); assertEquals(1,historyCount(id));
+    }
+
+    @Test
+    void terminalClaimSurvivesCrashAndRetriesConcurrentWorkersWithoutDuplicates() throws Exception {
+        String id=fresh(); sessions.answer(id,2L,1L); sessions.finish(id,1L,2L);
+        var orphan=sessions.claimDue().stream().filter(c -> c.call().callId().equals(id)).findFirst().orElseThrow();
+        jdbc.update("UPDATE call_sessions SET lease_until=now()-interval '1 second' WHERE call_id=?",id);
+        concurrent(() -> { registry().processDistributedTimeouts(); return true; },
+                () -> { registry().processDistributedTimeouts(); return true; });
+        assertEquals("COMPLETED",value(id,"processing_status"));
+        assertEquals(1,historyCount(id)); assertEquals(0,outboxCount(id));
+        assertTrue(completion.complete(orphan).isEmpty());
+    }
+
+    @Test
+    void terminalMessageFailureRollsBackAndLeavesRetryableJournal() {
+        String id=fresh(); sessions.finish(id,1L,2L);
+        var claim=sessions.claimDue().stream().filter(c -> c.call().callId().equals(id)).findFirst().orElseThrow();
+        var brokenHistory=mock(MissedCallHistory.class);
+        doThrow(new IllegalStateException("injected history outage")).when(brokenHistory).createCallHistoryMessage(1L,2L,id);
+        var broken=new CallCompletionService(sessions,brokenHistory,mock(NotificationIntents.class));
+        var tx=new org.springframework.transaction.support.TransactionTemplate(context.getBean(PlatformTransactionManager.class));
+        assertThrows(IllegalStateException.class, () -> tx.execute(status -> broken.complete(claim)));
+        sessions.failed(claim,"InjectedHistoryOutage");
+        assertEquals("RETRY",value(id,"processing_status")); assertEquals(0,historyCount(id));
+        jdbc.update("UPDATE call_sessions SET next_attempt_at=now()-interval '1 second' WHERE call_id=?",id);
+        registry().processDistributedTimeouts();
+        assertEquals("COMPLETED",value(id,"processing_status")); assertEquals(1,historyCount(id));
     }
 
     @org.junit.jupiter.params.ParameterizedTest

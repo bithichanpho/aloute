@@ -28,6 +28,7 @@ public class ChatMessageResponse {
     private String callId;
     private String callType;
     private String callStatus;
+    private Long callDurationSeconds;
 
     public ChatMessageResponse() {}
 
@@ -93,6 +94,14 @@ public class ChatMessageResponse {
 
     public void setCallStatus(String callStatus) {
         this.callStatus = callStatus;
+    }
+
+    public Long getCallDurationSeconds() {
+        return callDurationSeconds;
+    }
+
+    public void setCallDurationSeconds(Long callDurationSeconds) {
+        this.callDurationSeconds = callDurationSeconds == null ? null : Math.max(0L, callDurationSeconds);
     }
 
     public boolean isRead() {

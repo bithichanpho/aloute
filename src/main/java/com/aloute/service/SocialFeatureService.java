@@ -545,6 +545,12 @@ public class SocialFeatureService {
         return savedPosts.saved(user, page);
     }
 
+    public void edit(Long user, String id, com.aloute.dto.request.EditPostRequest request) {
+        postEditing.edit(user, id, new com.aloute.posts.api.PostEditCommand(request.getContent(),
+                request.getImageUrl(), request.getVideoUrl(), request.getVisibility().name(),
+                request.contentProvided(), request.imageProvided(), request.videoProvided()));
+    }
+
     public void edit(Long user, String id, CreatePostRequest request) {
         postEditing.edit(user, id, new com.aloute.posts.api.PostEditCommand(request.getContent(),
                 request.getImageUrl(), request.getVideoUrl(), request.getVisibility().name()));

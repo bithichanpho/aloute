@@ -68,7 +68,12 @@
       });
       select.value = post.visibility || 'PUBLIC'; label.append(select); modal.append(label);
       modal.append(button('Lưu thay đổi', async () => {
-        await api('/api/posts/' + id, 'PUT', { content: content.value, imageUrl: post.imageUrl, videoUrl: post.videoUrl, visibility: select.value });
+        if (!content.value.trim() && !post.imageUrl && !post.videoUrl) {
+          Aloute.toast('Bài viết cần có nội dung, hình ảnh hoặc video', true); return;
+        }
+        // Read responses may contain transformed display URLs. The server retains owned originals.
+        await api('/api/posts/' + id, 'PUT', { content: content.value, visibility: select.value });
+        modal.close();
         location.reload();
       }));
     }));

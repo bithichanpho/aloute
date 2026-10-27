@@ -25,10 +25,14 @@ public class CallCompletionService {
         var locked = sessions.lockClaim(claim);
         if (locked.isEmpty()) return Optional.empty();
         var call = locked.get();
-        history.createMissedCallMessage(call.callerId(), call.calleeId(), call.callId(), call.callType());
-        String type = "audio".equals(call.callType()) ? "thoại" : "video";
-        notifications.enqueue(call.calleeId(), call.callerId(), "CALL_MISSED", call.callId(),
-                "đã gọi " + type + " cho bạn nhưng bạn không trả lời trong 30 giây");
+        if ("MISSED".equals(call.state())) {
+            history.createMissedCallMessage(call.callerId(), call.calleeId(), call.callId(), call.callType());
+            String type = "audio".equals(call.callType()) ? "thoại" : "video";
+            notifications.enqueue(call.calleeId(), call.callerId(), "CALL_MISSED", call.callId(),
+                    "đã gọi " + type + " cho bạn nhưng bạn không trả lời trong 30 giây");
+        } else {
+            history.createCallHistoryMessage(call.callerId(), call.calleeId(), call.callId());
+        }
         sessions.completed(claim);
         return locked;
     }

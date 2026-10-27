@@ -3,7 +3,7 @@ package com.aloute.controller;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
-import com.aloute.dto.request.CreatePostRequest;
+import com.aloute.dto.request.EditPostRequest;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.SocialFeatureService;
 
@@ -155,7 +155,7 @@ public class SocialFeatureController {
     public ApiResponse<?> edit(
             Authentication a,
             @PathVariable @NotBlank(message = "Thiếu mã bài viết") String id,
-            @Valid @RequestBody CreatePostRequest r) {
+            @Valid @RequestBody EditPostRequest r) {
         service.edit(user(a), id, r);
         return ApiResponse.success(null);
     }

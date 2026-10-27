@@ -203,7 +203,8 @@ public class CallRegistryService implements CallSignaling {
             for (var claim : durable.claimDue()) {
                 try {
                     // Returns only after PostgreSQL history + notification outbox + completion commit.
-                    completion.complete(claim).ifPresent(call -> deliverTimeoutSignal(view(call)));
+                    completion.complete(claim).filter(call -> "MISSED".equals(call.state()))
+                            .ifPresent(call -> deliverTimeoutSignal(view(call)));
                 } catch (RuntimeException failure) {
                     log.warn("Call recovery failed (callId={}, cause={})", claim.call().callId(),
                             failure.getClass().getSimpleName());

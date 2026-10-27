@@ -41,6 +41,7 @@ public class ChatMessageMapper {
         dto.setCallId(m.getCallId());
         dto.setCallType(m.getCallType());
         dto.setCallStatus(m.getCallStatus());
+        dto.setCallDurationSeconds(m.getCallDurationSeconds());
         dto.setRead(m.isRead());
         dto.setDelivered(m.isDelivered() || (m.getGroupId() != null && !m.getDeliveredToUserIds().isEmpty()));
         dto.setDeliveredAt(m.getDeliveredAt());
