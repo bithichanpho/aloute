@@ -27,7 +27,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         if(url.pathname===endpoint) {
           assert.equal(route.request().headers()['x-xsrf-token'],'fixture-csrf');
           const body=route.request().postDataJSON();calls.push(body);
-          const accepted=body.email==='otp@example.invalid'&&body.code==='012345';
+          const accepted=body.email==='otp@example.invalid'&&body.code==='0123456';
           return route.fulfill({status:accepted?200:400,contentType:'application/json',body:JSON.stringify({success:accepted,data:null,
             message:kind==='verify'?'Mã xác thực không hợp lệ hoặc đã được dùng':'Mã đặt lại mật khẩu không hợp lệ hoặc đã được dùng'})});
         }
@@ -44,29 +44,29 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         const paste=text=>code.evaluate((el,text)=>{const data=new DataTransfer();data.setData('text/plain',text);el.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));},text);
         await code.fill('0145');await code.evaluate(el=>el.setSelectionRange(2,2));await code.pressSequentially('a');
         assert.equal(await code.inputValue(),'0145');assert.deepEqual(await selection(),[2,2],'Ignoring a letter must preserve the editing position');
-        await code.pressSequentially('23');assert.equal(await code.inputValue(),'012345');
+        await code.pressSequentially('23');assert.equal(await code.inputValue(),'0123456');
         await code.evaluate(el=>el.setSelectionRange(1,4));await code.pressSequentially('b');
-        assert.equal(await code.inputValue(),'012345','A rejected letter must not delete selected OTP digits');
+        assert.equal(await code.inputValue(),'0123456','A rejected letter must not delete selected OTP digits');
         assert.deepEqual(await selection(),[1,4]);
-        await paste('letters only');assert.equal(await code.inputValue(),'012345');assert.deepEqual(await selection(),[1,4]);
+        await paste('letters only');assert.equal(await code.inputValue(),'0123456');assert.deepEqual(await selection(),[1,4]);
         assert.equal(calls.length,0,'Typing or pasting must never auto-submit');
         // Autofill can deliver an input event without a cancellable beforeinput event.
         await code.evaluate(el=>{el.value='01x45';el.setSelectionRange(3,3);el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'x'}));});
         assert.equal(await code.inputValue(),'0145');assert.deepEqual(await selection(),[2,2]);
-        await code.pressSequentially('23');assert.equal(await code.inputValue(),'012345');
+        await code.pressSequentially('23');assert.equal(await code.inputValue(),'0123456');
         // Clear the previous valid code first: rejecting letters intentionally preserves it.
         await code.fill('');await code.fill('ab');await submit.click();
         assert.equal(calls.length,0,'Malformed input must not consume a server attempt');
-        await code.fill('000000');await submit.click();
+        await code.fill('0000000');await submit.click();
         await page.waitForFunction(()=>document.getElementById('code').value===''&&!document.getElementById('submitBtn').disabled);
         assert.equal(calls.length,1);assert.equal(await code.getAttribute('aria-invalid'),'true');
         await code.pressSequentially('abc');assert.equal(await code.inputValue(),'');assert.equal(calls.length,1);
-        await code.pressSequentially('012345');
+        await code.pressSequentially('0123456');
         assert.equal(await code.getAttribute('aria-invalid'),'false','Editing must clear the previous server failure');
         assert.equal(await page.locator('.u026.is-invalid').count(),0);
         assert.equal(await page.locator(kind==='verify'?'#verifyError':'#formError').isVisible(),false);
         await submit.click();await page.waitForURL(kind==='verify'?'**/login':'**/reset-password');
-        assert.deepEqual(calls,[{email:'otp@example.invalid',code:'000000'},{email:'otp@example.invalid',code:'012345'}]);
+        assert.deepEqual(calls,[{email:'otp@example.invalid',code:'0000000'},{email:'otp@example.invalid',code:'0123456'}]);
         assert.deepEqual(errors,[]);result.passed=true;
       }catch(error){result.passed=false;result.error=error.message;}
       results.push(result);await context.close();

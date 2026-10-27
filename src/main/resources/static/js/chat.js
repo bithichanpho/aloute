@@ -246,8 +246,8 @@
       }));
 
       const notes = onlineStates
-        .filter(x => x.online && x.friend && x.friend.bio && String(x.friend.bio).trim())
-        .slice(0, 8);
+        .filter(x => x.online && x.friend)
+        .slice(0, 20);
 
       chatNotesTrack.innerHTML = '';
       if (!notes.length) {
@@ -263,7 +263,7 @@
         item.setAttribute('role', 'listitem');
         item.dataset.userId = String(friend.id);
         item.dataset.username = friend.username || '';
-        item.title = friend.bio || '';
+        item.title = friend.fullName || friend.username || '';
 
         const avatar = document.createElement('span');
         avatar.className = 'chat-note__avatar-wrap';
@@ -271,16 +271,11 @@
         const img = avatar.querySelector('img');
         img.src = friend.avatarUrl || '/images/avatar_default.png';
 
-        const bubble = document.createElement('span');
-        bubble.className = 'chat-note__bubble';
-        bubble.textContent = String(friend.bio).trim();
-
         const name = document.createElement('span');
         name.className = 'chat-note__name';
         name.textContent = friend.fullName || friend.username || 'Bạn bè';
 
         item.appendChild(avatar);
-        item.appendChild(bubble);
         item.appendChild(name);
         item.addEventListener('click', () => {
           const target = chatList && chatList.querySelector('.chat-item[data-user-id="' + String(friend.id) + '"]');

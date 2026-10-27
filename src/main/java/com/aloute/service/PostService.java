@@ -444,6 +444,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
     }
 
     public List<PostResponse> getPostsByUser(Long userId, Long currentUserId, int page, int size) {
+        if (!access.canViewAccountContent(currentUserId, userId)) return Collections.emptyList();
         // Permission checks may reject rows after PostgreSQL reads them. Page over the visible
         // sequence, not the raw sequence, so invisible rows cannot shorten pages.
         int safePage = Math.max(0, page);
@@ -471,6 +472,8 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
 
     public FeedCursorPage getPostsByUserCursor(
             Long userId, Long currentUserId, String encodedCursor, int requestedSize) {
+        if (!access.canViewAccountContent(currentUserId, userId))
+            return new FeedCursorPage(List.of(), "", false);
         int size = Math.max(1, Math.min(50, requestedSize));
         CursorPoint cursor = decodeFeedCursor(encodedCursor);
         String nextCursor = encodedCursor == null ? "" : encodedCursor;
@@ -514,12 +517,15 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
             hasMore = loaded.size() == batchSize;
             if (!hasMore) break;
         }
-        repostPresentationService.attachRecentReposters(result);
+        repostPresentationService.attachRecentReposters(currentUserId, result);
         return new FeedCursorPage(result, nextCursor, hasMore);
     }
 
     public List<PostResponse> getRepostsByUser(
             Long userId, Long currentUserId, int page, int size) {
+        // Reposts are separate records: checking only the original post would leak a private
+        // account's public repost activity to strangers. Gate the reposter's profile first.
+        if (!access.canViewAccountContent(currentUserId, userId)) return Collections.emptyList();
         Pageable pageable =
                 PageRequest.of(
                         Math.max(0, page),
@@ -540,6 +546,8 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
 
     public FeedCursorPage getRepostsByUserCursor(
             Long userId, Long currentUserId, String encodedCursor, int requestedSize) {
+        if (!access.canViewAccountContent(currentUserId, userId))
+            return new FeedCursorPage(List.of(), "", false);
         int size = Math.max(1, Math.min(50, requestedSize));
         CursorPoint cursor = decodeFeedCursor(encodedCursor);
         String nextCursor = encodedCursor == null ? "" : encodedCursor;
@@ -760,7 +768,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
             int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
             RepostResponse response = new RepostResponse(
                     finalOriginalId, true, count, existing.get().getId());
-            setRepostPreview(response, finalOriginalId);
+            setRepostPreview(response, currentUserId, finalOriginalId);
             invalidateViewerFeedCache(currentUserId);
             return response;
         }
@@ -782,14 +790,14 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
             // Replaying the same repost=true request is a read, not an un-repost toggle.
             int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
             RepostResponse response = new RepostResponse(finalOriginalId, true, count, existing.get().getId());
-            setRepostPreview(response, finalOriginalId);
+            setRepostPreview(response, currentUserId, finalOriginalId);
             return response;
         }
         if (existing.isEmpty() && hasDesiredState && !desiredReposted) {
             // Replaying repost=false when already absent is also idempotent.
             int count = (int) Math.min(Integer.MAX_VALUE, repostRepository.countByPostId(finalOriginalId));
             RepostResponse response = new RepostResponse(finalOriginalId, false, count, null);
-            setRepostPreview(response, finalOriginalId);
+            setRepostPreview(response, currentUserId, finalOriginalId);
             return response;
         }
         if (existing.isPresent() && (!hasDesiredState || !desiredReposted)) {
@@ -797,7 +805,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
             RepostSummary summary = syncRepostSummary(finalOriginalId);
             RepostResponse response =
                     new RepostResponse(finalOriginalId, false, summary.count(), null);
-            setRepostPreview(response, summary.reposterIds());
+            setRepostPreview(response, currentUserId, finalOriginalId);
             return response;
         }
 
@@ -814,7 +822,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
                 originalOwnerId, currentUserId, "REPOST", finalOriginalId, "đã đăng lại bài viết của bạn"));
         RepostResponse response =
                 new RepostResponse(finalOriginalId, true, summary.count(), saved.getId());
-        setRepostPreview(response, summary.reposterIds());
+        setRepostPreview(response, currentUserId, finalOriginalId);
         return response;
     }
 
@@ -823,10 +831,9 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
         Post post = access.requirePost(postId, currentUserId);
         String interactionPostId =
                 post.getRepostOfId() == null ? post.getId() : post.getRepostOfId();
-        Post original = interactionPostId.equals(post.getId()) ? post : access.requirePost(
-                interactionPostId, currentUserId);
+        if (!interactionPostId.equals(post.getId())) access.requirePost(interactionPostId, currentUserId);
         return repostPresentationService.loadRepostActorsPage(
-                interactionPostId, cursor, size, original.getRepostCount());
+                currentUserId, interactionPostId, cursor, size);
     }
 
     private <T> T executeDatabaseTransaction(java.util.function.Supplier<T> work) {
@@ -884,18 +891,11 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
         return new RepostSummary(count, recentReposterIds);
     }
 
-    private void setRepostPreview(RepostResponse response, String postId) {
-        List<PostResponse.RepostActor> preview =
-                repostPresentationService.loadRecentRepostActors(postId);
-        response.setReposters(preview);
-        response.setOtherReposterCount(response.getRepostCount() - preview.size());
-    }
-
-    private void setRepostPreview(RepostResponse response, List<String> reposterIds) {
-        List<PostResponse.RepostActor> preview =
-                repostPresentationService.loadActorsByIds(reposterIds);
-        response.setReposters(preview);
-        response.setOtherReposterCount(response.getRepostCount() - preview.size());
+    private void setRepostPreview(RepostResponse response, Long viewerId, String postId) {
+        RepostPresentationService.VisiblePreview preview =
+                repostPresentationService.visiblePreview(viewerId, postId);
+        response.setReposters(preview.actors());
+        response.setOtherReposterCount(preview.otherCount());
     }
 
     private record RepostSummary(int count, List<String> reposterIds) {}

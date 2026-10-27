@@ -52,6 +52,7 @@ class FeatureTemplateTest {
                 "moderationQueue",
                 java.util.Map.of(
                         "reports", java.util.List.of(),
+                        "flaggedPosts", java.util.List.of(),
                         "posts", java.util.List.of(),
                         "comments", java.util.List.of()));
         return engine.process(template, context);
@@ -74,7 +75,7 @@ class FeatureTemplateTest {
     void featureVariantsRenderServerSideContent() {
         assertTrue(render("features/index", false, "saved").contains("Chưa có bài viết đã lưu"));
         String reportPage = render("features/index", true, "moderation");
-        assertTrue(reportPage.contains("Không có báo cáo đang chờ"));
+        assertTrue(reportPage.contains("Không có báo cáo hoặc bài viết bị đánh dấu"));
         assertFalse(reportPage.contains("Bài viết cần duyệt"));
         assertFalse(reportPage.contains("Bình luận cần duyệt"));
     }

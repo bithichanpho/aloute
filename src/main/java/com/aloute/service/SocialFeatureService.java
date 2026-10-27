@@ -53,6 +53,8 @@ public class SocialFeatureService {
     private final MediaAssetLifecycleService postMediaAssets;
     private final com.aloute.posts.api.PostEditing postEditing;
     private final com.aloute.posts.api.SavedPosts savedPosts;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aloute.social.FollowRequestRealtimePublisher followRequestRealtimePublisher;
 
     @org.springframework.beans.factory.annotation.Autowired
     public SocialFeatureService(
@@ -186,6 +188,10 @@ public class SocialFeatureService {
         return new SocialCursorPage<>(items, next, hasMore);
     }
 
+    public long countRequests(Long user) {
+        return documentStore.count(Query.query(Criteria.where("targetId").is(user)), FollowRequest.class);
+    }
+
     public List<FollowRequest> requests(Long user) {
         return documentStore.find(
                 Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class);
@@ -241,9 +247,10 @@ public class SocialFeatureService {
             throw new ResourceNotFoundException("Không tìm thấy yêu cầu");
         access.requireProfile(user, request.getFollowerId());
         if (!accept) {
-            // Declining only changes PostgreSQL. Delete directly rather than registering a PostgreSQL
-            // side effect after a PostgreSQL transaction that has no SQL write to commit.
+            // Declining only changes the request document; push a realtime event so the recipient's
+            // nav badge and the sender's follow button update without waiting for polling.
             documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
+            afterCommitSafely("follow-request rejection realtime", () -> publishFollowRequestDecision(user, request, false));
             return;
         }
         if (!friends.existsByFollowerIdAndFollowedId(request.getFollowerId(), user)) {
@@ -251,10 +258,29 @@ public class SocialFeatureService {
         }
         // If this PostgreSQL cleanup fails after the SQL commit, reconciliation observes the persisted
         // Friend edge and safely removes the stale FollowRequest later.
-        afterCommitSafely("follow-request cleanup", () ->
-                documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class));
+        afterCommitSafely("follow-request cleanup", () -> {
+            try {
+                documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
+            } catch (RuntimeException cleanupFailure) {
+                // The accepted SQL follow edge is authoritative; reconciliation removes stale request
+                // documents later. Still publish the decision and queue the requester's notice now.
+                log.warn("Could not remove accepted follow-request document (requestId={}, cause={})",
+                        request.getId(), cleanupFailure.getClass().getSimpleName());
+            }
+            publishFollowRequestDecision(user, request, true);
+            notificationService.notifyFollowRequestAccepted(request.getFollowerId(), user);
+        });
         posts.invalidateViewerFeedCache(user);
         posts.invalidateViewerFeedCache(request.getFollowerId());
+    }
+
+    private void publishFollowRequestDecision(Long targetUserId, FollowRequest request, boolean accepted) {
+        if (followRequestRealtimePublisher == null || request == null) return;
+        followRequestRealtimePublisher.publish(
+                targetUserId, "REQUEST_DECIDED", request.getFollowerId(), targetUserId, "NONE");
+        followRequestRealtimePublisher.publish(
+                request.getFollowerId(), "STATE_CHANGED", request.getFollowerId(), targetUserId,
+                accepted ? "FOLLOWING" : "NONE");
     }
 
     public ContentReport report(Long user, String type, String id, String reason) {
@@ -311,8 +337,12 @@ public class SocialFeatureService {
         QueueSlice<ContentReport> reports = queueSlice(
                 Query.query(Criteria.where("status").is("OPEN")), ContentReport.class,
                 descendingCreated, offset, size);
+        List<Post> flaggedPosts = documentStore.find(
+                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.FLAGGED))
+                        .with(descendingCreated).limit(size), Post.class);
         return Map.of(
                 "reports", reports.items(),
+                "flaggedPosts", flaggedPosts,
                 "posts", List.of(),
                 "comments", List.of(),
                 "page", page,
@@ -372,6 +402,16 @@ public class SocialFeatureService {
                         throw new BadRequestException(
                                 "Trạng thái bài viết vừa thay đổi; vui lòng tải lại trước khi duyệt");
                     }
+                    if (status == ModerationStatus.HIDDEN
+                            && current.getModerationStatus() != ModerationStatus.HIDDEN) {
+                        try {
+                            notificationService.notifyPostModerationResult(
+                                    Long.valueOf(current.getUserId()), current.getId(), ModerationStatus.HIDDEN);
+                        } catch (RuntimeException notificationFailure) {
+                            log.warn("Could not queue admin moderation notice (postId={}, cause={})",
+                                    id, notificationFailure.getClass().getSimpleName());
+                        }
+                    }
                     if (status == ModerationStatus.HIDDEN && postMediaAssets != null) {
                         TransactionCommitHooks.afterCommit(() -> {
                             try {
@@ -390,6 +430,7 @@ public class SocialFeatureService {
         }
         if (report == null) {
             report = new ContentReport();
+            report.setId("moderation:" + user + ":" + type + ":" + id);
             report.setReporterId(user);
             report.setTargetType(type);
             report.setTargetId(id);

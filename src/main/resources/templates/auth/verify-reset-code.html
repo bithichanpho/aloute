@@ -2,16 +2,20 @@
 <!DOCTYPE html>
 <html lang="vi" data-bs-theme="dark" xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8">
+  
+  <link rel="icon" type="image/x-icon" th:href="@{/favicon.ico?v=20261027-bird-v1}">
+  <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/aloute-icon-32.png?v=20261027-bird-v1}">
+  <link rel="apple-touch-icon" sizes="180x180" th:href="@{/images/aloute-icon-180.png?v=20261027-bird-v1}">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
   <script th:src="@{/js/theme-init.js?v=20261019-global-theme-v1}"></script>
   <title>Xác thực mã đặt lại mật khẩu / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261027-bird-privacy-v1}">
   <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
-  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261027-bird-privacy-v1}">
   <link rel="stylesheet" th:href="@{/css/auth-form-feedback.css?v=20261025-focus-v1}">
-  <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261025-otp-message-v2}">
+  <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261027-email-otp-6digit-v3}">
   <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}" defer></script>
 </head>
 <body class="auth-body">
@@ -23,9 +27,8 @@
   <div class="auth-shell">
     <div class="auth-card auth-error-focus">
       <div class="auth-card__logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
-        </svg>
+        <img th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+             src="/images/aloute-bird-logo.png" alt="ALOUTE" width="64" height="64">
       </div>
       <h1 class="auth-card__title">Xác thực mã OTP</h1>
       <p style="text-align:center;color:var(--text-secondary);font-size:14.5px;margin-top:-8px;margin-bottom:18px;">
@@ -51,10 +54,10 @@
     </div>
   </div>
 
-  <script th:src="@{/js/app.js?v=20261017-moderation-toast-v2}"></script>
-  <script th:src="@{/js/auth-form-feedback.js?v=20261025-otp-message-v2}"></script>
-  <script th:src="@{/js/auth-otp.js?v=20261025-input-retry-v3}"></script>
-  <script th:src="@{/js/auth-verify-reset-code.js?v=20261025-otp-message-v2}"></script>
+  <script th:src="@{/js/app.js?v=20261027-password-login-v1}"></script>
+  <script th:src="@{/js/auth-form-feedback.js?v=20261027-email-otp-no-recovery-v1}"></script>
+  <script th:src="@{/js/auth-otp.js?v=20261027-email-otp-6digit-v3}"></script>
+  <script th:src="@{/js/auth-verify-reset-code.js?v=20261027-email-otp-6digit-v3}"></script>
 </body>
 </html>
 

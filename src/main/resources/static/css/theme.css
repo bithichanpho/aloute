@@ -497,6 +497,9 @@ img { max-width: 100%; }
 }
 .sidebar__logo { font-weight: 850; letter-spacing: -.045em; }
 .sidebar__logo svg { flex: 0 0 26px; }
+.sidebar__logo .sidebar__logo-icon { flex: 0 0 30px; width: 30px; height: 30px; }
+.mobile-topbar__logo .mobile-topbar__logo-icon { width: 27px; height: 27px; }
+.auth-card__logo img { width: 58px; height: 58px; color: inherit; }
 .sidebar__row { min-height: 46px; transition: background-color var(--ui-motion), color var(--ui-motion), transform var(--ui-motion); }
 .sidebar__row:hover { transform: translateX(1px); }
 .sidebar__row--active { box-shadow: none; }

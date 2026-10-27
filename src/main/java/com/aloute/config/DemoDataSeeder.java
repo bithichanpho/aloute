@@ -283,7 +283,7 @@ public class DemoDataSeeder implements CommandLineRunner {
     }
 
     private List<ChatGroup> seedGroups(List<User> users) {
-        String[] names = {"ALOUTE · Team Web", "ALOUTE · Team Đồ án", "ALOUTE · Bạn thân"};
+        String[] names = {"ALOUTE · Team Web", "ALOUTE · Team Đồ án", "ALOUTE · Chia sẻ"};
         List<ChatGroup> groups = new ArrayList<>();
         for (int i = 0; i < names.length; i++) {
             ChatGroup g = new ChatGroup();

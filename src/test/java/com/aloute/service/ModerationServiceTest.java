@@ -58,7 +58,7 @@ class ModerationServiceTest {
         try {
             ModerationService service = new ModerationService(
                     "http://127.0.0.1:" + server.getAddress().getPort(),
-                    Duration.ofSeconds(1), Duration.ofSeconds(1), true, "internal-test-token-123456789");
+                    Duration.ofSeconds(1), Duration.ofSeconds(1), true, "internal-test-token-12345689");
             ModerationFailureException exception = assertThrows(
                     ModerationFailureException.class, () -> service.check("hello"));
             assertFalse(exception.isRetryable());
@@ -141,6 +141,15 @@ class ModerationServiceTest {
                 ModerationStatus.APPROVED,
                 service.resolveStatus(new ModerationResult("safe", 0.01)));
     }
+    @Test
+    void moderationStatusUsesDocumentedScoreBoundaries() {
+        ModerationService service = new ModerationService("http://localhost:8000");
+        assertEquals(ModerationStatus.APPROVED, service.resolveStatus(0.499999));
+        assertEquals(ModerationStatus.FLAGGED, service.resolveStatus(0.5));
+        assertEquals(ModerationStatus.FLAGGED, service.resolveStatus(0.799999));
+        assertEquals(ModerationStatus.HIDDEN, service.resolveStatus(0.8));
+    }
+
     @Test
     void explicitDemoFlagDisablesRemoteCallsAndUsesOnlyTheDemoSafeStatus() {
         ModerationService service = new ModerationService(

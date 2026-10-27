@@ -87,7 +87,7 @@ spring:
       - application-actuator.yml
 
 server:
-  port: 8081
+  port: 8080
 
   compression:
     enabled: true
@@ -185,6 +185,8 @@ app:
     relationship-reconciliation-initial-ms: ${RELATIONSHIP_RECONCILIATION_INITIAL_MS:60000}
   seed:
     demo-data: false
+    # Explicitly opt in only on a local development database to provision the privileged demo.admin.
+    demo-admin: ${APP_SEED_DEMO_ADMIN:false}
   upload:
     max-file-size: ${ALOUTE_MAX_UPLOAD_SIZE:50MB}
   presence:

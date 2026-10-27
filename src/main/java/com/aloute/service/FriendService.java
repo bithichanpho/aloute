@@ -3,10 +3,12 @@ package com.aloute.service;
 import com.aloute.notifications.api.Notifications;
 
 import com.aloute.common.exception.BadRequestException;
+import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.model.entity.Friend;
 import com.aloute.model.document.FollowRequest;
 import com.aloute.repository.IFriendRepository;
 import com.aloute.repository.IUserRepository;
+import com.aloute.social.FollowRequestRealtimePublisher;
 
 import org.springframework.stereotype.Service;
 import com.aloute.persistence.postgres.document.PostgresDocumentStore;
@@ -28,6 +30,7 @@ public class FriendService {
     private final IFriendRepository friendRepository;
     private final Notifications notificationService;
     private final FeedCacheInvalidator feedCacheInvalidator;
+    private final FollowRequestRealtimePublisher followRequestRealtimePublisher;
 
     @Autowired
     public FriendService(
@@ -36,13 +39,15 @@ public class FriendService {
             ContentAccessService access,
             PostgresDocumentStore documentStore,
             IUserRepository users,
-            FeedCacheInvalidator feedCacheInvalidator) {
+            FeedCacheInvalidator feedCacheInvalidator,
+            FollowRequestRealtimePublisher followRequestRealtimePublisher) {
         this.access = access;
         this.documentStore = documentStore;
         this.users = users;
         this.friendRepository = friendRepository;
         this.notificationService = notificationService;
         this.feedCacheInvalidator = feedCacheInvalidator;
+        this.followRequestRealtimePublisher = followRequestRealtimePublisher;
     }
 
     /** Compatibility constructor for isolated service tests. */
@@ -52,7 +57,18 @@ public class FriendService {
             ContentAccessService access,
             PostgresDocumentStore documentStore,
             IUserRepository users) {
-        this(friendRepository, notificationService, access, documentStore, users, null);
+        this(friendRepository, notificationService, access, documentStore, users, null, null);
+    }
+
+    /** Compatibility constructor retained for tests that provide a cache invalidator. */
+    public FriendService(
+            IFriendRepository friendRepository,
+            Notifications notificationService,
+            ContentAccessService access,
+            PostgresDocumentStore documentStore,
+            IUserRepository users,
+            FeedCacheInvalidator feedCacheInvalidator) {
+        this(friendRepository, notificationService, access, documentStore, users, feedCacheInvalidator, null);
     }
 
     @Caching(evict = {
@@ -68,13 +84,27 @@ public class FriendService {
                 && !friendRepository.existsByFollowerIdAndFollowedId(currentUserId, targetUserId)) {
             String id = currentUserId + ":" + targetUserId;
             var pending = documentStore.findById(id, FollowRequest.class);
-            if (pending != null) documentStore.remove(pending);
-            else {
+            boolean cancelRequest = pending != null;
+            if (cancelRequest) {
+                documentStore.remove(pending);
+            } else {
                 var request = new FollowRequest();
                 request.setId(id);
                 request.setFollowerId(currentUserId);
                 request.setTargetId(targetUserId);
                 documentStore.save(request);
+                // Follow requests are shown in the dedicated /follow-requests section, not Activity.
+            }
+            final String eventType = cancelRequest ? "REQUEST_CANCELLED" : "REQUEST_CREATED";
+            final String nextStatus = cancelRequest ? "NONE" : "PENDING";
+            if (followRequestRealtimePublisher != null) {
+                TransactionCommitHooks.afterCommit(() -> {
+                    followRequestRealtimePublisher.publish(
+                            targetUserId, eventType, currentUserId, targetUserId, nextStatus);
+                    // Synchronize other tabs belonging to the requester as well (search/profile state).
+                    followRequestRealtimePublisher.publish(
+                            currentUserId, "STATE_CHANGED", currentUserId, targetUserId, nextStatus);
+                });
             }
             return false;
         }
@@ -91,7 +121,7 @@ public class FriendService {
                 .orElseGet(() -> {
                     friendRepository.save(new Friend(currentUserId, targetUserId));
                     notificationService.notify(
-                            targetUserId, currentUserId, "FOLLOW", null, "đã theo dõi bạn");
+                            targetUserId, currentUserId, "FOLLOW", String.valueOf(currentUserId), "đã theo dõi bạn");
                     return true;
                 });
         if (feedCacheInvalidator != null) feedCacheInvalidator.invalidateViewer(currentUserId);
@@ -122,6 +152,21 @@ public class FriendService {
                         FollowRequest.class)
                 ? "PENDING"
                 : "NONE";
+    }
+
+    /** Batch query for pending requests sent by the current viewer, used by search and suggestions. */
+    public java.util.Set<Long> pendingFollowRequestTargetIds(Long followerId, List<Long> targetIds) {
+        if (followerId == null || targetIds == null || targetIds.isEmpty()) return java.util.Set.of();
+        return documentStore.find(
+                        com.aloute.persistence.postgres.document.Query.query(
+                                new com.aloute.persistence.postgres.document.Criteria().andOperator(
+                                        com.aloute.persistence.postgres.document.Criteria.where("followerId").is(followerId),
+                                        com.aloute.persistence.postgres.document.Criteria.where("targetId").in(targetIds))),
+                        FollowRequest.class)
+                .stream()
+                .map(FollowRequest::getTargetId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public boolean hasPendingFollowRequest(Long currentUserId, Long targetUserId) {

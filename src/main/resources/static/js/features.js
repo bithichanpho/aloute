@@ -228,26 +228,14 @@
       comment.append(menu);
     });
     const profile = document.querySelector('[data-profile-user-id]:not([data-features])');
-    const viewingOwnProfile = profile && (
-      profile.dataset.ownProfile === 'true' ||
-      String(profile.dataset.profileUserId || '').trim() === String(document.body.dataset.currentUserId || '').trim()
-    );
-    if (profile && !viewingOwnProfile) {
-      profile.dataset.features = 'true';
-      const id = profile.dataset.profileUserId;
-      profile.append(button('Chặn', async () => {
-        if (!(await AlouteUI.confirm({ title: 'Chặn tài khoản', message: 'Chặn tài khoản này? Hai bạn sẽ không thể xem hồ sơ hoặc liên hệ trực tiếp.', okText: 'Chặn' }))) return;
-        await api('/api/blocks/' + id, 'PUT'); location.href = '/settings';
-      }), button('Báo cáo tài khoản', () => report('USER', id)));
-    }
-    if (profile && viewingOwnProfile) profile.dataset.features = 'true';
+    // The profile template already renders a three-dot action menu and app.js binds its
+    // [data-profile-block] / [data-profile-report] actions. Do not add duplicate buttons to
+    // the profile stats row here.
+    if (profile) profile.dataset.features = 'true';
   }
   let recentGoogleReauthToken = null;
-  async function securityCredentials(passwordId, codeId) {
-    const values = {
-      password: document.getElementById(passwordId)?.value || '',
-      code: document.getElementById(codeId)?.value || ''
-    };
+  async function accountCredentials() {
+    const values = { password: document.getElementById('accountPassword')?.value || '' };
     if (values.password.trim()) return values;
     try {
       if (recentGoogleReauthToken) values.firebaseIdToken = recentGoogleReauthToken;
@@ -263,22 +251,6 @@
       throw new Error(error?.message || 'Hãy nhập mật khẩu hiện tại hoặc xác minh bằng Google.');
     }
   }
-  function credentials() { return securityCredentials('securityPassword', 'securityCode'); }
-  function accountCredentials() { return securityCredentials('accountPassword', 'accountCode'); }
-  async function setupTwoFactor() {
-    const setup = await api('/api/account/2fa/setup', 'POST', await credentials());
-    dialog('Thêm vào ứng dụng Authenticator', modal => {
-      modal.append(element('p', 'Nhập khóa này vào ứng dụng Authenticator rồi nhập mã 6 chữ số.'), element('p', setup.secret, 'feature-secret'));
-      const otp = field(modal, 'Mã xác nhận');
-      modal.append(button('Bật 2FA', async () => {
-        const values = await credentials(); values.code = otp.value;
-        const recovery = await api('/api/account/2fa/enable', 'POST', values);
-        modal.replaceChildren(element('h2', 'Lưu mã khôi phục'));
-        recovery.forEach(value => modal.append(element('p', value, 'feature-secret')));
-        modal.append(button('Đã lưu mã', () => location.reload()));
-      }));
-    });
-  }
   async function review(node, decision) {
     await api('/api/admin/moderation', 'POST', {
       targetType: node.dataset.reviewType,
@@ -292,11 +264,32 @@
     if (!list || !request || list.querySelector('[data-request-id="' + CSS.escape(String(request.id)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.requestId = request.id;
-    const link = element('a', 'Tài khoản #' + request.followerId); link.href = '/profile/' + encodeURIComponent(request.followerId);
+    const link = element('a', request.username ? '@' + request.username : 'Tài khoản #' + request.followerId); link.href = '/profile/' + encodeURIComponent(request.followerId);
     const actions = element('span');
     const accept = element('button', 'Chấp nhận'); accept.type = 'button'; accept.dataset.action = 'accept-follow'; accept.dataset.requestId = request.id;
     const reject = element('button', 'Từ chối'); reject.type = 'button'; reject.dataset.action = 'reject-follow'; reject.dataset.requestId = request.id;
     actions.append(accept, reject); row.append(link, actions); list.appendChild(row);
+  }
+  function bindRealtimeFollowRequests() {
+    if (window.__alouteFollowRequestEventsBound) return;
+    window.__alouteFollowRequestEventsBound = true;
+    document.addEventListener('aloute:follow-requests-changed', event => {
+      const payload = event.detail || {};
+      const currentUserId = String(document.body.dataset.currentUserId || '');
+      if (!currentUserId || String(payload.targetId || '') !== currentUserId) return;
+      const list = document.getElementById('followRequestList');
+      if (!list) return;
+      const requestId = String(payload.followerId || '') + ':' + currentUserId;
+      if (payload.eventType === 'REQUEST_CREATED') {
+        appendFollowRequest(list, { id: requestId, followerId: payload.followerId, username: payload.followerUsername });
+      } else if (['REQUEST_CANCELLED', 'REQUEST_DECIDED'].includes(payload.eventType)) {
+        list.querySelector('[data-request-id="' + CSS.escape(requestId) + '"]')?.remove();
+        if (!list.querySelector('[data-request-id]')) {
+          list.querySelector('.feature-empty')?.remove();
+          list.append(element('div', 'Không có yêu cầu theo dõi đang chờ.', 'feature-empty compact'));
+        }
+      }
+    });
   }
   function appendBlockedAccount(list, block) {
     if (!list || !block || list.querySelector('[data-block-id="' + CSS.escape(String(block.targetId)) + '"]')) return;
@@ -343,22 +336,21 @@
       settingsBio.addEventListener('input', updateBioCount);
       updateBioCount();
     }
-    const status = document.getElementById('twoFactorStatus');
-    if (status) api('/api/account/2fa').then(value => {
-      status.textContent = value.enabled ? '2FA đang bật' : '2FA chưa bật';
-      status.classList.toggle('is-enabled', value.enabled);
-    }).catch(error => { status.textContent = error.message; });
     host.addEventListener('click', async event => {
       const target = event.target.closest('[data-action]'); if (!target) return;
       const action = target.dataset.action; target.disabled = true;
       try {
         if (action === 'unsave') { await api('/api/posts/' + target.dataset.postId + '/saved', 'DELETE'); target.closest('[data-saved-post]').remove(); }
-        else if (action === 'accept-follow' || action === 'reject-follow') { await api('/api/follow-requests/' + encodeURIComponent(target.dataset.requestId), action === 'accept-follow' ? 'PUT' : 'DELETE'); target.closest('[data-request-id]').remove(); }
+        else if (action === 'accept-follow' || action === 'reject-follow') {
+          await api('/api/follow-requests/' + encodeURIComponent(target.dataset.requestId), action === 'accept-follow' ? 'PUT' : 'DELETE');
+          target.closest('[data-request-id]').remove();
+          const requestList = document.getElementById('followRequestList');
+          if (requestList && !requestList.querySelector('[data-request-id]')) requestList.append(element('div', 'Không có yêu cầu theo dõi đang chờ.', 'feature-empty compact'));
+          document.dispatchEvent(new Event('aloute:follow-request-updated'));
+        }
         else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); }
         else if (action === 'load-more-requests') await loadSocialPage(target, 'follow-requests');
         else if (action === 'load-more-blocks') await loadSocialPage(target, 'blocks');
-        else if (action === 'setup-2fa') await setupTwoFactor();
-        else if (action === 'disable-2fa') { await api('/api/account/2fa/disable', 'POST', await credentials()); location.reload(); }
         else if (action === 'deactivate-account' || action === 'delete-account') {
           const deleting = action === 'delete-account';
           if (!(await AlouteUI.confirm({ title: deleting ? 'Xóa tài khoản' : 'Vô hiệu hóa tài khoản', message: deleting ? 'Xóa tài khoản và nội dung? Thao tác này không thể hoàn tác.' : 'Vô hiệu hóa tài khoản?', okText: deleting ? 'Xóa' : 'Vô hiệu hóa' }))) return;
@@ -375,7 +367,7 @@
     });
   }
   function initializePage() {
-    enhance(); bindFeaturePage();
+    enhance(); bindFeaturePage(); bindRealtimeFollowRequests();
     const search = document.getElementById('searchInput');
     const query = new URLSearchParams(location.search).get('q');
     if (search && query) {

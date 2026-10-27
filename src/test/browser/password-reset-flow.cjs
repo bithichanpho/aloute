@@ -44,7 +44,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
           if(u.pathname==='/api/auth/verify-reset-code') {
             assert.deepEqual(Object.keys(body).sort(),['code','email']);
             if(codeMode==='wrong')return route.fulfill({status:400,contentType:'application/json',body:'{"success":false,"message":"Mã đặt lại mật khẩu không hợp lệ hoặc đã được dùng"}'});
-            assert.equal(body.code,'012345');validGrant=true;expectedGrant='fixture-proof-'+(++issued);
+            assert.equal(body.code,'0123456');validGrant=true;expectedGrant='fixture-proof-'+(++issued);
             return route.fulfill({contentType:'application/json',headers:{'Set-Cookie':`ALOUTE_PASSWORD_RESET=${expectedGrant}; Path=/; HttpOnly; SameSite=Strict; Max-Age=300`},body:'{"success":true,"data":null}'});
           }
           if(u.pathname==='/api/auth/complete-password-reset') {
@@ -69,10 +69,10 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       await page.goto(origin+'/forgot-password');await page.locator('#email').fill('owner@example.invalid');await page.locator('#submitBtn').click();
       await page.waitForURL('**/verify-reset-code?email=*');assert.equal(await page.locator('#email').inputValue(),'owner@example.invalid');
       assert.equal(await page.locator('input[type="password"]').count(),0);
-      await page.locator('#code').fill('000000');await page.locator('#submitBtn').click();
+      await page.locator('#code').fill('0000000');await page.locator('#submitBtn').click();
       await page.waitForFunction(()=>document.getElementById('code').value===''&&!document.getElementById('submitBtn').disabled);
       await focus('code');assert.equal(new URL(page.url()).pathname,'/verify-reset-code');assert.equal(await page.locator('input[type="password"]').count(),0);
-      codeMode='accepted';await page.locator('#code').fill('012345');await page.locator('#submitBtn').click();await page.waitForURL('**/reset-password');
+      codeMode='accepted';await page.locator('#code').fill('0123456');await page.locator('#submitBtn').click();await page.waitForURL('**/reset-password');
       assert.equal(await page.locator('#code,#email').count(),0);await focus('newPassword');
       assert.equal(await page.evaluate(()=>document.cookie.includes('ALOUTE_PASSWORD_RESET')),false);
       assert.equal(await page.evaluate(()=>sessionStorage.length),0);assert.equal(new URL(page.url()).search,'');
@@ -86,7 +86,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       await page.screenshot({path:path.join(output,`password-page-${theme}-${width}-${motion}.png`),fullPage:true});
       await page.locator('#submitBtn').click();await focus('formError');assert.equal(await page.locator('#resetForm').isVisible(),false);
       await page.locator('a[href="/verify-reset-code"]').click();await page.waitForURL('**/verify-reset-code');
-      await page.locator('#email').fill('owner@example.invalid');await page.locator('#code').fill('012345');await page.locator('#submitBtn').click();await page.waitForURL('**/reset-password');
+      await page.locator('#email').fill('owner@example.invalid');await page.locator('#code').fill('0123456');await page.locator('#submitBtn').click();await page.waitForURL('**/reset-password');
       completeMode='accepted';await page.locator('#newPassword').fill('MậtKhẩu١!');await page.locator('#confirmPassword').fill('MậtKhẩu١!');
       await page.evaluate(()=>{document.getElementById('resetForm').requestSubmit();document.getElementById('resetForm').requestSubmit();});
       await page.waitForURL('**/login');assert.equal(calls.filter(call=>call.url.endsWith('/complete-password-reset')).length,2);

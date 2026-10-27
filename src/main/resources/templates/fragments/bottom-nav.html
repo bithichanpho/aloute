@@ -8,7 +8,7 @@
     </a>
     <a class="bottom-nav__item" th:classappend="${activeNav == 'chat'} ? 'is-active' : ''" th:href="@{/chat}" aria-label="Tin nhắn">
         <span class="sidebar__icon-wrap">
-            <i class="bi bi-messenger"></i>
+            <i class="bi" th:classappend="${activeNav == 'chat'} ? 'bi-chat-dots-fill' : 'bi-chat-dots'"></i>
             <span class="badge" data-badge-mirror="chatUnreadBadge" th:text="${unreadMessageCount > 99 ? '99+' : unreadMessageCount}" th:style="${unreadMessageCount > 0 ? '' : 'display:none'}">0</span>
         </span>
     </a>

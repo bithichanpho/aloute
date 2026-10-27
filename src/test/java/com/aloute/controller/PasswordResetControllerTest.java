@@ -37,6 +37,8 @@ class PasswordResetControllerTest {
     @Test void malformedCodeAndWeakPasswordAreRejectedBeforeService() throws Exception {
         mvc.perform(post("/api/auth/verify-reset-code").contentType("application/json").content("{\"email\":\"a@example.invalid\",\"code\":\"12ab\"}"))
                 .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/auth/verify-reset-code").contentType("application/json").content("{\"email\":\"a@example.invalid\",\"code\":\"1234567\"}"))
+                .andExpect(status().isBadRequest());
         mvc.perform(post("/api/auth/complete-password-reset").contentType("application/json").content("{\"newPassword\":\"weak\"}"))
                 .andExpect(status().isBadRequest());verifyNoInteractions(flow);
     }

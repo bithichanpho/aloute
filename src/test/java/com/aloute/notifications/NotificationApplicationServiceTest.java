@@ -68,8 +68,9 @@ class NotificationApplicationServiceTest {
         service.deliverQueued(event);
 
         verify(repository, times(1)).save(argThat(n -> event.getId().equals(n.getOutboxEventId())));
-        verify(messaging, times(2)).convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
-        // External sends remain at-least-once; the persisted user-visible notification is deduped.
+        verify(messaging, times(1)).convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
+        verify(outbox).markInAppDelivered(eq(event.getId()), any(java.time.LocalDateTime.class));
+        // The in-app event is checkpointed once; external sends remain retryable.
     }
 
     @Test
@@ -100,6 +101,71 @@ class NotificationApplicationServiceTest {
         service.notify(1L, 1L, "FOLLOW", null, "followed");
         service.notify(2L, 1L, "FOLLOW", null, "followed");
         verifyNoInteractions(outbox);
+    }
+
+    @Test
+    void queuesModerationNoticeForThePostAuthor() {
+        service.notifyPostModerationResult(2L, "post-77", com.aloute.model.document.ModerationStatus.FLAGGED);
+
+        verify(outbox).enqueue(
+                2L, 2L, "POST_MODERATION_FLAGGED", "post-77",
+                "Bài viết của bạn có chứa nội dung bị đánh dấu. Bài viết đang bị hạn chế hiển thị và cần được xem xét.");
+    }
+
+    @Test
+    void systemModerationNoticeCanBeDeliveredToTheSameSenderAndReceiver() {
+        NotificationOutboxEvent event = event("POST_MODERATION_HIDDEN");
+        event.setSenderId(2L);
+        event.setContent("Bài viết của bạn đã bị ẩn sau khi kiểm duyệt vì nội dung không được chấp nhận.");
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        service.deliverQueued(event, java.util.Map.of(2L, "bob"));
+
+        verify(repository).save(argThat(n -> event.getId().equals(n.getOutboxEventId())
+                && n.getReceiverId().equals(2L) && n.getSenderId().equals(2L)
+                && n.getType().equals("POST_MODERATION_HIDDEN")
+                && n.getContent().equals(event.getContent())));
+        verifyNoInteractions(access);
+        verify(messaging).convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
+    }
+
+    @Test
+    void followRequestNotificationIsNoLongerQueuedIntoActivity() {
+        service.notify(2L, 1L, "FOLLOW_REQUEST", "1", "đã gửi yêu cầu theo dõi bạn");
+
+        verifyNoInteractions(outbox, access);
+    }
+
+    @Test
+    void queuesAcceptanceNoticeForTheOriginalFollowRequester() {
+        when(users.username(9L)).thenReturn(Optional.of("private_user"));
+
+        service.notifyFollowRequestAccepted(2L, 9L);
+
+        verify(outbox).enqueue(2L, 9L, "FOLLOW_REQUEST_ACCEPTED", "9",
+                "private_user đã chấp nhận yêu cầu theo dõi của bạn");
+        verifyNoInteractions(access);
+    }
+
+    @Test
+    void acceptanceNoticeBypassesSymmetricProfileVisibilityAfterAuthorizedDecision() {
+        NotificationOutboxEvent event = event("FOLLOW_REQUEST_ACCEPTED");
+        event.setSenderId(9L);
+        event.setReceiverId(2L);
+        event.setReferenceId("9");
+        event.setContent("private_user đã chấp nhận yêu cầu theo dõi của bạn");
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        service.deliverQueued(event, java.util.Map.of(9L, "private_user", 2L, "requester"));
+
+        verify(repository).save(argThat(n -> event.getId().equals(n.getOutboxEventId())
+                && n.getReceiverId().equals(2L)
+                && n.getSenderId().equals(9L)
+                && n.getType().equals("FOLLOW_REQUEST_ACCEPTED")
+                && n.getReferenceId().equals("9")
+                && n.getContent().equals("private_user đã chấp nhận yêu cầu theo dõi của bạn")));
+        verifyNoInteractions(access);
+        verify(messaging).convertAndSendToUser(eq("requester"), eq("/queue/notifications"), any());
     }
 
     @Test
@@ -134,6 +200,32 @@ class NotificationApplicationServiceTest {
         assertTrue(page.hasMore());
         verify(access).visibleProfileIds(2L, List.of(1L, 3L));
         verifyNoInteractions(users);
+    }
+
+    @Test
+    void removedCloseFriendNotificationsAreHiddenAndNotCountedAsUnread() {
+        Notification legacy = new Notification();
+        legacy.setId(20L);
+        legacy.setReceiverId(2L);
+        legacy.setSenderId(1L);
+        legacy.setType("CLOSE_FRIEND_REQUEST");
+        legacy.setContent("alice muốn kết bạn thân với bạn");
+
+        Notification follow = new Notification();
+        follow.setId(21L);
+        follow.setReceiverId(2L);
+        follow.setSenderId(1L);
+        follow.setType("FOLLOW");
+        follow.setContent("alice đã theo dõi bạn");
+
+        when(repository.findByReceiverIdOrderByCreatedAtDesc(eq(2L), any()))
+                .thenReturn(List.of(legacy, follow));
+        when(access.visibleProfileIds(2L, List.of(1L, 1L))).thenReturn(Set.of(1L));
+        assertEquals(List.of(21L), service.getMyNotifications(2L).stream().map(n -> n.getId()).toList());
+
+        when(repository.countByReceiverIdAndReadFalse(2L)).thenReturn(4L);
+        when(repository.countByReceiverIdAndReadFalseAndTypeIn(eq(2L), anyCollection())).thenReturn(2L);
+        assertEquals(2L, service.countUnread(2L));
     }
 
     @Test

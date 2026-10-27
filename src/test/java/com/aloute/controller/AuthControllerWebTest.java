@@ -139,6 +139,15 @@ class AuthControllerWebTest {
     }
 
     @Test
+    void emailVerificationRejectsSevenDigitOtp() throws Exception {
+        mvc.perform(post("/api/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"User@Example.com\",\"code\":\"1234567\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
     void oldVerificationLinkPayloadIsRejected() throws Exception {
         mvc.perform(post("/api/auth/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)

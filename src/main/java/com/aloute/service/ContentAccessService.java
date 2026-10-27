@@ -228,6 +228,65 @@ public class ContentAccessService {
                 UserBlock.class);
     }
 
+    /**
+     * A private account's posts and reposts are visible only to the owner or an accepted follower.
+     * A profile header can remain visible so a stranger can submit a follow request.
+     */
+    public boolean canViewAccountContent(Long viewer, Long owner) {
+        if (owner == null) return false;
+        User account = users.findById(owner).orElse(null);
+        if (account == null || !account.isActive() || blocked(viewer, owner)) return false;
+        if (Objects.equals(viewer, owner)) return true;
+        if (!account.isPrivateAccount()) return true;
+        return viewer != null && friends.existsByFollowerIdAndFollowedId(viewer, owner);
+    }
+
+    /** Direct messages to a private account require an accepted mutual-follow relationship. */
+    public boolean canMessageAccount(Long sender, Long receiver) {
+        if (sender == null || receiver == null || sender.equals(receiver) || blocked(sender, receiver))
+            return false;
+        User target = users.findById(receiver).orElse(null);
+        if (target == null || !target.isActive()) return false;
+        if (!target.isPrivateAccount()) return true;
+        return friends.existsByFollowerIdAndFollowedId(sender, receiver)
+                && friends.existsByFollowerIdAndFollowedId(receiver, sender);
+    }
+
+    /** Batch version used by inbox rendering to avoid one relationship query per conversation. */
+    public Set<Long> messageableProfileIds(Long sender, Collection<Long> targetIds) {
+        if (sender == null || targetIds == null || targetIds.isEmpty()) return Set.of();
+        Set<Long> candidates = targetIds.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> !sender.equals(id))
+                .collect(Collectors.toSet());
+        if (candidates.isEmpty()) return Set.of();
+
+        List<User> accounts = users.findAllById(candidates);
+        Set<Long> visible = visibleUserIds(sender, accounts);
+        Map<Long, User> byId = accounts.stream().collect(Collectors.toMap(
+                User::getId, user -> user, (first, ignored) -> first));
+        Set<Long> privateIds = accounts.stream()
+                .filter(User::isPrivateAccount)
+                .map(User::getId)
+                .filter(visible::contains)
+                .collect(Collectors.toSet());
+        if (privateIds.isEmpty()) return visible;
+
+        Set<Long> senderFollows = friends.findByFollowerIdAndFollowedIdIn(sender, privateIds).stream()
+                .map(com.aloute.model.entity.Friend::getFollowedId)
+                .collect(Collectors.toSet());
+        Set<Long> targetFollowsSender = friends.findByFollowedIdAndFollowerIdIn(sender, privateIds).stream()
+                .map(com.aloute.model.entity.Friend::getFollowerId)
+                .collect(Collectors.toSet());
+        Set<Long> messageable = new HashSet<>(visible);
+        for (Long id : privateIds) {
+            if (!senderFollows.contains(id) || !targetFollowsSender.contains(id)) messageable.remove(id);
+        }
+        // Defensive guard if a repository returns an unexpected/duplicate id.
+        messageable.removeIf(id -> !byId.containsKey(id));
+        return messageable;
+    }
+
     public boolean profileVisible(Long viewer, Long author) {
         return users.findById(author).map(user -> profileVisible(viewer, user)).orElse(false);
     }

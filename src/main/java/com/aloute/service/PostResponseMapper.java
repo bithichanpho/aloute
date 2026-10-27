@@ -123,7 +123,7 @@ public class PostResponseMapper {
         if (post.getRepostOfId() != null) {
             dto.setRepostOf(buildRepostOrigin(post.getRepostOfId()));
         }
-        repostPresentationService.attachRecentReposters(java.util.List.of(dto));
+        repostPresentationService.attachRecentReposters(currentUserId, java.util.List.of(dto));
 
         return dto;
     }
@@ -150,6 +150,7 @@ public class PostResponseMapper {
         }
 
         origin.setContent(original.getContent());
+        origin.setVisibility(original.getVisibility());
         origin.setImageUrl(
                 CloudinaryUrlUtil.feedImage(original.getImageUrl()));
         origin.setVideoUrl(original.getVideoUrl());
@@ -294,6 +295,7 @@ public class PostResponseMapper {
                                     origin.setDeleted(true);
                                 } else {
                                     origin.setContent(original.getContent());
+                                    origin.setVisibility(original.getVisibility());
                                     origin.setImageUrl(
                                             CloudinaryUrlUtil.feedImage(
                                                     original.getImageUrl()));

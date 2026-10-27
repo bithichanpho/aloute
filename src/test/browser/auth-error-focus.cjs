@@ -12,7 +12,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
     const kinds=before?['login','verify','forgot-password','reset-password']:['login','verify','forgot-password','verify-reset-code'];
     for(const theme of ['dark','light'])for(const width of [1280,320])for(const motion of ['no-preference','reduce'])for(const kind of kinds){
       if((before||reliability)&&(theme!=='dark'||width!==1280||motion!=='no-preference'))continue;
-      if(otpMotion&&kind==='forgot-password')continue;
+      if(otpMotion&&(kind==='forgot-password'||kind==='login'))continue;
       const context=await browser.newContext({viewport:{width,height:width===320?640:900},reducedMotion:motion});
       await context.addInitScript(theme=>localStorage.setItem('aloute-theme',theme),theme);
       // Accelerate only the request deadline. Redirect and UI timers retain their real delays.
@@ -39,7 +39,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
           if(u.pathname.endsWith('resend-verification')){resendCount++;return route.fulfill({contentType:'application/json',body:'{"success":true,"message":"Nếu tài khoản tồn tại và chưa xác thực, mã OTP mới đã được gửi tới email","data":null}'});}
           let status=mode==='accepted'?200:mode==='rate'?429:kind==='login'?401:400;
           let message=mode==='rate'?'Bạn đã thử quá nhiều lần. Vui lòng thử lại sau.':kind==='login'
-            ? mode==='challenge'?'Vui lòng nhập mã xác thực hai lớp hoặc mã khôi phục':mode==='mfa'?'Cần mã 2FA hợp lệ hoặc mã khôi phục chưa sử dụng':'Sai tên đăng nhập hoặc mật khẩu'
+            ? 'Sai tên đăng nhập hoặc mật khẩu'
             :kind==='verify' ? mode==='expired'?'Mã xác thực đã hết hạn, vui lòng yêu cầu gửi lại mã':'Mã xác thực không hợp lệ hoặc đã được dùng'
             :kind==='verify-reset-code' ? mode==='expired'?'Mã đặt lại mật khẩu đã hết hạn, vui lòng yêu cầu lại':'Mã đặt lại mật khẩu không hợp lệ hoặc đã được dùng'
             :'Email không đúng định dạng';
@@ -71,10 +71,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         assert.equal(await status.evaluate(el=>{const probe=document.createElement('span');probe.style.color='var(--text-secondary)';el.appendChild(probe);const same=getComputedStyle(el).color===getComputedStyle(probe).color;probe.remove();return same;}),true);
       };
       if(otpMotion){
-        const id=kind==='login'?'twoFactorCode':'code', code=page.locator('#'+id);
-        if(kind==='login'){
-          await page.locator('#username').fill('focus-user');await page.locator('#password').fill('legacy');mode='challenge';await submit.click();await focused(id);
-        }
+        const id='code', code=page.locator('#'+id);
         if(kind==='verify-reset-code')assert.equal(await page.locator('input[type="password"]').count(),0);
         const root=page.locator('.u026');
         assert.equal(await root.count(),1);assert.equal(await root.locator('.u026-c').count(),6);
@@ -94,23 +91,15 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         assert.equal(await root.locator('.u026-c.has').count(),6);assert.equal(calls.length,callsBefore);
         assert.equal(await root.evaluate(el=>el.classList.contains('is-check')||el.classList.contains('is-ok')),false);
         await page.screenshot({path:path.join(output,`otp-filled-${kind}-${theme}-${width}-${motion}.png`),fullPage:true,animations:'disabled'});
-        mode=kind==='login'?'mfa':'wrong';await submit.click();
+        mode='wrong';await submit.click();
         await page.waitForFunction(()=>document.querySelector('.u026').classList.contains('is-bad'));
         assert.equal(await code.inputValue(),'482915');
-        await singleOtpMessage(id,kind==='login'?/Cần mã 2FA/:/không hợp lệ hoặc đã được dùng/);
+        await singleOtpMessage(id,/không hợp lệ hoặc đã được dùng/);
         assert.equal(await root.locator('.u026-row').evaluate(el=>getComputedStyle(el).animationName),motion==='reduce'?'none':'u026-shake');
         await otpCleared(id);assert.equal(await root.locator('.u026-c.has').count(),0);
         assert.equal(await code.getAttribute('aria-invalid'),'true');
-        if(kind==='login'){
-          await root.locator('.u026-toggle').click();await code.fill('RECOVERY-TEST-CODE');
-          assert.equal(await code.getAttribute('inputmode'),'text');assert.equal(await code.getAttribute('maxlength'),'64');
-          assert.equal(await code.evaluate(el=>getComputedStyle(el).opacity),'1');
-          await submit.click();await page.waitForFunction(()=>!document.getElementById('submitBtn').disabled);
-          assert.equal(await code.inputValue(),'RECOVERY-TEST-CODE');assert.equal(calls.at(-1).body.code,'RECOVERY-TEST-CODE');
-          await root.locator('.u026-toggle').click();assert.equal(await code.inputValue(),'');
-        }
         await code.selectText();await paste('027361');mode='hold';
-        const formId=kind==='login'?'loginForm':kind==='verify'?'verifyForm':'resetCodeForm';
+        const formId=kind==='verify'?'verifyForm':'resetCodeForm';
         const beforeHeld=calls.length;
         await page.evaluate(id=>{document.getElementById(id).requestSubmit();document.getElementById(id).requestSubmit();},formId);
         await page.waitForFunction(()=>document.querySelector('.u026').classList.contains('is-check'));
@@ -125,15 +114,15 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
           await page.waitForFunction(()=>document.querySelector('.u026').classList.contains('is-ok'));
           await page.screenshot({path:path.join(output,`otp-success-${kind}-${theme}-${width}.png`),fullPage:true,animations:'disabled'});
         }
-        await page.waitForURL(kind==='login'?'**/feed':kind==='verify-reset-code'?'**/reset-password':'**/login');
+        await page.waitForURL(kind==='verify-reset-code'?'**/reset-password':'**/login');
         assert.equal(calls.at(-1).body.code,'027361');assert.deepEqual(errors,[]);
-        results.push({kind,theme,width,motion,pasteAndKeyboard:true,serverAuthoritative:true,invalidClears:true,singleFlight:true,recoveryPreserved:kind==='login',errors});
+        results.push({kind,theme,width,motion,pasteAndKeyboard:true,serverAuthoritative:true,invalidClears:true,singleFlight:true,errors});
         await context.close();continue;
       }
       const snapshot=async (id,grouped=false)=>{
         await page.waitForTimeout(550);
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-        const field=page.locator('#'+id), hint=grouped?'formError':['code','twoFactorCode'].includes(id)?id+'OtpStatus':id+'Feedback';
+        const field=page.locator('#'+id), hint=grouped?'formError':id==='code'?id+'OtpStatus':id+'Feedback';
         assert.ok((await field.getAttribute('aria-describedby')).split(/\s+/).includes(hint));
         assert.ok((await page.locator('#'+hint).textContent()).length>0);
         assert.equal(await field.evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),true);
@@ -143,7 +132,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         const formId={login:'loginForm',verify:'verifyForm','forgot-password':'forgotForm','verify-reset-code':'resetCodeForm'}[kind];
         if(kind==='login'){await page.locator('#username').fill('focus-user');await page.locator('#password').fill('legacy');}
         else await page.locator('#email').fill('focus-test@example.invalid');
-        if(['verify','verify-reset-code'].includes(kind))await page.locator('#code').fill('123456');
+        if(['verify','verify-reset-code'].includes(kind))await page.locator('#code').fill('1234567');
         mode='hold';
         await page.evaluate(id=>{document.getElementById(id).requestSubmit();document.getElementById(id).requestSubmit();},formId);
         assert.equal(await submit.isDisabled(),true);
@@ -165,8 +154,8 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       if(before){
         if(kind==='login'){await page.locator('#username').fill('focus-user');await page.locator('#password').fill('wrong');}
         if(kind==='forgot-password')await page.locator('#email').fill('wrong');
-        if(kind==='verify')await page.locator('#code').fill('000000');
-        if(kind==='reset-password'){await page.locator('#code').fill('000000');await page.locator('#newPassword').fill('Test-Password1!');await page.locator('#confirmPassword').fill('Test-Password1!');}
+        if(kind==='verify')await page.locator('#code').fill('0000000');
+        if(kind==='reset-password'){await page.locator('#code').fill('0000000');await page.locator('#newPassword').fill('Test-Password1!');await page.locator('#confirmPassword').fill('Test-Password1!');}
         await submit.click();await page.waitForTimeout(200);
         results.push({kind,before,active:await active(),invalidFields:await page.locator('[aria-invalid="true"]').count()});await context.close();continue;
       }
@@ -189,24 +178,16 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         await page.locator('#username').fill('another-user');
         assert.equal(await page.locator('[aria-invalid="true"]').count(),0);
         assert.equal(await page.locator('#password').getAttribute('aria-describedby'),null);
-        mode='challenge';await page.locator('#password').fill('legacy');await submit.click();await focused('twoFactorCode');
-        assert.equal(await page.locator('#twoFactorStep').isVisible(),true);assert.equal(await page.locator('#formError').isVisible(),false);
-        mode='mfa';await page.locator('#twoFactorCode').fill('000000');await submit.click();await focused('twoFactorCode');
-        await otpCleared('twoFactorCode');
-        await singleOtpMessage('twoFactorCode',/Cần mã 2FA/);
-        assert.equal(await page.locator('#twoFactorCode').getAttribute('aria-invalid'),'true');
-        assert.deepEqual(await page.locator('#twoFactorCode').evaluate(el=>[el.selectionStart,el.selectionEnd]),[0,0]);
-        await page.locator('#twoFactorCode').fill('000000');
-        mode='rate';await submit.click();await focused('twoFactorCodeOtpStatus');await singleOtpMessage('twoFactorCode',/quá nhiều/);assert.equal(await page.locator('#twoFactorCode').inputValue(),'000000');assert.notEqual(await page.locator('#twoFactorCode').getAttribute('aria-invalid'),'true');
-        mode='wrong';await submit.click();await focused('username');assert.equal(await page.locator('#credentialsStep').isVisible(),true);
-        assert.equal(await page.locator('#password').getAttribute('aria-invalid'),'true');
-        assert.equal(await page.locator('#username').getAttribute('aria-invalid'),'true');
-        assert.equal(await page.locator('#twoFactorCode').inputValue(),'');
-        mode='challenge';await submit.click();await focused('twoFactorCode');
-        await page.locator('#backToLoginBtn').click();await focused('username');assert.equal(await page.locator('#twoFactorCode').inputValue(),'');
-        await submit.click();await focused('twoFactorCode');
-        mode='accepted';await page.locator('#twoFactorCode').fill('RECOVERY-TEST-CODE');await submit.click();await page.waitForURL('**/feed');
-        assert.equal(calls.at(-1).body.code,'RECOVERY-TEST-CODE');assert.ok(!calls.some(call=>call.url.includes('forgot')||call.url.includes('verify-email')));
+        // Username/password login is intentionally single-step: the 2FA setup module was removed.
+        assert.equal(await page.locator('#twoFactorStep, #twoFactorCode, #backToLoginBtn').count(),0);
+        mode='accepted';
+        await page.locator('#username').fill('demo.user');
+        await page.locator('#password').fill('Correct-Pass1!');
+        await submit.click();
+        await page.waitForURL('**/feed');
+        assert.equal(calls.at(-1).url,'/api/auth/login');
+        assert.deepEqual(Object.keys(calls.at(-1).body).sort(),['password','username']);
+        assert.ok(!calls.some(call=>call.url.includes('2fa')||Object.hasOwn(call.body,'code')));
       }else if(kind==='forgot-password'){
         await submit.click();await focused('email');assert.equal(calls.length,0);
         await page.locator('#email').fill('wrong');await submit.click();await focused('email');assert.equal(calls.length,0);
@@ -219,7 +200,7 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         assert.equal(calls.length,3);
       }else{
         await focused('code');await submit.click();await focused('code');assert.equal(calls.length,0);
-        await page.locator('#code').fill('123456');
+        await page.locator('#code').fill('1234567');
         if(kind==='verify-reset-code')assert.equal(await page.locator('input[type="password"]').count(),0);
         await submit.click();await focused('code');assert.equal(await page.locator('#code').getAttribute('aria-invalid'),'true');
         await otpCleared('code');
@@ -227,17 +208,17 @@ const {chromium}=require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         await singleOtpMessage('code',/không hợp lệ hoặc đã được dùng/);
         await snapshot('code');
         if(motion==='reduce')assert.equal(await page.locator('#code').evaluate(el=>getComputedStyle(el).animationName),'none');
-        mode='expired';await page.locator('#code').fill('123456');await submit.click();await otpCleared('code');
+        mode='expired';await page.locator('#code').fill('1234567');await submit.click();await otpCleared('code');
         await singleOtpMessage('code',/hết hạn/);
-        mode='rate';await page.locator('#code').fill('123456');await submit.click();await focused('codeOtpStatus');await singleOtpMessage('code',/quá nhiều/);assert.equal(await page.locator('#code').inputValue(),'123456');assert.notEqual(await page.locator('#code').getAttribute('aria-invalid'),'true');
+        mode='rate';await page.locator('#code').fill('1234567');await submit.click();await focused('codeOtpStatus');await singleOtpMessage('code',/quá nhiều/);assert.equal(await page.locator('#code').inputValue(),'1234567');assert.notEqual(await page.locator('#code').getAttribute('aria-invalid'),'true');
         if(kind==='verify'){
           await page.locator('#resendBtn').click();await page.waitForFunction(()=>document.getElementById('resendMessage').textContent.startsWith('Nếu tài khoản tồn tại'));
           assert.equal(await page.locator('#resendBtn').isDisabled(),true);assert.equal(resendCount,1);
           mode='wrong';await submit.click();await otpCleared('code');assert.equal(await page.locator('#resendBtn').isDisabled(),true);
         }
-        mode='accepted';await page.locator('#code').fill('123456');await submit.click();await page.waitForURL(kind==='verify-reset-code'?'**/reset-password':'**/login');
+        mode='accepted';await page.locator('#code').fill('1234567');await submit.click();await page.waitForURL(kind==='verify-reset-code'?'**/reset-password':'**/login');
         const call=calls.findLast(call=>call.url.endsWith(kind==='verify'?'verify-email':'verify-reset-code'));
-        assert.equal(call.body.code,'123456');assert.equal(call.body.email,'focus-test@example.invalid');
+        assert.equal(call.body.code,'1234567');assert.equal(call.body.email,'focus-test@example.invalid');
         if(kind==='verify-reset-code')assert.deepEqual(Object.keys(call.body).sort(),['code','email']);
       }
       assert.deepEqual(errors,[]);

@@ -81,6 +81,8 @@ public class ModerationService implements com.aloute.moderation.api.ModerationPo
         this.jsonMapper = jsonMapper == null ? JsonMapper.builder().build() : jsonMapper;
         if (!enabled) {
             log.warn("Content moderation is disabled by configuration; non-post media uploads fail closed");
+        } else {
+            log.info("Content moderation enabled; upstream endpoint={}", this.serviceUrl);
         }
         Duration safeConnectTimeout = positiveOrDefault(connectTimeout, Duration.ofSeconds(2));
         this.readTimeout = positiveOrDefault(readTimeout, Duration.ofSeconds(45));

@@ -58,3 +58,51 @@ def test_empty_upstream_result_fails_closed(monkeypatch):
     monkeypatch.setattr(main.UPSTREAM, "post", lambda *args, **kwargs: FakeResponse({"results": []}))
     response = client.post("/moderate", headers={"X-Moderation-Token": TOKEN}, json={"text": "content"})
     assert response.status_code == 503
+
+
+def test_known_vietnamese_abuse_is_flagged_deterministically(monkeypatch):
+    def upstream_must_not_be_called(*args, **kwargs):
+        raise AssertionError("The deterministic abuse pre-screen should run before the provider")
+
+    monkeypatch.setattr(main.UPSTREAM, "post", upstream_must_not_be_called)
+    response = client.post(
+        "/moderate",
+        headers={"X-Moderation-Token": TOKEN},
+        json={"text": "đần độn\nngu si\ndốt nát\nfuck you\nvãi đạn\nchết chết chết đi"},
+    )
+    assert response.status_code == 200
+    assert response.json()["label"] == "harassment"
+    assert response.json()["score"] == 0.68
+    assert response.json()["rule"] == "direct-abuse-lexicon"
+
+
+def test_explicit_direct_threat_is_hidden_deterministically(monkeypatch):
+    def upstream_must_not_be_called(*args, **kwargs):
+        raise AssertionError("An explicit threat should be escalated before the provider")
+
+    monkeypatch.setattr(main.UPSTREAM, "post", upstream_must_not_be_called)
+    response = client.post(
+        "/moderate",
+        headers={"X-Moderation-Token": TOKEN},
+        json={"text": "Tao sẽ giết mày"},
+    )
+    assert response.status_code == 200
+    assert response.json()["label"] == "violence/threatening"
+    assert response.json()["score"] == 0.90
+    assert response.json()["rule"] == "explicit-threat"
+
+
+def test_accents_and_punctuation_do_not_bypass_abuse_pre_screen(monkeypatch):
+    monkeypatch.setattr(
+        main.UPSTREAM,
+        "post",
+        lambda *args, **kwargs: FakeResponse({"results": [{"flagged": False, "category_scores": {"harassment": 0.04}}]}),
+    )
+    response = client.post(
+        "/moderate",
+        headers={"X-Moderation-Token": TOKEN},
+        json={"text": "ĐỒ NGU!!! FUCK YOU?"},
+    )
+    assert response.status_code == 200
+    assert response.json()["label"] == "harassment"
+    assert response.json()["score"] == 0.68

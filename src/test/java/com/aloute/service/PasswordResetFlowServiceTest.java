@@ -24,7 +24,7 @@ class PasswordResetFlowServiceTest {
     }
     @Test void missingTamperedAndOtherPurposeTokensAreRejected() {
         String token=token();
-        for(String bad:new String[]{"",token.substring(0,token.length()-8)+"AAAAAAAA",encryption.encrypt("totp|7|"+proof.tokenHash()+"|9999999999|"+proof.resetExpiry())}){
+        for(String bad:new String[]{"",token.substring(0,token.length()-8)+"AAAAAAAA",encryption.encrypt("invalid|7|"+proof.tokenHash()+"|9999999999|"+proof.resetExpiry())}){
             assertTrue(flow.verifiedEmail(bad).isEmpty());assertThrows(BadRequestException.class,()->flow.complete(bad,"New-Pass1!"));
         }
         assertTrue(flow.verifiedEmail(null).isEmpty());verify(passwords,never()).resetPasswordVerified(any(),any());

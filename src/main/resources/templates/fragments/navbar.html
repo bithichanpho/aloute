@@ -6,9 +6,8 @@
 <nav class="sidebar sidebar--fixed-rail" th:fragment="navbar" aria-label="Điều hướng chính">
     <div class="sidebar__panel">
         <a class="sidebar__logo" th:href="@{/feed}" aria-label="Aloute">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4.5 5.5h15v10h-8l-4.5 4v-4H4.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            </svg>
+            <img class="sidebar__logo-icon" th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+                 src="/images/aloute-bird-logo.png" alt="">
             <span class="sidebar__label">ALOUTE</span>
         </a>
 
@@ -19,7 +18,7 @@
             </a>
             <a class="sidebar__row" th:classappend="${activeNav == 'chat'} ? 'sidebar__row--active' : ''" th:href="@{/chat}" title="Tin nhắn">
                 <span class="sidebar__icon-wrap">
-                    <i class="bi bi-messenger" aria-hidden="true"></i>
+                    <i class="bi" th:classappend="${activeNav == 'chat'} ? 'bi-chat-dots-fill' : 'bi-chat-dots'" aria-hidden="true"></i>
                     <span id="chatUnreadBadge" class="badge" th:text="${unreadMessageCount > 99 ? '99+' : unreadMessageCount}" th:style="${unreadMessageCount > 0 ? '' : 'display:none'}">0</span>
                 </span>
                 <span class="sidebar__label">Tin nhắn</span>
@@ -34,6 +33,13 @@
                     <span id="notifUnreadBadge" class="badge" th:text="${unreadCount > 99 ? '99+' : unreadCount}" th:style="${unreadCount > 0 ? '' : 'display:none'}">0</span>
                 </span>
                 <span class="sidebar__label">Thông báo</span>
+            </a>
+            <a class="sidebar__row" th:classappend="${activeNav == 'follow-requests'} ? 'sidebar__row--active' : ''" th:href="@{/follow-requests}" title="Yêu cầu theo dõi">
+                <span class="sidebar__icon-wrap">
+                    <i class="bi bi-person-plus" aria-hidden="true"></i>
+                    <span id="followRequestBadge" class="badge" th:text="${followRequestCount > 99 ? '99+' : followRequestCount}" th:style="${followRequestCount > 0 ? '' : 'display:none'}">0</span>
+                </span>
+                <span class="sidebar__label">Yêu cầu theo dõi</span>
             </a>
             <a class="sidebar__row" th:classappend="${activeNav == 'compose'} ? 'sidebar__row--active' : ''" th:href="@{/compose}" title="Tạo">
                 <i class="bi" th:classappend="${activeNav == 'compose'} ? 'bi-plus-square-fill' : 'bi-plus-square'" aria-hidden="true"></i>
@@ -59,9 +65,9 @@
                 <i class="bi" th:classappend="${pageKind == 'settings'} ? 'bi-gear-fill' : 'bi-gear'" aria-hidden="true"></i>
                 <span class="sidebar__label">Cài đặt</span>
             </a>
-            <a class="sidebar__row sidebar__row--sub" th:if="${isSystemAdmin == true}" th:classappend="${pageKind == 'moderation'} ? 'sidebar__row--active' : ''" th:href="@{/admin/moderation}" title="Báo cáo vi phạm">
+            <a class="sidebar__row sidebar__row--sub" th:if="${isSystemAdmin == true}" th:classappend="${pageKind == 'moderation'} ? 'sidebar__row--active' : ''" th:href="@{/admin/moderation}" title="Kiểm duyệt và báo cáo">
                 <i class="bi bi-flag" aria-hidden="true"></i>
-                <span class="sidebar__label">Báo cáo vi phạm</span>
+                <span class="sidebar__label">Kiểm duyệt &amp; báo cáo</span>
             </a>
             <a class="sidebar__row sidebar__row--sub" th:if="${isHost == true}" th:classappend="${activeNav == 'host-dashboard'} ? 'sidebar__row--active' : ''" th:href="@{/admin/dashboard}" title="Quản trị máy chủ">
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
@@ -90,9 +96,8 @@
 <!-- ===== Thanh trên cho mobile: logo, tìm kiếm, đổi theme, menu "thêm" ===== -->
 <header class="mobile-topbar" th:fragment="mobileTopbar">
     <a class="mobile-topbar__logo" th:href="@{/feed}" aria-label="Aloute">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4.5 5.5h15v10h-8l-4.5 4v-4H4.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-        </svg>
+        <img class="mobile-topbar__logo-icon" th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+             src="/images/aloute-bird-logo.png" alt="">
         <span>ALOUTE</span>
     </a>
     <div class="mobile-topbar__actions">

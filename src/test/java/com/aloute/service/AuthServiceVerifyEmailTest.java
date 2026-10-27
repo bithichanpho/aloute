@@ -46,7 +46,7 @@ class AuthServiceVerifyEmailTest {
         when(roles.findByName("ROLE_USER")).thenReturn(Optional.of(new Role("ROLE_USER")));
         service = new AuthService(
                 users, pendings, roles, encoder, mock(JwtUtil.class), mock(EmailService.class),
-                tokens, mock(AccountSecurityService.class), mock(PasswordManagementService.class),
+                tokens, mock(PasswordManagementService.class),
                 mock(FirebaseAccountProvisioningService.class), mock(AuthRateLimitService.class));
     }
 
@@ -72,6 +72,9 @@ class AuthServiceVerifyEmailTest {
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
         verify(users).save(saved.capture());
         assertEquals("alice", saved.getValue().getUsername());
+        // Registration hashed the password before persisting PendingUser. Verification must move
+        // that hash unchanged into User; hashing the hash here would break password login.
+        assertEquals("encoded-password", saved.getValue().getPassword());
         assertTrue(saved.getValue().isEmailVerified());
         verify(pendings).delete(pending);
     }
@@ -104,7 +107,7 @@ class AuthServiceVerifyEmailTest {
         when(pendings.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(pending));
 
         assertThrows(BadRequestException.class,()->service.verifyEmail(EMAIL,"12ab"));
-        assertThrows(BadRequestException.class,()->service.verifyEmail(EMAIL,"000000"));
+        assertThrows(BadRequestException.class,()->service.verifyEmail(EMAIL,"0000000"));
         assertEquals(hash,pending.getVerificationToken());
         assertEquals(expiry,pending.getVerificationTokenExpiry());
         verify(users,never()).save(any());verify(pendings,never()).delete(any());

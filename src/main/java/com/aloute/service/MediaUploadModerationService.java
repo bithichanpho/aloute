@@ -49,6 +49,8 @@ public class MediaUploadModerationService {
             deleteQuietly(uploaded);
             throw moderationFailure;
         }
+        log.info("Media moderation completed: purpose={}, mediaType={}, approved={}",
+                purposeLabel, mediaType, approved);
         if (!approved) {
             deleteQuietly(uploaded);
             throw new BadRequestException("Media không vượt qua kiểm duyệt an toàn: " + purposeLabel);

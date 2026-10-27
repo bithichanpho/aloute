@@ -12,7 +12,6 @@ import com.aloute.model.entity.User;
 import com.aloute.repository.IFriendRepository;
 import com.aloute.repository.IUserRepository;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -24,7 +23,6 @@ class UserProfileQueryBudgetTest {
         IUserRepository users = mock(IUserRepository.class);
         IFriendRepository friends = mock(IFriendRepository.class);
         FriendService friendService = mock(FriendService.class);
-        CloseFriendService closeFriends = mock(CloseFriendService.class);
         ContentAccessService access = mock(ContentAccessService.class);
         IFriendRepository.ProfileRelationshipStats stats =
                 mock(IFriendRepository.ProfileRelationshipStats.class);
@@ -41,14 +39,11 @@ class UserProfileQueryBudgetTest {
         when(stats.followingCount()).thenReturn(40L);
         when(stats.viewerFollows()).thenReturn(true);
         when(stats.targetFollowsViewer()).thenReturn(true);
-        when(closeFriends.countCloseFriends(9L)).thenReturn(7L);
-        when(closeFriends.getStatusMap(2L, List.of(9L))).thenReturn(Map.of(9L, "ACCEPTED"));
 
         UserService service = new UserService(
                 users,
                 friends,
                 friendService,
-                closeFriends,
                 mock(SimpMessagingTemplate.class),
                 access);
 
@@ -56,10 +51,8 @@ class UserProfileQueryBudgetTest {
 
         assertEquals(120L, profile.getFollowerCount());
         assertEquals(40L, profile.getFollowingCount());
-        assertEquals(7L, profile.getCloseFriendCount());
         assertTrue(profile.isFollowedByCurrentUser());
         assertTrue(profile.isMutualFriend());
-        assertEquals("ACCEPTED", profile.getCloseFriendStatus());
         assertTrue(profile.isCanMessage());
         assertFalse(profile.isFollowRequestPending());
 
@@ -79,7 +72,6 @@ class UserProfileQueryBudgetTest {
         IUserRepository users = mock(IUserRepository.class);
         IFriendRepository friends = mock(IFriendRepository.class);
         FriendService friendService = mock(FriendService.class);
-        CloseFriendService closeFriends = mock(CloseFriendService.class);
         ContentAccessService access = mock(ContentAccessService.class);
         IFriendRepository.ProfileRelationshipStats stats =
                 mock(IFriendRepository.ProfileRelationshipStats.class);
@@ -92,13 +84,11 @@ class UserProfileQueryBudgetTest {
         when(friends.getProfileRelationshipStats(9L, 2L)).thenReturn(stats);
         when(stats.viewerFollows()).thenReturn(false);
         when(friendService.hasPendingFollowRequest(2L, 9L)).thenReturn(true);
-        when(closeFriends.getStatusMap(2L, List.of(9L))).thenReturn(Map.of());
 
         UserService service = new UserService(
                 users,
                 friends,
                 friendService,
-                closeFriends,
                 mock(SimpMessagingTemplate.class),
                 access);
 

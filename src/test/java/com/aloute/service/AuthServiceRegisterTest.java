@@ -51,8 +51,7 @@ class AuthServiceRegisterTest {
         service =
                 new AuthService(
                         users, pendings, mock(IRoleRepository.class), encoder, mock(JwtUtil.class),
-                        email, new AuthTokenService(), mock(AccountSecurityService.class),
-                        mock(PasswordManagementService.class),
+                        email, new AuthTokenService(), mock(PasswordManagementService.class),
                         mock(FirebaseAccountProvisioningService.class), limits);
     }
 

@@ -204,7 +204,7 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người nhận"));
 
-        if (receiver.isPrivateAccount() && !friendService.isFriend(senderId, receiverId)) {
+        if (receiver.isPrivateAccount() && !access.canMessageAccount(senderId, receiverId)) {
             throw new BadRequestException(
                     "Tài khoản này ở chế độ riêng tư — hai bạn cần theo dõi lẫn nhau mới nhắn tin"
                             + " được");
@@ -245,8 +245,16 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
         return getMessages(currentUserId, otherUserId, 0);
     }
 
-    public List<ChatMessageResponse> getMessages(Long currentUserId, Long otherUserId, int page) {
+    private void requireDirectConversationAccess(Long currentUserId, Long otherUserId) {
         access.requireProfile(currentUserId, otherUserId);
+        if (!access.canMessageAccount(currentUserId, otherUserId)) {
+            throw new ForbiddenException(
+                    "Tài khoản này ở chế độ riêng tư — hai bạn cần theo dõi lẫn nhau để xem hoặc nhắn tin");
+        }
+    }
+
+    public List<ChatMessageResponse> getMessages(Long currentUserId, Long otherUserId, int page) {
+        requireDirectConversationAccess(currentUserId, otherUserId);
         String conversationId =
                 ChatMessage.buildConversationId(
                         String.valueOf(currentUserId), String.valueOf(otherUserId));
@@ -255,7 +263,7 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
 
     public ChatCursorPage getMessagesByCursor(
             Long currentUserId, Long otherUserId, String beforeId, int requestedSize) {
-        access.requireProfile(currentUserId, otherUserId);
+        requireDirectConversationAccess(currentUserId, otherUserId);
         String conversationId = ChatMessage.buildConversationId(
                 String.valueOf(currentUserId), String.valueOf(otherUserId));
         return conversationHistoryByCursor(conversationId, currentUserId, beforeId, requestedSize);
@@ -268,7 +276,7 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
             String beforeId,
             int size,
             boolean mediaOnly) {
-        access.requireProfile(currentUserId, otherUserId);
+        requireDirectConversationAccess(currentUserId, otherUserId);
         String conversationId = ChatMessage.buildConversationId(
                 String.valueOf(currentUserId), String.valueOf(otherUserId));
         return searchConversation(conversationId, currentUserId, keyword, beforeId, size, mediaOnly);
@@ -338,6 +346,9 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
     @Transactional
     public void markAsRead(Long currentUserId, Long otherUserId) {
         if (currentUserId == null || otherUserId == null || currentUserId.equals(otherUserId)) return;
+        User otherAccount = userRepository.findById(otherUserId).orElse(null);
+        if (otherAccount != null && otherAccount.isPrivateAccount()
+                && !friendService.isFriend(currentUserId, otherUserId)) return;
         // Reading an existing conversation must remain possible after either side blocks the other
         // or one account is deactivated; otherwise its unread badge can never be cleared.
         String currentId = String.valueOf(currentUserId);

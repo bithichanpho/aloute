@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html lang="vi" data-bs-theme="dark" xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8">
+  
+  <link rel="icon" type="image/x-icon" th:href="@{/favicon.ico?v=20261027-bird-v1}">
+  <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/aloute-icon-32.png?v=20261027-bird-v1}">
+  <link rel="apple-touch-icon" sizes="180x180" th:href="@{/images/aloute-icon-180.png?v=20261027-bird-v1}">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
   <script th:src="@{/js/theme-init.js?v=20261019-global-theme-v1}"></script>
   <title>Đăng nhập / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261027-bird-privacy-v1}">
   <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
-  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261027-bird-privacy-v1}">
   <link rel="stylesheet" th:href="@{/css/auth-form-feedback.css?v=20261025-focus-v1}">
-  <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261025-otp-message-v2}">
+  <link rel="stylesheet" th:href="@{/css/auth-otp.css?v=20261027-email-otp-6digit-v3}">
   <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}" defer></script>
 </head>
 <body class="auth-body">
@@ -22,9 +26,8 @@
   <div class="auth-shell">
     <div class="auth-card auth-error-focus">
       <div class="auth-card__logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
-        </svg>
+        <img th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+             src="/images/aloute-bird-logo.png" alt="ALOUTE" width="64" height="64">
       </div>
       <h1 class="auth-card__title">Đăng nhập ALOUTE</h1>
 
@@ -42,23 +45,20 @@
           <a th:href="@{/forgot-password}" style="font-size:13.5px;">Quên mật khẩu?</a>
         </p>
         </div>
-        <div id="twoFactorStep" style="display:none;">
-          <p style="color:var(--text-secondary);font-size:14px;margin:0 0 14px;">
-            Tài khoản của bạn đã bật xác thực hai lớp. Nhập mã từ ứng dụng Authenticator hoặc một mã khôi phục.
-          </p>
-          <div class="field">
-            <input id="twoFactorCode" name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="64" placeholder="Mã xác thực hoặc mã khôi phục">
-          </div>
-        </div>
         <button type="submit" class="btn-primary" id="submitBtn">Đăng nhập</button>
-        <button type="button" class="btn-outline" id="backToLoginBtn" style="display:none;margin-top:10px;">Quay lại</button>
       </form>
 
-      <div class="auth-firebase-divider" id="googleSignInDivider" hidden><span>hoặc tiếp tục với</span></div>
-      <button type="button" class="btn-outline auth-google-btn" id="googleSignInBtn" hidden>
+      <div class="auth-firebase-divider" id="googleSignInDivider"><span>hoặc tiếp tục với</span></div>
+      <button type="button" class="btn-outline auth-google-btn" id="googleSignInBtn">
         <i class="bi bi-google" aria-hidden="true"></i> Đăng nhập bằng Google
       </button>
       <p class="auth-integration-status" id="googleSignInStatus" role="status" aria-live="polite"></p>
+      <p class="auth-integration-status" id="googleRegistrationHint" hidden>
+        Email Google này chưa có tài khoản ALOUTE. Hãy <a id="googleRegistrationLink" th:href="@{/register}">đăng ký tài khoản ALOUTE</a>, tạo tên đăng nhập và mật khẩu, rồi xác thực email bằng OTP. Sau đó bạn có thể đăng nhập bằng Google hoặc email/tên đăng nhập và mật khẩu ALOUTE.
+      </p>
+      <p class="auth-integration-status" id="googleVerificationHint" hidden>
+        Email này đã đăng ký ALOUTE nhưng chưa xác thực. Hãy <a id="googleVerificationLink" th:href="@{/verify-email}">nhập mã OTP email</a>, sau đó đăng nhập bằng Google hoặc bằng email/tên đăng nhập và mật khẩu ALOUTE.
+      </p>
 
       <div id="resendVerificationBox" style="display:none;margin-top:14px;">
         <button type="button" class="btn-outline" id="resendVerificationBtn">
@@ -74,11 +74,10 @@
     </div>
   </div>
 
-  <script th:src="@{/js/app.js?v=20261017-moderation-toast-v2}"></script>
-  <script th:src="@{/js/firebase-client.js?v=20261017-firebase-csp-fix-v1}"></script>
+  <script th:src="@{/js/app.js?v=20261027-password-confirm-no-2fa-v3}"></script>
+  <script th:src="@{/js/firebase-client.js?v=20261027-google-registration-link-v3}"></script>
   <script th:src="@{/js/auth-form-feedback.js?v=20261025-otp-message-v2}"></script>
-  <script th:src="@{/js/auth-otp.js?v=20261025-input-retry-v3}"></script>
-  <script th:src="@{/js/auth-login.js?v=20261025-otp-message-v2}"></script>
+  <script th:src="@{/js/auth-login.js?v=20261027-single-password-login-v2}"></script>
 </body>
 </html>
 

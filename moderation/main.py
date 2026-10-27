@@ -12,7 +12,9 @@ import json
 import logging
 import math
 import os
+import re
 import subprocess
+import unicodedata
 import tempfile
 import time
 import warnings
@@ -280,7 +282,49 @@ def _video_frames_and_transcript(video_bytes: bytes) -> tuple[list[str], str | N
         return data_urls, transcript
 
 
+def _normalize_text_for_rules(text: str) -> str:
+    """Normalize Vietnamese diacritics and punctuation for a small, strict pre-screen."""
+    value = unicodedata.normalize("NFKD", text.lower()).replace("đ", "d")
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+# Deterministic pre-screen for clear, direct abuse in Vietnamese/English. This deliberately
+# does not treat every profanity as a threat: insults are FLAGGED for review, while an explicit
+# first-person threat to injure/kill a target is HIDDEN. The upstream Moderation API still handles
+# all other language/context and every image/video payload.
+_EXPLICIT_THREAT_PHRASES = (
+    "toi se giet ban", "toi se giet may", "tao se giet may", "tao se giet ban",
+    "toi se dam ban", "tao se dam may", "toi se danh ban", "tao se danh may",
+    "i will kill you", "i ll kill you", "ill kill you", "i am going to kill you",
+    "i want to kill you", "i will hurt you", "i will beat you", "i am going to hurt you",
+)
+_DIRECT_ABUSE_PHRASES = (
+    "dan don", "ngu si", "dot nat", "fuck you", "chet di",
+    "do ngu", "thang ngu", "con ngu", "do khon", "do cho", "do suc vat",
+    "vo dung", "you are an idiot", "you are stupid", "you are a moron",
+)
+
+
+def _deterministic_text_pre_screen(text: str) -> dict[str, Any] | None:
+    normalized = f" {_normalize_text_for_rules(text)} "
+    if any(f" {phrase} " in normalized for phrase in _EXPLICIT_THREAT_PHRASES):
+        return {"label": "violence/threatening", "score": 0.90, "rule": "explicit-threat"}
+    matched = [phrase for phrase in _DIRECT_ABUSE_PHRASES if f" {phrase} " in normalized]
+    # Multiple clearly abusive phrases in the same post still remain reviewable rather than
+    # escalating automatically to HIDDEN unless the text contains an explicit direct threat.
+    if matched:
+        return {"label": "harassment", "score": 0.68, "rule": "direct-abuse-lexicon"}
+    return None
+
+
 def _moderate_input(value: str | list[dict[str, Any]]) -> dict[str, Any]:
+    if isinstance(value, str):
+        local_decision = _deterministic_text_pre_screen(value)
+        if local_decision is not None:
+            LOG.info("Text moderation matched deterministic pre-screen rule=%s score=%s",
+                     local_decision["rule"], local_decision["score"])
+            return local_decision
     try:
         response = UPSTREAM.post(
             "https://api.openai.com/v1/moderations",

@@ -26,6 +26,16 @@
   let submitting = false;
   let scrollVersion = 0;
 
+  // A failed Google sign-in to a not-yet-registered ALOUTE email links here with ?email=.
+  // This is only a convenience; local registration still requires email OTP verification.
+  const googleEmail = new URLSearchParams(location.search).get('email');
+  const emailField = form.elements.namedItem('email');
+  const googleRegistrationNotice = document.getElementById('googleRegistrationNotice');
+  if (googleEmail && emailField && googleEmail.includes('@') && googleEmail.length <= 254) {
+    emailField.value = googleEmail.trim();
+    if (googleRegistrationNotice) googleRegistrationNotice.hidden = false;
+  }
+
   function validationMessage(field) {
     const value = field.id === 'password' ? field.input.value : field.input.value.trim();
     if (!value) return {

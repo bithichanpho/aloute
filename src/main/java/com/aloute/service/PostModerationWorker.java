@@ -97,6 +97,13 @@ public class PostModerationWorker {
             if (documentStore.updateFirst(unchanged, result, Post.class).getModifiedCount() > 0) {
                 snapshot.setModerationStatus(finalStatus);
                 snapshot.setToxicityScore(text.getScore());
+                // Log the decision (never the submitted text) so operators can verify the
+                // asynchronous moderation path without exposing user-generated content.
+                log.info("Content moderation completed for post {}: label={}, score={}, status={}",
+                        postId, text.getLabel(), text.getScore(), finalStatus);
+                if (finalStatus == ModerationStatus.FLAGGED || finalStatus == ModerationStatus.HIDDEN) {
+                    notifyPostModerationStatus(snapshot.getUserId(), postId, finalStatus);
+                }
                 if (finalStatus == ModerationStatus.APPROVED && snapshot.isNotifyMentionsAfterModeration()) {
                     notifyReadableMentions(snapshot);
                 }
@@ -149,12 +156,29 @@ public class PostModerationWorker {
             update.set("moderationLeaseUntil",
                     now.plusSeconds(retryPolicy.delaySeconds(current.getModerationAttempts())));
         }
-        documentStore.updateFirst(unchangedPostQuery(current), update, Post.class);
+        var result = documentStore.updateFirst(unchangedPostQuery(current), update, Post.class);
+        if (requireReview && result.getModifiedCount() > 0) {
+            notifyPostModerationStatus(current.getUserId(), postId, ModerationStatus.FLAGGED);
+        }
         log.warn("Moderation failed for post {}; retryable={}, attempts={}/{}, reviewRequired={}, code={}",
                 postId, retryable, current.getModerationAttempts(), retryPolicy.maxAttempts(),
                 requireReview, failureCode);
         log.debug("Post moderation failure details for post {}", postId, failure);
         if (requireReview) evictFeedCache(current.getUserId());
+    }
+
+
+    /** Shared notification path for terminal moderation transitions, including queue recovery. */
+    public void notifyPostModerationStatus(String authorId, String postId, ModerationStatus status) {
+        try {
+            Long ownerId = authorId == null ? null : Long.valueOf(authorId);
+            if (ownerId != null) notifications.notifyPostModerationResult(ownerId, postId, status);
+        } catch (RuntimeException notificationFailure) {
+            // Never turn a completed moderation decision into a second moderation failure because
+            // notification delivery could not be queued. The notification service logs its own cause.
+            log.warn("Could not queue moderation status notice for post {} ({})",
+                    postId, notificationFailure.getClass().getSimpleName());
+        }
     }
 
     private void notifyReadableMentions(Post post) {

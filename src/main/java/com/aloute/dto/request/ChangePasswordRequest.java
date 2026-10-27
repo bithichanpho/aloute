@@ -1,31 +1,16 @@
 package com.aloute.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
-
-import com.aloute.validation.StrongPassword;
-
+/** Request to change a local ALOUTE password after proving the current password.
+ * Validation is performed in PasswordManagementService in the user-requested order. */
 public class ChangePasswordRequest {
-
-    @NotBlank(message = "Vui lòng nhập mật khẩu hiện tại")
     private String currentPassword;
-
-    @NotBlank(message = "Mật khẩu mới không được để trống")
-    @StrongPassword
     private String newPassword;
+    private String confirmNewPassword;
 
-    public String getCurrentPassword() {
-        return currentPassword;
-    }
-
-    public void setCurrentPassword(String currentPassword) {
-        this.currentPassword = currentPassword;
-    }
-
-    public String getNewPassword() {
-        return newPassword;
-    }
-
-    public void setNewPassword(String newPassword) {
-        this.newPassword = newPassword;
-    }
+    public String getCurrentPassword() { return currentPassword; }
+    public void setCurrentPassword(String currentPassword) { this.currentPassword = currentPassword; }
+    public String getNewPassword() { return newPassword; }
+    public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
+    public String getConfirmNewPassword() { return confirmNewPassword; }
+    public void setConfirmNewPassword(String confirmNewPassword) { this.confirmNewPassword = confirmNewPassword; }
 }

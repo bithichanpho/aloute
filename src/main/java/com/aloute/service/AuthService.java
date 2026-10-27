@@ -35,7 +35,6 @@ public class AuthService {
 
     private static final long PENDING_RETENTION_HOURS = 24;
 
-    private final AccountSecurityService accountSecurity;
     private final IUserRepository userRepository;
     private final IPendingUserRepository pendingUserRepository;
     private final IRoleRepository roleRepository;
@@ -56,11 +55,9 @@ public class AuthService {
             JwtUtil jwtUtil,
             EmailService emailService,
             AuthTokenService authTokenService,
-            AccountSecurityService accountSecurity,
             PasswordManagementService passwordManagementService,
             FirebaseAccountProvisioningService firebaseAccountProvisioningService,
             AuthRateLimitService rateLimits) {
-        this.accountSecurity = accountSecurity;
         this.rateLimits = rateLimits;
 
         this.userRepository = userRepository;
@@ -216,7 +213,14 @@ public class AuthService {
 
     public AuthResponse login(LoginRequest request) {
 
-        String identifier = request.getUsername().trim();
+        String suppliedIdentifier = request.getUsername().trim();
+        // Profile handles are displayed as @username throughout the UI. Accept both forms at
+        // login, while preserving email addresses exactly (apart from outer whitespace).
+        // Keep the normalized identifier effectively final because it is used by Optional.or().
+        String identifier =
+                suppliedIdentifier.startsWith("@") && suppliedIdentifier.indexOf('@', 1) < 0
+                        ? suppliedIdentifier.substring(1)
+                        : suppliedIdentifier;
 
         var userOptional =
                 userRepository
@@ -251,7 +255,6 @@ public class AuthService {
 
         boolean reactivated = Boolean.TRUE.equals(user.getSelfDeactivated());
         if (reactivated) {
-            accountSecurity.verifyLogin(user.getId(), request.getCode());
             user.setActive(true);
             user.setSelfDeactivated(false);
             userRepository.save(user);
@@ -265,7 +268,6 @@ public class AuthService {
             throw new UnauthorizedException("Vui lòng xác thực email " + "trước khi đăng nhập");
         }
 
-        if (!reactivated) accountSecurity.verifyLogin(user.getId(), request.getCode());
         String token =
                 jwtUtil.generateToken(user.getUsername(), user.getId(), user.getRole().getName());
 
@@ -274,9 +276,9 @@ public class AuthService {
     }
 
     public AuthResponse loginWithFirebaseProfile(
-            String email, boolean emailVerified, String fullName, String avatarUrl, String twoFactorCode) {
+            String email, boolean emailVerified, String fullName, String avatarUrl) {
         return firebaseAccountProvisioningService.loginWithFirebaseProfile(
-                email, emailVerified, fullName, avatarUrl, twoFactorCode);
+                email, emailVerified, fullName, avatarUrl);
     }
 
     /**
@@ -497,8 +499,8 @@ public class AuthService {
         passwordManagementService.resetPassword(email, code, newPassword);
     }
 
-    public void changePassword(Long userId, String currentPassword, String newPassword) {
-        passwordManagementService.changePassword(userId, currentPassword, newPassword);
+    public void changePassword(Long userId, String currentPassword, String newPassword, String confirmNewPassword) {
+        passwordManagementService.changePassword(userId, currentPassword, newPassword, confirmNewPassword);
     }
 
 }

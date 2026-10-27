@@ -10,6 +10,7 @@ import com.aloute.model.entity.User;
 import com.aloute.repository.IPostRepository;
 import com.aloute.repository.IRepostRepository;
 import com.aloute.repository.IUserRepository;
+import com.aloute.social.api.FollowedAccounts;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -52,58 +53,46 @@ public class RepostPresentationService {
     }
 
     /**
-     * Enriches a feed page using the three reposter ids stored on each post. This keeps feed work
-     * bounded to one PostgreSQL batch and one SQL batch regardless of the total number of reposts.
+     * Enriches a feed page with the reposters that are visible to {@code viewerId}: the viewer
+     * themselves and the accounts the viewer follows. Strangers never appear in the banner, and
+     * {@code otherReposterCount} equals the number of names the "N người khác" popover lists.
      */
-    public void attachRecentReposters(List<PostResponse> responses) {
+    public void attachRecentReposters(Long viewerId, List<PostResponse> responses) {
         if (responses == null || responses.isEmpty()) return;
-        List<String> postIds = responses.stream()
-                .map(PostResponse::getInteractionPostId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (postIds.isEmpty()) return;
-
-        Map<String, Post> postsById = postRepository.findAllById(postIds).stream()
-                .collect(Collectors.toMap(Post::getId, Function.identity()));
-        Map<String, List<String>> previewIdsByPost = new java.util.HashMap<>();
-        Set<Long> userIds = new LinkedHashSet<>();
-
-        for (String postId : postIds) {
-            Post post = postsById.get(postId);
-            if (post == null) continue;
-            List<String> previewIds = normalizedPreviewIds(post.getRecentReposterIds());
-            // Existing records predate the denormalized field. Repair each legacy post once using
-            // an index-backed, bounded query instead of loading its complete repost history.
-            if (previewIds.isEmpty() && post.getRepostCount() > 0) {
-                previewIds = recentReposterIds(postId);
-                documentStore.updateFirst(
-                        Query.query(Criteria.where("_id").is(postId)),
-                        new Update().set("recentReposterIds", previewIds),
-                        Post.class);
+        Map<String, VisiblePreview> previews = new java.util.HashMap<>();
+        if (viewerId != null) {
+            for (PostResponse response : responses) {
+                String postId = response.getInteractionPostId();
+                if (postId == null || response.getRepostCount() <= 0 || previews.containsKey(postId)) continue;
+                previews.put(postId, visiblePreview(viewerId, postId));
             }
-            previewIdsByPost.put(postId, previewIds);
-            previewIds.stream().map(this::parseUserId).filter(Objects::nonNull).forEach(userIds::add);
         }
-
-        Map<Long, User> users = userRepository.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getId, Function.identity()));
         for (PostResponse response : responses) {
-            List<PostResponse.RepostActor> actors = previewIdsByPost
-                    .getOrDefault(response.getInteractionPostId(), List.of()).stream()
-                    .map(id -> toRepostActor(id, null, users))
-                    .filter(Objects::nonNull)
-                    .toList();
-            response.setRecentReposters(actors);
+            VisiblePreview preview = previews.get(response.getInteractionPostId());
+            response.setRecentReposters(preview == null ? List.of() : preview.actors());
             response.setOtherReposters(List.of());
-            response.setOtherReposterCount(response.getRepostCount() - actors.size());
+            response.setOtherReposterCount(preview == null ? 0 : preview.otherCount());
         }
     }
 
-    /** Returns only the compact preview used after a repost mutation. */
-    public List<PostResponse.RepostActor> loadRecentRepostActors(String postId) {
-        return mapActors(loadRecentReposts(postId));
+    /** Compact preview used by feed cards and after a repost mutation. */
+    public VisiblePreview visiblePreview(Long viewerId, String postId) {
+        if (viewerId == null || postId == null || postId.isBlank()) return new VisiblePreview(List.of(), 0);
+        Criteria visible = visibleReposts(viewerId, postId);
+        List<Repost> recent = documentStore.find(
+                Query.query(visible)
+                        .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
+                        .limit(PREVIEW_SIZE),
+                Repost.class);
+        List<PostResponse.RepostActor> actors = mapActors(recent);
+        long visibleTotal = recent.size() < PREVIEW_SIZE
+                ? recent.size()
+                : documentStore.count(Query.query(visible), Repost.class);
+        int others = (int) Math.max(0, Math.min(Integer.MAX_VALUE, visibleTotal - recent.size()));
+        return new VisiblePreview(actors, others);
     }
+
+    public record VisiblePreview(List<PostResponse.RepostActor> actors, int otherCount) {}
 
     public List<String> recentReposterIds(String postId) {
         return loadRecentReposts(postId).stream()
@@ -112,30 +101,33 @@ public class RepostPresentationService {
                 .toList();
     }
 
-    public List<PostResponse.RepostActor> loadActorsByIds(List<String> reposterIds) {
-        List<String> ids = normalizedPreviewIds(reposterIds);
-        if (ids.isEmpty()) return List.of();
-        Set<Long> userIds = ids.stream()
-                .map(this::parseUserId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        Map<Long, User> users = userRepository.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getId, Function.identity()));
-        return ids.stream()
-                .map(id -> toRepostActor(id, null, users))
-                .filter(Objects::nonNull)
-                .toList();
-    }
-
+    /**
+     * Lists the visible reposters who are NOT already named in the banner (older than the first
+     * {@link #PREVIEW_SIZE} visible reposts), so the popover length matches "N người khác".
+     */
     public ReposterCursorPage loadRepostActorsPage(
-            String postId, String cursor, int requestedSize, int totalCount) {
+            Long viewerId, String postId, String cursor, int requestedSize) {
         int size = Math.max(1, Math.min(50, requestedSize));
-        List<Criteria> clauses = new ArrayList<>();
-        clauses.add(Criteria.where("postId").is(postId));
+        if (viewerId == null) return new ReposterCursorPage(List.of(), "", false, 0);
+        Criteria visible = visibleReposts(viewerId, postId);
+        long visibleTotal = documentStore.count(Query.query(visible), Repost.class);
+        int totalOthers = (int) Math.max(0, Math.min(Integer.MAX_VALUE, visibleTotal - PREVIEW_SIZE));
+        if (totalOthers == 0) return new ReposterCursorPage(List.of(), "", false, 0);
+
         CursorPoint point = decodeCursor(cursor);
-        if (point != null) {
-            clauses.add(Criteria.keysetBefore("createdAt", point.createdAt(), "_id", point.id()));
+        if (point == null) {
+            List<Repost> named = documentStore.find(
+                    Query.query(visible)
+                            .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
+                            .limit(PREVIEW_SIZE),
+                    Repost.class);
+            if (named.size() < PREVIEW_SIZE) return new ReposterCursorPage(List.of(), "", false, 0);
+            Repost last = named.get(named.size() - 1);
+            point = new CursorPoint(last.getCreatedAt(), last.getId());
         }
+        List<Criteria> clauses = new ArrayList<>();
+        clauses.add(visible);
+        clauses.add(Criteria.keysetBefore("createdAt", point.createdAt(), "_id", point.id()));
 
         Query query = Query.query(new Criteria().andOperator(clauses.toArray(Criteria[]::new)))
                 .with(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("_id")))
@@ -145,7 +137,15 @@ public class RepostPresentationService {
         List<Repost> page = hasMore ? loaded.subList(0, size) : loaded;
         String nextCursor =
                 hasMore && !page.isEmpty() ? encodeCursor(page.get(page.size() - 1)) : "";
-        return new ReposterCursorPage(mapActors(page), nextCursor, hasMore, totalCount);
+        return new ReposterCursorPage(mapActors(page), nextCursor, hasMore, totalOthers);
+    }
+
+    /** Reposts of {@code postId} made by the viewer or by accounts the viewer follows. */
+    private Criteria visibleReposts(Long viewerId, String postId) {
+        return new Criteria().andOperator(
+                Criteria.where("postId").is(postId),
+                Criteria.where("userId").inReadView(
+                        FollowedAccounts.READ_VIEW, viewerId, String.valueOf(viewerId)));
     }
 
     private List<Repost> loadRecentReposts(String postId) {

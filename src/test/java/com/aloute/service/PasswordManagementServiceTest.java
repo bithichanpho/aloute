@@ -133,6 +133,58 @@ class PasswordManagementServiceTest {
         verify(users,never()).consumeResetToken(anyLong(),anyString(),anyString(),any(),any());
         org.mockito.Mockito.verifyNoInteractions(encoder,refreshTokens);
     }
+    @Test
+    void changePasswordVerifiesCurrentPasswordBeforeCheckingConfirmation() {
+        User user = new User();
+        user.setId(7L);
+        user.setUsername("alice");
+        user.setPassword("encoded-current-password");
+        when(users.findById(7L)).thenReturn(Optional.of(user));
+        when(encoder.matches("wrong-current", "encoded-current-password")).thenReturn(false);
+
+        BadRequestException error = assertThrows(BadRequestException.class,
+                () -> service.changePassword(7L, "wrong-current", "New-Pass1!", "not-the-same"));
+
+        org.junit.jupiter.api.Assertions.assertEquals("Mật khẩu hiện tại không đúng", error.getMessage());
+        verify(users, never()).save(any());
+        verify(refreshTokens, never()).revokeAll(anyLong(), any());
+    }
+
+    @Test
+    void changePasswordRejectsMismatchedConfirmationWithoutWriting() {
+        User user = new User();
+        user.setId(7L);
+        user.setUsername("alice");
+        user.setPassword("encoded-current-password");
+        when(users.findById(7L)).thenReturn(Optional.of(user));
+        when(encoder.matches("Current1!Pass", "encoded-current-password")).thenReturn(true);
+        when(encoder.matches("New-Pass1!", "encoded-current-password")).thenReturn(false);
+
+        BadRequestException error = assertThrows(BadRequestException.class,
+                () -> service.changePassword(7L, "Current1!Pass", "New-Pass1!", "Different1!Pass"));
+
+        org.junit.jupiter.api.Assertions.assertEquals("Mật khẩu mới và phần nhập lại không khớp", error.getMessage());
+        verify(users, never()).save(any());
+    }
+
+    @Test
+    void changePasswordStoresEncodedPasswordAndRevokesExistingSessions() {
+        User user = new User();
+        user.setId(7L);
+        user.setUsername("alice");
+        user.setPassword("encoded-current-password");
+        when(users.findById(7L)).thenReturn(Optional.of(user));
+        when(encoder.matches("Current1!Pass", "encoded-current-password")).thenReturn(true);
+        when(encoder.matches("New-Pass1!", "encoded-current-password")).thenReturn(false);
+
+        service.changePassword(7L, "Current1!Pass", "New-Pass1!", "New-Pass1!");
+
+        org.junit.jupiter.api.Assertions.assertEquals("encoded-password", user.getPassword());
+        org.junit.jupiter.api.Assertions.assertNotNull(user.getTokensRevokedAt());
+        verify(users).save(user);
+        verify(refreshTokens).revokeAll(eq(7L), any(Instant.class));
+    }
+
     @Test void lostAtomicIssuanceDoesNotSendMail() {
         User user=userWithResetExpiring(null);user.setResetPasswordToken(null);
         when(users.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(user));
@@ -146,7 +198,7 @@ class PasswordManagementServiceTest {
         when(users.findByEmailIgnoreCase(EMAIL)).thenReturn(Optional.of(user));
 
         assertThrows(BadRequestException.class,()->service.verifyResetCode(EMAIL,"12ab"));
-        assertThrows(BadRequestException.class,()->service.verifyResetCode(EMAIL,"000000"));
+        assertThrows(BadRequestException.class,()->service.verifyResetCode(EMAIL,"0000000"));
         org.junit.jupiter.api.Assertions.assertEquals(hash,user.getResetPasswordToken());
         org.junit.jupiter.api.Assertions.assertEquals(expiry,user.getResetPasswordExpiry());
         var proof=service.verifyResetCode(EMAIL,OTP);

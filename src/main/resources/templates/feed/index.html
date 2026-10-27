@@ -31,7 +31,9 @@
                       mainAvatarUrl=${(isRepost and !isQuote) ? post.repostOf.userAvatarUrl : post.userAvatarUrl},
                       mainUserId=${(isRepost and !isQuote) ? post.repostOf.userId : post.userId},
                       mainUsername=${(isRepost and !isQuote) ? post.repostOf.username : post.username},
-                      mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo}">
+                      mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo},
+                      mainVisibility=${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility},
+                      mainModerationStatus=${post.moderationStatus}">
 
           <div class="post__repost-banner" data-repost-banner
                th:if="${post.recentReposters != null and !#lists.isEmpty(post.recentReposters)}">
@@ -52,7 +54,7 @@
                         data-reposters-trigger
                         th:text="${post.otherReposterCount + ' người khác'}">2 người khác</button>
                 <div class="post__repost-others-list" data-reposters-list>
-                  <span class="post__repost-others-status">Nhấn để xem danh sách</span>
+                  <span class="post__repost-others-status">Đang tải...</span>
                 </div>
               </span>
             </th:block>
@@ -70,6 +72,32 @@
             <div class="post__header">
               <a th:href="@{'/profile/' + ${mainUserId}}" class="post__username" th:text="${mainUsername}">username</a>
               <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+              <span class="post__moderation-status post__moderation-status--pending"
+                    th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'PENDING'}"
+                    title="Bài viết chỉ hiển thị với bạn trong lúc chờ kiểm duyệt" aria-label="Đang kiểm duyệt, chỉ bạn thấy">
+                <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Đang kiểm duyệt</span>
+              </span>
+              <span class="post__moderation-status post__moderation-status--flagged"
+                    th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'FLAGGED'}"
+                    title="Nội dung bị đánh dấu và hạn chế hiển thị, đang chờ xem xét" aria-label="Nội dung bị đánh dấu, hạn chế hiển thị">
+                <i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Bị đánh dấu</span>
+              </span>
+              <span class="post__moderation-status post__moderation-status--hidden"
+                    th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'HIDDEN'}"
+                    title="Bài viết đã bị ẩn sau khi kiểm duyệt" aria-label="Bài viết đã bị ẩn">
+                <i class="bi bi-eye-slash" aria-hidden="true"></i><span>Đã ẩn</span>
+              </span>
+              <span class="post__moderation-status post__moderation-status--pending"
+                    th:if="${mainModerationStatus == null}"
+                    title="Chưa nhận được trạng thái kiểm duyệt; không xác nhận bài viết là công khai" aria-label="Chưa xác minh trạng thái kiểm duyệt">
+                <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Chưa xác minh</span>
+              </span>
+              <span class="post__visibility" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'PUBLIC'}"
+                    title="Công khai" aria-label="Bài viết công khai"><i class="bi bi-globe2" aria-hidden="true"></i></span>
+              <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'FRIENDS'}"
+                    title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"><i class="bi bi-people-fill" aria-hidden="true"></i></span>
+              <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'ONLY_ME'}"
+                    title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
               <div class="post__menu">
                 <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                         aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
