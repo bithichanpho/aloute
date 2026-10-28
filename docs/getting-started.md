@@ -21,7 +21,6 @@ Giao diện được dựng bằng Thymeleaf, CSS và JavaScript ngay trong dự
 - [Kiểm thử](#kiểm-thử)
 - [Vận hành và xử lý lỗi](#vận-hành-và-xử-lý-lỗi)
 - [Tài liệu liên quan](#tài-liệu-liên-quan)
-- [Quy trình đóng góp](#quy-trình-đóng-góp)
 
 ## Chức năng
 
@@ -643,14 +642,3 @@ Thêm thay đổi schema bằng migration mới trong `src/main/resources/db/mig
 - [Ghi nhận kiểm tra tích hợp các phân hệ](../docs/quality/zip-merge-20261028.md).
 
 Các ghi nhận trong `docs/quality` và báo cáo audit gắn với thời điểm/commit cụ thể. Khi chúng khác với cấu hình hiện hành, đối chiếu mã nguồn, migration, `.env.example` và log của lần chạy đang kiểm tra.
-
-## Quy trình đóng góp
-
-1. Tạo nhánh riêng từ phiên bản đang phát triển và mô tả rõ chức năng cần thay đổi.
-2. Giữ quyền sở hữu nghiệp vụ trong phân hệ tương ứng; ưu tiên API công khai của phân hệ khi phối hợp, tham khảo tài liệu kiến trúc.
-3. Nếu thay đổi dữ liệu, thêm migration và kiểm tra trên PostgreSQL thử. Nếu sửa quyền truy cập, thử cả trường hợp bị từ chối.
-4. Chạy kiểm thử phù hợp, ghi lại kết quả và các lỗi còn tồn tại. Với giao diện, kiểm tra màn hình nhỏ và cả nền sáng/tối; với cuộc gọi, cần kiểm tra hai thiết bị thật.
-5. Kiểm tra diff không có khóa, `.env`, JSON Admin, chứng chỉ riêng, dữ liệu người dùng hoặc file sinh tạm.
-6. Mở pull request vào `main`, nêu thay đổi, cách kiểm tra và điều kiện tích hợp cần thiết. Chỉ hợp nhất sau khi đã xem kết quả kiểm tra của đúng phiên bản.
-
-Nếu dùng AI hỗ trợ, đọc và kiểm chứng mã/hình sinh ra, lưu prompt cùng phần chỉnh sửa cần thiết; không gửi thông tin xác thực hoặc dữ liệu người dùng thật vào prompt.
