@@ -17,6 +17,23 @@ import java.util.Locale;
 
 class FeatureTemplateTest {
     @Test
+    void ownerAndVisitorRenderTheSameGoogleAvatarInProfileAndPosts() throws Exception {
+        String avatar = com.aloute.common.util.AvatarUtil.resolve("https://lh3.googleusercontent.com/a/example=s96-c");
+        var profile = new UserProfileDto(); profile.setId(6L); profile.setUsername("casotoichoi"); profile.setAvatarUrl(avatar);
+        var post = savedPostFixtures().get(0); post.setUserId(6L); post.setUsername("casotoichoi"); post.setUserAvatarUrl(avatar);
+        for (boolean owner : java.util.List.of(true, false)) {
+            String html = render("profile/view", false, "profile", java.util.Map.of(
+                    "profileUser", profile, "isOwnProfile", owner, "privateContentRestricted", false,
+                    "userPosts", java.util.List.of(post), "mediaPosts", java.util.List.of(), "repostPosts", java.util.List.of()));
+            for (String imageClass : java.util.List.of("profile-cover__avatar", "post__avatar")) {
+                assertTrue(java.util.regex.Pattern.compile("<img[^>]*class=\"" + imageClass
+                        + "\"[^>]*src=\"" + java.util.regex.Pattern.quote(avatar) + "\"").matcher(html).find(), imageClass);
+            }
+            java.nio.file.Files.writeString(java.nio.file.Path.of("target/profile-avatar-" + (owner ? "owner" : "visitor") + ".html"), html);
+        }
+    }
+
+    @Test
     void joinedCommunityAndDiscoveryUseSeparateSectionsAndShowTheEmptyState() throws Exception {
         var joined = new com.aloute.dto.response.CommunityResponse();
         joined.setId(7L); joined.setName("Nhóm đã tham gia"); joined.setPrivacy("PUBLIC"); joined.setMember(true);

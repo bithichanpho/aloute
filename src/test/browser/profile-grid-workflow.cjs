@@ -6,7 +6,8 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
   const before = process.argv[2] === 'before';
   const source = before ? require('node:child_process').execFileSync('git', ['show', 'HEAD:src/main/resources/static/js/app.js'])
     : fs.readFileSync('src/main/resources/static/js/app.js');
-  const template = fs.readFileSync('target/profile-media-template.html', 'utf8');
+  const template = fs.readFileSync('target/profile-media-template.html', 'utf8').replace('</head>',
+    '<style>[data-load-posts]:not([data-profile-reposts-loader]){margin-top:3600px}</style></head>');
   const browser = await chromium.launch({ executablePath: process.env.ALOUTE_BROWSER_EXECUTABLE, headless: true });
   const fragment = (id, quoted = false) => `<div class="post${quoted ? ' post--repost' : ''}" data-post-id="${id}">
     <a href="/people/author.name" class="post__username">author.name</a><img class="post__image" src="/images/avatar_default.png">
@@ -51,7 +52,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       assert.equal(await page.locator('#profileGridWrap').isVisible(), true);
       assert.equal(await page.locator('#profileGrid [data-goto-post="reposted-photo"]').count(), 0);
       await page.locator('[data-profile-view="list"]').click();
-      await page.locator('#profilePosts [data-load-posts]').click();
+      await page.locator('#profilePosts [data-load-posts]').scrollIntoViewIfNeeded();
       await page.locator('#profilePosts .post[data-post-id="own-next"]').waitFor();
       assert.equal(await tiles.count(), 2);
       assert.equal(await page.locator('#profileGrid [data-goto-post="quote-next"]').count(), 0);

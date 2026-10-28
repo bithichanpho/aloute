@@ -10,6 +10,7 @@ public final class AvatarUtil {
         if (avatarUrl == null || avatarUrl.isBlank()) {
             return DEFAULT_AVATAR;
         }
+        if (GoogleAvatarUrl.isSupported(avatarUrl)) return GoogleAvatarUrl.localUrl(avatarUrl);
         return CloudinaryUrlUtil.avatar(avatarUrl);
     }
 }

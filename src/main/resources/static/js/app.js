@@ -1723,11 +1723,19 @@ window.Aloute = (function () {
     let debounceTimer = null;
     let requestToken = 0;
     let searchController = null;
+    let searchLoader = null;
+
+    pageDisposers.add(() => {
+      clearTimeout(debounceTimer);
+      cancelSearch();
+    });
 
     function cancelSearch() {
       requestToken++;
       if (searchController) searchController.abort();
       searchController = null;
+      if (searchLoader) searchLoader.dispose();
+      searchLoader = null;
     }
 
     loadDiscoverSections();
@@ -1843,6 +1851,7 @@ window.Aloute = (function () {
     const SEARCH_PAGE_SIZE = 20;
 
     async function runSearch(page = 0, append = false) {
+      if (append && searchController) return;
       cancelSearch();
       showResults();
 
@@ -1854,6 +1863,12 @@ window.Aloute = (function () {
       // A fresh query revalidates visibility; cached items only preserve pagination state.
       const controller = new AbortController();
       searchController = controller;
+      const moreButton = append ? resultsEl.querySelector('.search-load-more') : null;
+      if (moreButton) {
+        moreButton.disabled = true;
+        moreButton.textContent = 'Đang tải bài viết…';
+        moreButton.setAttribute('aria-busy', 'true');
+      }
 
       if (!append) resultsEl.innerHTML = searchSkeleton(tab);
       try {
@@ -1867,9 +1882,18 @@ window.Aloute = (function () {
         const data = await api(url, { signal: controller.signal });
         if (token !== requestToken) return;
         const batch = browsingPosts ? (data?.items || []) : (data || []);
+        if (browsingPosts && data?.hasMore && (!data.nextCursor || data.nextCursor === cursor)) {
+          throw new Error('Chưa tải được các bài tiếp theo. Vui lòng thử lại.');
+        }
         const existing = append && cache[tab][key] ? cache[tab][key].items : [];
+        const seen = new Set(existing.map(item => item.id));
+        const added = batch.filter(item => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
         cache[tab][key] = {
-          items: existing.concat(batch),
+          items: existing.concat(added),
           page,
           hasMore: browsingPosts ? Boolean(data?.hasMore && data?.nextCursor) : batch.length === SEARCH_PAGE_SIZE,
           nextCursor: browsingPosts ? data?.nextCursor : null
@@ -1880,17 +1904,25 @@ window.Aloute = (function () {
           const removable = keys.find(cachedKey => cachedKey !== key);
           if (removable !== undefined) delete cache[tab][removable];
         }
-        paint(tab, cache[tab][key].items, cache[tab][key].hasMore, page);
+        paint(tab, cache[tab][key].items, cache[tab][key].hasMore, page, append, added);
       } catch (err) {
         if (controller.signal.aborted || token !== requestToken) return;
-        resultsEl.innerHTML = discoverEmpty('Không tải được kết quả', err.message);
+        if (append && moreButton) {
+          moreButton.textContent = 'Thử tải lại';
+          toast(err.message, true);
+        } else resultsEl.innerHTML = discoverEmpty('Không tải được kết quả', err.message);
       } finally {
+        if (moreButton) {
+          moreButton.disabled = false;
+          moreButton.removeAttribute('aria-busy');
+        }
         if (searchController === controller) searchController = null;
       }
     }
 
-    function paint(tab, items, hasMore, page) {
-      if (!items.length) {
+    function paint(tab, items, hasMore, page, append = false, added = []) {
+      resultsEl.querySelector('.search-load-more')?.remove();
+      if (!items.length && !hasMore) {
         resultsEl.innerHTML = tab === 'posts'
           ? (keyword
             ? discoverEmpty('Chưa có bài viết nào khớp', 'Thử một từ khóa ngắn hơn hoặc kiểm tra lại chính tả.')
@@ -1900,7 +1932,9 @@ window.Aloute = (function () {
       }
 
       if (tab === 'posts') {
-        resultsEl.innerHTML = '<div class="feed-panel">' + items.map(renderSearchPostCard).join('') + '</div>';
+        const panel = append ? resultsEl.querySelector('.feed-panel') : null;
+        if (panel) panel.insertAdjacentHTML('beforeend', added.map(renderSearchPostCard).join(''));
+        else resultsEl.innerHTML = '<div class="feed-panel">' + items.map(renderSearchPostCard).join('') + '</div>';
         initFeedInteractions();
         formatInitialCounts();
       } else {
@@ -1917,6 +1951,13 @@ window.Aloute = (function () {
         more.textContent = 'Xem thêm kết quả';
         more.addEventListener('click', () => runSearch(page + 1, true));
         resultsEl.appendChild(more);
+        if (tab === 'posts') searchLoader = watchLoadMore(more, () => runSearch(page + 1, true));
+      } else if (tab === 'posts' && items.length) {
+        const end = document.createElement('p');
+        end.className = 'post-pagination__status';
+        end.setAttribute('role', 'status');
+        end.textContent = 'Bạn đã xem hết bài viết.';
+        resultsEl.appendChild(end);
       }
     }
   }
@@ -2239,6 +2280,7 @@ window.Aloute = (function () {
     const list = document.getElementById('profilePosts');
     const repostsWrap = document.getElementById('profileRepostsWrap');
     const repostsLoader = repostsWrap ? repostsWrap.querySelector('[data-profile-reposts-loader]') : null;
+    const timelineLoader = list ? list.querySelector('[data-load-posts]') : null;
     if (!buttons.length || !list) return;
 
     function apply(view) {
@@ -2246,6 +2288,13 @@ window.Aloute = (function () {
       if (gridWrap) gridWrap.hidden = view !== 'grid';
       if (repostsWrap) repostsWrap.hidden = view !== 'reposts';
       list.hidden = view !== 'list';
+      if (timelineLoader && gridWrap) {
+        const end = timelineLoader.nextElementSibling;
+        const parent = view === 'grid' ? gridWrap : list;
+        parent.appendChild(timelineLoader);
+        if (end?.matches('[data-posts-end]')) parent.appendChild(end);
+        timelineLoader.dispatchEvent(new Event('aloute:loader-visible'));
+      }
       if (view === 'reposts' && repostsLoader && repostsLoader.dataset.profileInitial === '1') {
         repostsLoader.dataset.profileInitial = '0';
         setTimeout(() => repostsLoader.click(), 0);
@@ -2679,7 +2728,8 @@ window.Aloute = (function () {
       // Repost fragments contain the original author's post, not this profile's own media.
       if (!post.closest('#profilePosts') || post.classList.contains('post--repost')) return;
       const img = post.querySelector('.post__image');
-      if (!img) return;
+      const video = post.querySelector('.post__video');
+      if (!img && !video) return;
       const likeCount = post.querySelector('.action--like span');
       const replyCount = post.querySelector('.action--reply span');
       const tile = document.createElement('button');
@@ -2687,7 +2737,8 @@ window.Aloute = (function () {
       tile.className = 'grid-tile';
       tile.dataset.gotoPost = post.dataset.postId || '';
       tile.innerHTML =
-        '<img class="grid-tile__image" loading="lazy" decoding="async" alt="" src="' + escapeHtml(img.getAttribute('src')) + '">' +
+        (img ? '<img class="grid-tile__image" loading="lazy" decoding="async" alt="" src="' + escapeHtml(img.getAttribute('src')) + '">'
+          : '<video class="grid-tile__image" muted preload="metadata" src="' + escapeHtml(video.getAttribute('src')) + '"></video>') +
         '<span class="grid-tile__overlay">' +
           '<span class="grid-tile__stat"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.2s-7.2-4.4-9-9C1.7 7.6 3.2 5 6 4.6c1.9-.3 3.4.6 4.3 1.9.6-.9 1.5-1.6 2.5-1.9 2.9-.6 4.9 2 4.5 4.6-.7 4.7-9.3 10.5-9.3 10.5Z"/></svg><span>' +
             escapeHtml(likeCount ? likeCount.textContent : '0') + '</span></span>' +
@@ -2696,49 +2747,135 @@ window.Aloute = (function () {
         '</span>';
       grid.appendChild(tile);
     });
+    const empty = document.querySelector('[data-profile-media-empty]');
+    if (empty) empty.hidden = grid.children.length > 0;
+  }
+
+  const pageDisposers = new Set();
+
+  function watchLoadMore(button, load) {
+    let disposed = false;
+    let frame = 0;
+    // Start while roughly two screens remain, giving the request time to finish before
+    // the reader reaches the last post. Keep the same one-request-at-a-time guard.
+    const preloadDistance = Math.max(1200, Math.min(2400, Math.round(window.innerHeight * 2)));
+    const observer = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting) && !disposed && button.isConnected
+          && !button.disabled && !button.hidden && !button.closest('[hidden]')) load();
+    }, { rootMargin: '0px 0px ' + preloadDistance + 'px 0px' }) : null;
+    function refresh() {
+      if (disposed) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (disposed || !button.isConnected) return;
+        // Re-observe even if a short/filtered page leaves the loader in the viewport.
+        observer?.unobserve(button);
+        if (!button.hidden) observer?.observe(button);
+      });
+    }
+    function dispose() {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      button.removeEventListener('aloute:loader-visible', refresh);
+      pageDisposers.delete(dispose);
+    }
+    function pause() {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    }
+    button.addEventListener('aloute:loader-visible', refresh);
+    pageDisposers.add(dispose);
+    refresh();
+    return { refresh, pause, dispose };
   }
 
   function initPostPagination() {
     document.querySelectorAll('[data-load-posts]').forEach(button => {
       if (button.dataset.cursorBound === '1') return;
       button.dataset.cursorBound = '1';
-      button.addEventListener('click', async () => {
-        if (button.dataset.exhausted === '1') return;
+      const container = button.parentElement;
+      const isTimeline = container.id === 'profilePosts';
+      const end = document.createElement('p');
+      end.className = 'post-pagination__status';
+      end.dataset.postsEnd = '';
+      end.setAttribute('role', 'status');
+      end.textContent = 'Bạn đã xem hết bài viết.';
+      end.hidden = true;
+      button.after(end);
+      const label = button.textContent;
+      const controller = new AbortController();
+      pageDisposers.add(() => controller.abort());
+      let loading = false;
+      // Community fragments still use numbered pages rather than cursor headers.
+      const numbered = button.hasAttribute('data-next-page');
+      const watcher = numbered ? null : watchLoadMore(button, load);
+      button.addEventListener('click', load);
+
+      async function load() {
+        if (loading || !button.isConnected || button.dataset.exhausted === '1') return;
+        loading = true;
         button.disabled = true;
+        button.textContent = 'Đang tải bài viết…';
+        button.setAttribute('aria-busy', 'true');
+        let succeeded = false;
         try {
           const url = new URL(button.dataset.url, window.location.origin);
-          if (button.dataset.cursor) url.searchParams.set('cursor', button.dataset.cursor);
+          const previousCursor = button.dataset.cursor || '';
+          if (numbered) url.searchParams.set('page', button.dataset.nextPage);
+          else if (previousCursor) url.searchParams.set('cursor', previousCursor);
           else url.searchParams.delete('cursor');
-          const response = await fetchWithSessionRefresh(url, { credentials: 'same-origin' });
+          const response = await fetchWithSessionRefresh(url, { credentials: 'same-origin', signal: controller.signal });
           if (!response.ok || response.redirected) throw new Error('Không tải được bài viết');
           const fragment = document.createElement('template');
           fragment.innerHTML = await response.text();
-          const posts = fragment.content.querySelectorAll('.post');
-          const count = posts.length;
-          posts.forEach(post => button.before(post));
+          if (!button.isConnected || controller.signal.aborted) return;
+          const candidates = Array.from(fragment.content.querySelectorAll('.post'));
+          const nextCursor = response.headers.get('X-Next-Cursor') || '';
+          const hasMore = numbered ? candidates.length === 20 : response.headers.get('X-Has-More') === 'true';
+          if (hasMore && !numbered && (!nextCursor || nextCursor === previousCursor)) {
+            throw new Error('Chưa tải được các bài tiếp theo. Vui lòng thử lại.');
+          }
+          const seen = new Set(Array.from(container.querySelectorAll('.post'), post => post.dataset.postId));
+          const posts = candidates.filter(post => {
+            if (post.dataset.postId && seen.has(post.dataset.postId)) return false;
+            if (post.dataset.postId) seen.add(post.dataset.postId);
+            return true;
+          });
+          posts.forEach(post => container.insertBefore(post, button.parentElement === container ? button : null));
           if (button.hasAttribute('data-profile-reposts-loader')) {
             const emptyState = document.querySelector('[data-profile-reposts-empty]');
             const hasAnyReposts = Boolean(button.parentElement && button.parentElement.querySelector('.post'));
             if (emptyState) emptyState.hidden = hasAnyReposts || response.headers.get('X-Has-More') === 'true';
           }
-          if (button.closest('#profilePosts')) appendGridTiles(posts);
-          button.dataset.cursor = response.headers.get('X-Next-Cursor') || '';
-          const hasMore = response.headers.get('X-Has-More') === 'true';
+          if (isTimeline) appendGridTiles(posts);
+          button.dataset.cursor = nextCursor;
+          if (numbered) button.dataset.nextPage = String(Number(button.dataset.nextPage) + 1);
           button.hidden = !hasMore;
-          if (!hasMore) button.dataset.exhausted = '1';
+          if (!hasMore) {
+            button.dataset.exhausted = '1';
+            end.hidden = false;
+            watcher?.dispose();
+          }
           initFeedInteractions();
           formatInitialCounts();
-          if (!count && hasMore) {
-            // The current keyset window may contain only invisible posts; the advanced cursor
-            // is still valid, so the next explicit click continues instead of looping on page=0.
-            button.hidden = false;
-          }
+          succeeded = true;
         } catch (err) {
-          toast(err.message, true);
+          if (!controller.signal.aborted && button.isConnected) {
+            button.textContent = 'Thử tải lại';
+            watcher?.pause();
+            toast(err.message, true);
+          }
         } finally {
+          loading = false;
           button.disabled = false;
+          button.removeAttribute('aria-busy');
+          if (succeeded) {
+            button.textContent = label;
+            watcher?.refresh();
+          }
         }
-      });
+      }
     });
   }
 
@@ -3526,6 +3663,8 @@ window.Aloute = (function () {
   }
 
   function runPageInitializers() {
+    for (const dispose of pageDisposers) dispose();
+    pageDisposers.clear();
     consumeFlashToast();
     initAvatarFallback();
     initFeedInteractions();
