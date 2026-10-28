@@ -37,8 +37,9 @@ class UploadPurposeTest {
     }
 
     @Test
-    void refusesRawFilesUntilDedicatedFileModerationExists() {
-        assertFalse(UploadPurpose.CHAT.allows(UploadContentValidator.DetectedType.FILE));
+    void allowsRawFilesOnlyForChatAttachments() {
+        assertTrue(UploadPurpose.CHAT.allows(UploadContentValidator.DetectedType.FILE));
+        assertFalse(UploadPurpose.POST.allows(UploadContentValidator.DetectedType.FILE));
         assertFalse(UploadPurpose.GENERAL.allows(UploadContentValidator.DetectedType.FILE));
         assertFalse(UploadPurpose.AVATAR.allows(UploadContentValidator.DetectedType.VIDEO));
         assertTrue(UploadPurpose.CHAT.allows(UploadContentValidator.DetectedType.VIDEO));
@@ -74,10 +75,35 @@ class UploadPurposeTest {
     }
 
     @Test
-    void storageLayerRejectsRawEvenIfCalledOutsideTheController() {
+    void storageUploadsChatFilesAsRawAndKeepsFilenameAndSize() throws Exception {
+        Cloudinary cloudinary = mock(Cloudinary.class);
+        com.cloudinary.Uploader uploader = mock(com.cloudinary.Uploader.class);
+        org.mockito.Mockito.when(cloudinary.uploader()).thenReturn(uploader);
+        var file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "report.pdf", "application/pdf", new byte[] {1, 2, 3});
+        org.mockito.Mockito.when(uploader.upload(org.mockito.ArgumentMatchers.any(byte[].class),
+                org.mockito.ArgumentMatchers.anyMap())).thenReturn(java.util.Map.of(
+                        "secure_url", "https://res.cloudinary.com/actual-cloud/raw/upload/v1/aloute/chat/report.pdf",
+                        "public_id", "aloute/chat/report.pdf"));
+        ImageStorageService storage = new ImageStorageService(cloudinary, "actual-cloud");
+
+        var uploaded = storage.uploadMedia(file, UploadContentValidator.DetectedType.FILE, UploadPurpose.CHAT);
+
+        assertEquals("raw", uploaded.get("resourceType"));
+        assertEquals("report.pdf", uploaded.get("name"));
+        assertEquals("3", uploaded.get("size"));
+        org.mockito.Mockito.verify(uploader).upload(org.mockito.ArgumentMatchers.any(byte[].class),
+                org.mockito.ArgumentMatchers.argThat(options ->
+                        "raw".equals(options.get("resource_type"))
+                                && "aloute/chat".equals(options.get("folder"))
+                                && options.get("public_id").toString().endsWith(".pdf")));
+    }
+
+    @Test
+    void storageLayerRejectsRawOutsideChat() {
         ImageStorageService storage = new ImageStorageService(mock(Cloudinary.class), "actual-cloud");
         assertThrows(IOException.class, () -> storage.uploadMedia(
-                null, UploadContentValidator.DetectedType.FILE, UploadPurpose.CHAT));
+                null, UploadContentValidator.DetectedType.FILE, UploadPurpose.POST));
         assertThrows(IOException.class, () -> storage.uploadMedia(
                 null, UploadContentValidator.DetectedType.VIDEO, UploadPurpose.AVATAR));
     }

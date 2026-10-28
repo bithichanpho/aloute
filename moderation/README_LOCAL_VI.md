@@ -42,4 +42,4 @@ Invoke-RestMethod http://127.0.0.1:8000/healthz
 
 `status=ok` xác nhận FastAPI/FFmpeg đang sẵn sàng; không chứng minh OpenAI credentials/quota hoặc CDN đang hoạt động. Trường `upstreamConsecutiveFailures`/`upstreamLastStatus` hỗ trợ chẩn đoán sau những request thực tế. Kiểm tra log `target/local-moderation.log` ở máy mình nếu lỗi; không chia sẻ thông tin bí mật.
 
-Ảnh/video chat phải được duyệt trước khi trả URL gửi tin nhắn. Bài đăng giữ luồng PENDING/worker riêng. PDF/ZIP/DOC và raw files hiện bị `UploadPurpose` từ chối vì chưa có bộ quét tệp chuyên dụng; helper không mở rộng danh sách cho phép hoặc bỏ kiểm tra sở hữu media.
+Ảnh/video chat phải được duyệt trước khi trả URL gửi tin nhắn. Bài đăng giữ luồng PENDING/worker riêng. Tệp đính kèm chat (PDF/ZIP/DOC và các định dạng khác) được gửi qua `/api/upload/file`, tối đa 1 MB mỗi tệp, không quét nội dung. Backend vẫn kiểm tra đăng nhập và quyền sở hữu tệp khi gửi tin nhắn.

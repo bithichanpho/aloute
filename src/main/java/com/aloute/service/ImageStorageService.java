@@ -65,15 +65,13 @@ public class ImageStorageService {
 
     public Map<String, String> uploadMedia(
             MultipartFile file, UploadContentValidator.DetectedType detectedType, UploadPurpose purpose) throws IOException {
-        // Defense in depth: never upload a raw/document asset until a dedicated scanner exists,
-        // even if a future controller accidentally forgets the purpose/type check.
         if (purpose == null || detectedType == null || !purpose.allows(detectedType)) {
             throw new IOException("Upload purpose/type combination is not supported");
         }
         String resourceType = switch (detectedType) {
             case IMAGE -> "image";
             case VIDEO -> "video";
-            case FILE -> throw new IOException("Raw/file uploads are disabled until a dedicated scanner is configured");
+            case FILE -> "raw";
         };
 
         String folder = purpose.cloudinaryFolder();
@@ -88,6 +86,14 @@ public class ImageStorageService {
                                 true,
                                 "unique_filename",
                                 true));
+        if (detectedType == UploadContentValidator.DetectedType.FILE) {
+            // Byte uploads have no filename; retain the extension on raw downloads.
+            String name = file.getOriginalFilename();
+            String extension = name != null && name.lastIndexOf('.') >= 0
+                    ? name.substring(name.lastIndexOf('.')) : "";
+            if (!extension.matches("\\.[A-Za-z0-9]{1,20}")) extension = "";
+            options.put("public_id", java.util.UUID.randomUUID() + extension);
+        }
 
         Map<?, ?> uploadResult;
         Path tempPath = null;

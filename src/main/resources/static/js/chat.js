@@ -102,6 +102,7 @@
   let captureMode = null;
 
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+  const MAX_FILE_UPLOAD_BYTES = 1024 * 1024;
 
   Aloute.onRealtimeReady(function (client) { stompClientRef = client; });
 
@@ -984,7 +985,8 @@
     const form = new FormData();
     form.append('file', blob, fileName);
     form.append('purpose', 'chat');
-    const result = await Aloute.api('/api/upload/media', { method: 'POST', body: form });
+    const endpoint = mediaType === 'file' ? '/api/upload/file' : '/api/upload/media';
+    const result = await Aloute.api(endpoint, { method: 'POST', body: form });
     return { url: result.url, type: mediaType || result.type, name: result.name || fileName, size: Number(result.size || blob.size || 0) };
   }
 
@@ -1055,8 +1057,8 @@
 
   async function handleFileSelection(file) {
     if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      Aloute.toast('Tệp không được vượt quá 50MB.', true);
+    if (file.size > MAX_FILE_UPLOAD_BYTES) {
+      Aloute.toast('Tệp không được vượt quá 1MB.', true);
       return;
     }
     try {

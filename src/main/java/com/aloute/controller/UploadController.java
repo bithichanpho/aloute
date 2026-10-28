@@ -33,6 +33,7 @@ import java.util.Map;
 public class UploadController {
     private static final Logger log = LoggerFactory.getLogger(UploadController.class);
     private static final long MAX_IMAGE_SIZE_BYTES = 15L * 1024 * 1024;
+    private static final long MAX_CHAT_FILE_SIZE_BYTES = 1024L * 1024;
 
     private final UploadContentValidator contentValidator = new UploadContentValidator();
     private final ImageStorageService imageStorageService;
@@ -66,9 +67,28 @@ public class UploadController {
         UploadPurpose purpose = UploadPurpose.fromRequest(requestedPurpose);
         if (!purpose.allows(detectedType)) {
             throw new BadRequestException(
-                    "Mục đích " + purpose.value() + " chỉ hỗ trợ ảnh/video đã kiểm duyệt; tài liệu/raw chưa được hỗ trợ");
+                    "Loại tệp không được hỗ trợ cho mục đích " + purpose.value());
         }
 
+        return storeMedia(file, detectedType, purpose, uploaderId);
+    }
+
+    @PostMapping("/file")
+    public ApiResponse<Map<String, String>> uploadChatFile(
+            Authentication authentication,
+            @RequestParam("file") MultipartFile file) {
+        Long uploaderId = requireAuthenticated(authentication);
+        uploadLimits.assertAllowed(uploaderId);
+        validateFile(file, maxUploadSize.toBytes(), "Tệp vượt quá dung lượng cho phép (" + maxUploadSize + ")");
+        return storeMedia(file, UploadContentValidator.DetectedType.FILE, UploadPurpose.CHAT, uploaderId);
+    }
+
+    private ApiResponse<Map<String, String>> storeMedia(
+            MultipartFile file, UploadContentValidator.DetectedType detectedType,
+            UploadPurpose purpose, Long uploaderId) {
+        if (detectedType == UploadContentValidator.DetectedType.FILE) {
+            validateFile(file, MAX_CHAT_FILE_SIZE_BYTES, "Tệp không được vượt quá 1MB.");
+        }
         final Map<String, String> uploaded;
         try {
             uploaded = imageStorageService.uploadMedia(file, detectedType, purpose);
@@ -90,7 +110,7 @@ public class UploadController {
 
         // Posts are checked by PostModerationWorker after the post becomes PENDING. Other public
         // purposes are checked before this endpoint returns a usable URL; upload timeout is capped.
-        if (purpose != UploadPurpose.POST) {
+        if (purpose != UploadPurpose.POST && detectedType != UploadContentValidator.DetectedType.FILE) {
             uploadModeration.requireApproved(uploaded,
                     detectedType == UploadContentValidator.DetectedType.IMAGE ? "image" : "video",
                     purpose.value());
