@@ -10,6 +10,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       const page = await browser.newPage({ viewport: { width, height: 950 } });
       const errors = [], calls = [];
       let failFeed = false;
+      let longNextAttempts = 0;
       page.on('pageerror', error => errors.push(error.message));
       const post = (id, content) => ({ id, userId: 6, username: 'minhan', content,
         moderationStatus: 'APPROVED', visibility: 'PUBLIC', timeAgo: '1 giờ trước', reactionCounts: {} });
@@ -31,6 +32,12 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
           if (path === '/api/search/posts') {
             const q = url.searchParams.get('q');
             assert.ok(q, 'Empty Posts tab must use the cursor feed');
+            if (q === 'long') {
+              if (url.searchParams.get('page') === '0') return reply(Array.from({length:20}, (_,i) => post('long-' + i, 'Bài tìm kiếm ' + i)));
+              longNextAttempts++;
+              if (longNextAttempts === 1) return route.fulfill({status:503,contentType:'application/json',body:'{"success":false,"message":"Mạng tạm lỗi"}'});
+              return reply([post('long-next','Bài tìm kiếm cuối')]);
+            }
             return reply(q === 'missing' ? [] : [post('match', 'Kết quả ' + q)]);
           }
           if (path === '/api/search/users') return reply([{ id: 9, username: 'matched', fullName: 'Người ' + url.searchParams.get('q') }]);
@@ -54,7 +61,6 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       await posts.click();
       await page.locator('.post[data-post-id="page-one"]').waitFor();
       assert.equal(await discover.isVisible(), false);
-      await page.locator('.search-load-more').click();
       await page.locator('.post[data-post-id="page-two"]').waitFor();
       assert.equal(await results.locator('.post').count(), 2);
       assert.equal(await page.locator('.search-load-more').count(), 0);
@@ -91,6 +97,19 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       await page.waitForFunction(() => document.querySelector('#searchResults').textContent.includes('Không tải được kết quả'));
       failFeed = false; await users.click(); await posts.click();
       await page.locator('.post[data-post-id="page-one"]').waitFor();
+      await input.fill('long'); await input.press('Enter');
+      await page.locator('.post[data-post-id="long-19"]').waitFor();
+      await page.locator('.post[data-post-id="long-0"]').evaluate(node => { node.dataset.clientMarker = 'preserved'; });
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.getByRole('button',{name:'Thử tải lại',exact:true}).waitFor();
+      assert.equal(await results.locator('.post').count(),20);
+      assert.equal(longNextAttempts,1);
+      await page.getByRole('button',{name:'Thử tải lại',exact:true}).click();
+      await page.locator('.post[data-post-id="long-next"]').waitFor();
+      assert.equal(await results.locator('.post').count(),21);
+      assert.equal(await page.locator('.post[data-post-id="long-0"]').getAttribute('data-client-marker'),'preserved');
+      assert.equal(await page.locator('.search-load-more').count(),0);
+      assert.equal(longNextAttempts,2);
       assert.deepEqual(errors, []);
       await page.close();
       console.log(JSON.stringify({ width, theme, passed: true, requests: calls.length }));

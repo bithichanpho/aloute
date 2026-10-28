@@ -29,7 +29,7 @@
   </noscript>
   <link rel="stylesheet" th:href="@{/css/features.css?v=20261028-admin-accounts-fullwidth-v3}">
   <!-- theme.css luôn nằm cuối: design tokens, dark/light, shell 3 cột, bottom nav -->
-  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261028-admin-accounts-fullwidth-v3}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261028-infinite-posts-v1}">
 </head>
 <body th:classappend="${activeNav == 'chat'} ? 'page-chat' : (${activeNav == 'feed'} ? 'page-feed' : '')" th:attr="data-current-user-id=${currentUser != null ? currentUser.id : ''},data-current-user-avatar=${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}">
 
@@ -92,9 +92,9 @@
 
 <script th:src="@{/vendor/bootstrap/bootstrap.bundle.min.js}"></script>
 <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}"></script>
-<script th:src="@{/js/app.js?v=20261028-community-discover-v1}"></script>
+<script th:src="@{/js/app.js?v=20261028-infinite-posts-v1}"></script>
 <script th:src="@{/js/calls.js?v=20261028-global-calls-v2}"></script>
-<script th:src="@{/js/friends-panel.js?v=20261028-popup-calls-v1}"></script>
+<script th:src="@{/js/friends-panel.js?v=20261028-popup-images-v2}"></script>
 <script th:src="@{/js/features.js?v=20261028-account-actions-v2}"></script>
 <script th:src="@{/js/firebase-client.js?v=20261026-google-registration-flow-v1}"></script>
 <script th:if="${pageKind == 'admin-accounts'}" th:src="@{/js/admin-accounts.js?v=20261028-role-hierarchy-v1}"></script>

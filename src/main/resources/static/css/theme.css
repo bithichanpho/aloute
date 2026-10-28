@@ -1508,6 +1508,10 @@ body.page-feed .compose-page { margin-block-end: 24px !important; }
   border-radius: 16px 16px 5px 16px;
 }
 .friends-chat-window__bubble a { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.post-pagination__status { padding: 20px 12px; color: var(--text-secondary); text-align: center; font-size: 14px; }
+.friends-chat-window__attachment { display: block; width: fit-content; max-width: 100%; overflow: hidden; border-radius: 12px; background: #000; }
+.friends-chat-window__attachment img { display: block; max-width: 100%; height: auto; object-fit: contain; }
+.friends-chat-window__attachment.has-error { padding: 9px 12px; background: var(--bg-hover); color: var(--text-primary); }
 .friends-chat-window__call { min-width: 0; max-width: 100%; }
 .friends-chat-window__call .bubble__call { width: min(280px, 100%); }
 #videoCallModal { z-index: 1300; }

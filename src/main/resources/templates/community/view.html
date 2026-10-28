@@ -114,7 +114,7 @@
 
     <th:block th:replace="~{fragments/post-cards :: postCards}"></th:block>
 
-    <button type="button" class="btn-outline" data-load-posts
+    <button type="button" class="btn-outline" data-load-posts data-next-page="1"
             th:if="${#lists.size(posts) == 20}"
             th:attr="data-url=@{'/api/communities/' + ${community.id} + '/posts/fragment'}">Tải thêm</button>
   </div>

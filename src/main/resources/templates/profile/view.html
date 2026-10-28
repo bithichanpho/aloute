@@ -276,10 +276,10 @@
   </div>
 
   <div class="profile-grid-wrap" id="profileGridWrap" th:if="${profileUser != null and !privateContentRestricted}" hidden>
-    <div th:if="${#lists.isEmpty(mediaPosts)}" class="empty-state">
+    <div th:if="${#lists.isEmpty(mediaPosts)}" class="empty-state" data-profile-media-empty>
       Chưa có bài viết nào kèm ảnh hoặc video.
     </div>
-    <div class="profile-grid" id="profileGrid" th:if="${not #lists.isEmpty(mediaPosts)}">
+    <div class="profile-grid" id="profileGrid">
       <button type="button" class="grid-tile" th:each="post : ${mediaPosts}"
               th:attr="data-goto-post=${post.id}">
         <img class="grid-tile__image" th:if="${post.imageUrl != null}" th:src="${post.imageUrl}" alt="" loading="lazy" decoding="async">
