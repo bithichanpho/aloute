@@ -7,7 +7,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
   const source = before ? require('node:child_process').execFileSync('git', ['show', 'HEAD:src/main/resources/static/js/app.js'])
     : fs.readFileSync('src/main/resources/static/js/app.js');
   const template = fs.readFileSync('target/profile-media-template.html', 'utf8').replace('</head>',
-    '<style>[data-load-posts]:not([data-profile-reposts-loader]){margin-top:3600px}</style></head>');
+    '<style>[data-load-posts]:not([data-profile-reposts-loader]){margin-top:1400px}</style></head>');
   const browser = await chromium.launch({ executablePath: process.env.ALOUTE_BROWSER_EXECUTABLE, headless: true });
   const fragment = (id, quoted = false) => `<div class="post${quoted ? ' post--repost' : ''}" data-post-id="${id}">
     <a href="/people/author.name" class="post__username">author.name</a><img class="post__image" src="/images/avatar_default.png">
