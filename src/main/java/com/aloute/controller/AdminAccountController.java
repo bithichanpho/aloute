@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Validated
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'HOST')")
 @RequestMapping("/api/admin/accounts")
 public class AdminAccountController {
     private final AdminAccountService accounts;

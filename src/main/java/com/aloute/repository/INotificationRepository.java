@@ -20,6 +20,8 @@ public interface INotificationRepository extends JpaRepository<Notification, Lon
 
     long countByReceiverIdAndReadFalse(Long receiverId);
 
+    long countByReceiverIdAndReadFalseAndTypeIn(Long receiverId, Collection<String> types);
+
     @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
     @org.springframework.transaction.annotation.Transactional
     @org.springframework.data.jpa.repository.Query(

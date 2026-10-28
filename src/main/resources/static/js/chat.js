@@ -101,44 +101,9 @@
   let recordedChunks = [];
   let captureMode = null;
 
-  let peerConnection = null;
-  let localStream = null;
-  let activeCallId = null;
-  let callPeerUserId = null;
-  let pendingIncomingOffer = null;
-  let activeCallType = 'video';
-  let outgoingCallTimer = null;
-  let incomingCallTimer = null;
-  const CALL_TIMEOUT_MS = 30 * 1000;
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-  const fallbackIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
-  let cachedIceServers = null;
-  let cachedIceServersUntil = 0;
 
-  async function getRtcConfiguration() {
-    if (cachedIceServers && cachedIceServersUntil > Date.now()) {
-      return { iceServers: cachedIceServers };
-    }
-    try {
-      const servers = await Aloute.api('/api/webrtc/ice-servers');
-      if (Array.isArray(servers) && servers.some(server => server && server.urls)) {
-        cachedIceServers = servers;
-        // Credential TTL is server-controlled; refresh locally after five minutes.
-        cachedIceServersUntil = Date.now() + 5 * 60 * 1000;
-        return { iceServers: cachedIceServers };
-      }
-    } catch (error) {
-      console.warn('Could not load ICE server configuration; falling back to STUN only.');
-    }
-    cachedIceServers = fallbackIceServers;
-    cachedIceServersUntil = Date.now() + 30 * 1000;
-    return { iceServers: fallbackIceServers };
-  }
-  const pendingIceCandidates = [];
-
-  Aloute.onRealtimeReady(function (client) {
-    stompClientRef = client;
-  });
+  Aloute.onRealtimeReady(function (client) { stompClientRef = client; });
 
   function openChatUtility(title) {
     if (!chatUtilityModal || !chatUtilityContent) return false;
@@ -246,8 +211,8 @@
       }));
 
       const notes = onlineStates
-        .filter(x => x.online && x.friend && x.friend.bio && String(x.friend.bio).trim())
-        .slice(0, 8);
+        .filter(x => x.online && x.friend)
+        .slice(0, 20);
 
       chatNotesTrack.innerHTML = '';
       if (!notes.length) {
@@ -263,7 +228,7 @@
         item.setAttribute('role', 'listitem');
         item.dataset.userId = String(friend.id);
         item.dataset.username = friend.username || '';
-        item.title = friend.bio || '';
+        item.title = friend.fullName || friend.username || '';
 
         const avatar = document.createElement('span');
         avatar.className = 'chat-note__avatar-wrap';
@@ -271,16 +236,11 @@
         const img = avatar.querySelector('img');
         img.src = friend.avatarUrl || '/images/avatar_default.png';
 
-        const bubble = document.createElement('span');
-        bubble.className = 'chat-note__bubble';
-        bubble.textContent = String(friend.bio).trim();
-
         const name = document.createElement('span');
         name.className = 'chat-note__name';
         name.textContent = friend.fullName || friend.username || 'Bạn bè';
 
         item.appendChild(avatar);
-        item.appendChild(bubble);
         item.appendChild(name);
         item.addEventListener('click', () => {
           const target = chatList && chatList.querySelector('.chat-item[data-user-id="' + String(friend.id) + '"]');
@@ -493,7 +453,7 @@
       name: fullName,
       avatar: avatar,
       online: online,
-      profileUrl: '/profile/' + encodeURIComponent(userId),
+      profileUrl: item.dataset.username ? '/people/' + encodeURIComponent(item.dataset.username) : '/profile/' + encodeURIComponent(userId),
       isGroup: false
     });
     const videoBtn = document.getElementById('videoCallBtn');
@@ -772,6 +732,8 @@
     return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   }
 
+  const formatCallDuration = seconds => window.AlouteCalls.formatDuration(seconds);
+
   function maybeInsertDateDivider(sentAt) {
     const messageList = document.getElementById('messageList');
     const key = dateKeyOf(sentAt);
@@ -848,26 +810,8 @@
       contentHtml += '<div class="msg-row__sender-name">' + senderNameHtml + '</div>';
     }
 
-    let specialCallHtml = '';
-    if (isCallMessage) {
-      const isAudioCall = String(msg.callType || '').toLowerCase() === 'audio';
-      const isMissed = String(msg.callStatus || '').toUpperCase() === 'MISSED';
-      const callLabel = isAudioCall ? 'Cuộc gọi thoại' : 'Cuộc gọi video';
-      const title = isMissed
-        ? (mine ? (callLabel + ' · Không được trả lời') : (callLabel + ' nhỡ'))
-        : callLabel;
-      const icon = isAudioCall
-        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.29-1.29a2 2 0 0 1 2.11-.45c.84.29 1.71.5 2.61.62A2 2 0 0 1 22 16.92Z"/></svg>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m23 7-7 5 7 5V7Z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>';
-      const callAgainTarget = isMissed ? (mine ? msg.receiverId : msg.senderId) : null;
-      const callAgainAttrs = callAgainTarget
-        ? ' data-call-again="' + Aloute.escapeHtml(String(callAgainTarget)) + '" data-call-type="' + (isAudioCall ? 'audio' : 'video') + '" role="button" tabindex="0" aria-label="Gọi lại" title="Nhấn để gọi lại"'
-        : '';
-      specialCallHtml = '<div class="bubble__call ' + (isMissed ? 'bubble__call--missed' : 'bubble__call--completed') + '"' + callAgainAttrs + '>' +
-        '<span class="bubble__call-icon">' + icon + '</span>' +
-        '<span class="bubble__call-body"><strong>' + title + '</strong><span>' + formatClock(sentAt) + (isMissed ? ' · ' + (mine ? 'Không có phản hồi' : 'Cuộc gọi đến không được trả lời') : ' · Đã kết thúc') + '</span></span>' +
-      '</div>';
-    }
+    const specialCallHtml = isCallMessage
+      ? window.AlouteCalls.renderMessage(msg, mine, formatClock(sentAt)) : '';
 
     let mediaHtml = '';
     if (msg.mediaUrl && !isCallMessage) {
@@ -982,301 +926,7 @@
     }
   }
 
-  const videoCallModal = document.getElementById('videoCallModal');
-  const remoteVideo = document.getElementById('remoteVideo');
-  const localVideo = document.getElementById('localVideo');
-  const videoCallTitle = document.getElementById('videoCallTitle');
-  const videoCallStatus = document.getElementById('videoCallStatus');
-  const answerCallBtn = document.getElementById('answerCallBtn');
-  const hangupCallBtn = document.getElementById('hangupCallBtn');
-  const closeVideoCallBtn = document.getElementById('closeVideoCallBtn');
-  const toggleMicBtn = document.getElementById('toggleMicBtn');
-  const toggleCameraBtn = document.getElementById('toggleCameraBtn');
-  const rejectCallBtn = document.getElementById('rejectCallBtn');
-  const incomingCallProfile = document.getElementById('incomingCallProfile');
-  const incomingCallAvatar = document.getElementById('incomingCallAvatar');
-  let ringtoneCtx = null;
-  let ringtoneTimer = null;
-
-  function startRingtone() {
-    stopRingtone();
-    try {
-      ringtoneCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const beep = () => {
-        if (!ringtoneCtx) return;
-        const osc = ringtoneCtx.createOscillator();
-        const gain = ringtoneCtx.createGain();
-        osc.frequency.value = 880; gain.gain.value = 0.035;
-        osc.connect(gain); gain.connect(ringtoneCtx.destination);
-        osc.start(); osc.stop(ringtoneCtx.currentTime + 0.18);
-      };
-      beep(); ringtoneTimer = setInterval(beep, 900);
-    } catch (_) {}
-  }
-
-  function stopRingtone() {
-    if (ringtoneTimer) clearInterval(ringtoneTimer);
-    ringtoneTimer = null;
-    if (ringtoneCtx) { ringtoneCtx.close().catch(() => {}); ringtoneCtx = null; }
-  }
-
-  function signalCall(destination, payload) {
-    if (!stompClientRef) throw new Error('WebSocket chưa sẵn sàng');
-    stompClientRef.send(destination, {}, JSON.stringify(payload));
-  }
-
-  async function createPeerConnection(targetUserId, callId) {
-    if (peerConnection) peerConnection.close();
-    const rtcConfig = await getRtcConfiguration();
-    peerConnection = new RTCPeerConnection(rtcConfig);
-    activeCallId = callId || activeCallId || ('call-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
-    peerConnection.onicecandidate = e => {
-      if (e.candidate) signalCall('/app/call.ice', { targetUserId: Number(targetUserId), callId: activeCallId, candidate: e.candidate });
-    };
-    peerConnection.ontrack = e => { if (remoteVideo && e.streams[0]) remoteVideo.srcObject = e.streams[0]; };
-    peerConnection.onconnectionstatechange = () => {
-      if (!peerConnection) return;
-      const state = peerConnection.connectionState;
-      videoCallStatus.textContent = state === 'connected' ? 'Đang gọi' : ('Trạng thái: ' + state);
-      if (state === 'failed' || state === 'closed' || state === 'disconnected') {
-        closeVideoCall(false);
-      }
-    };
-    if (localStream) localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
-    return peerConnection;
-  }
-
-  async function ensureLocalStream(callType) {
-    if (localStream) return localStream;
-    localStream = await navigator.mediaDevices.getUserMedia({ video: callType !== 'audio', audio: true });
-    if (localVideo) localVideo.srcObject = localStream;
-    return localStream;
-  }
-
-  function clearCallTimers() {
-    if (outgoingCallTimer) clearTimeout(outgoingCallTimer);
-    if (incomingCallTimer) clearTimeout(incomingCallTimer);
-    outgoingCallTimer = null;
-    incomingCallTimer = null;
-  }
-
-  function configureCallUi(callType, name, avatar, incoming) {
-    activeCallType = callType === 'audio' ? 'audio' : 'video';
-    const isAudio = activeCallType === 'audio';
-    const videoGrid = document.getElementById('videoCallGrid');
-    const audioProfile = document.getElementById('audioCallProfile');
-    const audioAvatar = document.getElementById('audioCallAvatar');
-    const audioName = document.getElementById('audioCallName');
-    if (videoGrid) videoGrid.hidden = isAudio;
-    if (audioProfile) audioProfile.hidden = !isAudio;
-    if (audioAvatar && avatar) audioAvatar.src = avatar;
-    if (audioName) audioName.textContent = name || (incoming ? 'Cuộc gọi đến' : 'Cuộc gọi thoại');
-    if (videoCallTitle) {
-      videoCallTitle.textContent = incoming
-        ? ('Cuộc gọi ' + (isAudio ? 'thoại' : 'video') + ' đến · ' + (name || 'Bạn bè'))
-        : ('Gọi ' + (isAudio ? 'thoại' : 'video') + ' · ' + (name || 'Bạn bè'));
-    }
-    if (toggleCameraBtn) toggleCameraBtn.hidden = isAudio;
-  }
-
-  async function startCall(targetUserId, targetName, callType) {
-    if (!targetUserId || String(targetUserId) === String(currentUserId)) return;
-    if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) {
-      Aloute.toast('Trình duyệt không hỗ trợ gọi', true);
-      return;
-    }
-    try {
-      clearCallTimers();
-      const callId = 'call-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-      activeCallId = callId;
-      callPeerUserId = Number(targetUserId);
-      configureCallUi(callType, targetName, null, false);
-      videoCallStatus.textContent = 'Đang mở ' + (callType === 'audio' ? 'micro...' : 'camera...');
-      answerCallBtn.hidden = true;
-      if (rejectCallBtn) rejectCallBtn.hidden = true;
-      if (incomingCallProfile) incomingCallProfile.hidden = true;
-      videoCallModal.hidden = false;
-
-      await ensureLocalStream(activeCallType);
-      await createPeerConnection(targetUserId, callId);
-      const offer = await peerConnection.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: callType !== 'audio' });
-      await peerConnection.setLocalDescription(offer);
-      signalCall('/app/call.offer', {
-        targetUserId: Number(targetUserId),
-        callId,
-        callerUserId: Number(currentUserId),
-        sdp: offer,
-        callType: activeCallType
-      });
-      videoCallStatus.textContent = 'Đang chờ ' + (targetName || 'người nhận') + ' chấp nhận...';
-
-      outgoingCallTimer = setTimeout(() => {
-        if (activeCallId !== callId) return;
-        closeVideoCall(false);
-        Aloute.toast('Không có phản hồi sau 30 giây. Cuộc gọi đã kết thúc và được ghi nhận là cuộc gọi nhỡ.');
-      }, CALL_TIMEOUT_MS + 500);
-    } catch (err) {
-      clearCallTimers();
-      closeVideoCall(false);
-      Aloute.toast('Không thể bắt đầu cuộc gọi: ' + (err.message || 'lỗi camera/micro'), true);
-    }
-  }
-
-  async function acceptIncomingCall() {
-    stopRingtone();
-    if (!pendingIncomingOffer) return;
-    const offer = pendingIncomingOffer;
-    pendingIncomingOffer = null;
-    clearCallTimers();
-    try {
-      videoCallStatus.textContent = 'Đang kết nối...';
-      activeCallType = offer.callType === 'audio' ? 'audio' : 'video';
-      await ensureLocalStream(activeCallType);
-      activeCallId = offer.callId;
-      callPeerUserId = Number(offer.fromUserId);
-      await createPeerConnection(offer.fromUserId, offer.callId);
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      signalCall('/app/call.answer', { targetUserId: Number(offer.fromUserId), callId: offer.callId, callerUserId: Number(offer.callerUserId || offer.fromUserId), callType: activeCallType, sdp: answer });
-      answerCallBtn.hidden = true;
-      videoCallStatus.textContent = 'Đang gọi';
-    } catch (err) {
-      Aloute.toast('Không thể nhận cuộc gọi: ' + (err.message || ''), true);
-      closeVideoCall(false);
-    }
-  }
-
-  function rejectIncomingCall() {
-    if (pendingIncomingOffer) {
-      try { signalCall('/app/call.hangup', { targetUserId: Number(pendingIncomingOffer.fromUserId), callId: pendingIncomingOffer.callId, callerUserId: Number(pendingIncomingOffer.callerUserId || pendingIncomingOffer.fromUserId), callType: pendingIncomingOffer.callType || 'video', reason: 'rejected', missed: false }); } catch (_) {}
-    }
-    stopRingtone();
-    pendingIncomingOffer = null;
-    closeVideoCall(false);
-  }
-
-  async function handleCallSignal(signal) {
-    if (!signal || !signal.type) return;
-    if (signal.type === 'offer') {
-      clearCallTimers();
-      pendingIncomingOffer = signal;
-      const fromName = signal.fromFullName || signal.fromUsername || 'Bạn bè';
-      const fromAvatar = signal.fromAvatarUrl || '/images/avatar_default.png';
-      activeCallType = signal.callType === 'audio' ? 'audio' : 'video';
-      configureCallUi(activeCallType, fromName, fromAvatar, true);
-      videoCallStatus.textContent = 'Cuộc gọi ' + (activeCallType === 'audio' ? 'thoại' : 'video') + ' đến...';
-      answerCallBtn.hidden = false;
-      if (rejectCallBtn) rejectCallBtn.hidden = false;
-      if (incomingCallProfile) incomingCallProfile.hidden = false;
-      if (incomingCallAvatar) incomingCallAvatar.src = fromAvatar;
-      videoCallModal.hidden = false;
-      startRingtone();
-
-      incomingCallTimer = setTimeout(() => {
-        if (!pendingIncomingOffer || pendingIncomingOffer.callId !== signal.callId) return;
-        pendingIncomingOffer = null;
-        closeVideoCall(false);
-      }, CALL_TIMEOUT_MS + 500);
-      return;
-    }
-    if (signal.type === 'answer') {
-      if (!peerConnection || signal.callId !== activeCallId) return;
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-      clearCallTimers();
-      videoCallStatus.textContent = 'Đang kết nối...';
-      return;
-    }
-    if (signal.type === 'ice') {
-      if (!peerConnection || signal.callId !== activeCallId || !signal.candidate) return;
-      try { await peerConnection.addIceCandidate(signal.candidate); } catch (_) {}
-      return;
-    }
-    if (signal.type === 'hangup') {
-      const reason = signal.reason || '';
-      closeVideoCall(false);
-      if (reason === 'timeout') {
-        Aloute.toast('Cuộc gọi nhỡ: bạn không nhận cuộc gọi trong 30 giây.');
-      } else if (reason === 'rejected') {
-        Aloute.toast('Cuộc gọi đã bị từ chối.');
-      } else if (reason === 'receiver-timeout') {
-        Aloute.toast('Không có phản hồi trong 30 giây.');
-      } else {
-        Aloute.toast('Cuộc gọi đã kết thúc');
-      }
-    }
-  }
-
-  function closeVideoCall(sendHangup) {
-    stopRingtone();
-    clearCallTimers();
-    const peerUserId = callPeerUserId || activeUserId;
-    if (sendHangup && peerUserId && activeCallId && stompClientRef) {
-      try { signalCall('/app/call.hangup', {
-        targetUserId: Number(peerUserId),
-        callId: activeCallId,
-        callerUserId: Number(currentUserId),
-        callType: activeCallType,
-        reason: 'cancelled',
-        missed: false
-      }); } catch (_) {}
-    }
-    if (peerConnection) { peerConnection.ontrack = null; peerConnection.close(); }
-    peerConnection = null;
-    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-    if (localVideo) localVideo.srcObject = null;
-    if (remoteVideo) remoteVideo.srcObject = null;
-    activeCallId = null;
-    callPeerUserId = null;
-    pendingIncomingOffer = null;
-    if (answerCallBtn) answerCallBtn.hidden = true;
-    if (rejectCallBtn) rejectCallBtn.hidden = true;
-    if (incomingCallProfile) incomingCallProfile.hidden = true;
-    if (videoCallModal) videoCallModal.hidden = true;
-  }
-
-  function retryCallFromCard(card) {
-    if (!card) return;
-    const targetId = Number(card.dataset.callAgain);
-    if (!targetId) return;
-    const targetName = document.getElementById('chatThreadName')?.textContent || 'Bạn bè';
-    startCall(targetId, targetName, card.dataset.callType === 'audio' ? 'audio' : 'video');
-  }
-
-  document.addEventListener('click', e => {
-    const card = e.target.closest('[data-call-again]');
-    if (!card) return;
-    retryCallFromCard(card);
-  });
-
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const card = e.target.closest('[data-call-again]');
-    if (!card) return;
-    e.preventDefault();
-    retryCallFromCard(card);
-  });
-
-  document.addEventListener('aloute:call-signal', e => { handleCallSignal(e.detail).catch(() => closeVideoCall(false)); });
-  if (answerCallBtn) answerCallBtn.addEventListener('click', acceptIncomingCall);
-  if (rejectCallBtn) rejectCallBtn.addEventListener('click', rejectIncomingCall);
-  if (hangupCallBtn) hangupCallBtn.addEventListener('click', () => closeVideoCall(true));
-  if (closeVideoCallBtn) closeVideoCallBtn.addEventListener('click', () => closeVideoCall(true));
-  if (videoCallModal) videoCallModal.addEventListener('click', e => { if (e.target === videoCallModal) closeVideoCall(true); });
-  if (toggleMicBtn) toggleMicBtn.addEventListener('click', () => {
-    if (!localStream) return;
-    const track = localStream.getAudioTracks()[0];
-    if (!track) return;
-    track.enabled = !track.enabled;
-    toggleMicBtn.textContent = track.enabled ? '🎙 Tắt mic' : '🔇 Bật mic';
-  });
-  if (toggleCameraBtn) toggleCameraBtn.addEventListener('click', () => {
-    if (!localStream) return;
-    const track = localStream.getVideoTracks()[0];
-    if (!track) return;
-    track.enabled = !track.enabled;
-    toggleCameraBtn.textContent = track.enabled ? '📹 Tắt camera' : '🚫 Bật camera';
-  });
+  const startCall = (...args) => window.AlouteCalls.start(...args);
 
   function notifyTyping() {
     if (!stompClientRef || !activeUserId) return;
@@ -1614,7 +1264,12 @@
     }
     if (String(msg.messageType || '').toUpperCase() === 'CALL') {
       const callText = String(msg.callType || '').toLowerCase() === 'audio' ? 'Cuộc gọi thoại' : 'Cuộc gọi video';
-      preview.textContent = String(msg.callStatus || '').toUpperCase() === 'MISSED' ? '☎ ' + callText + ' nhỡ' : '☎ ' + callText;
+      const callStatus = String(msg.callStatus || '').toUpperCase();
+      if (callStatus === 'MISSED') preview.textContent = '☎ ' + callText + ' nhỡ';
+      else if (callStatus === 'ENDED') preview.textContent = '☎ ' + callText + (msg.callDurationSeconds == null ? '' : ' · ' + formatCallDuration(msg.callDurationSeconds));
+      else if (callStatus === 'DECLINED') preview.textContent = '☎ ' + callText + ' bị từ chối';
+      else if (callStatus === 'CANCELLED') preview.textContent = '☎ ' + callText + ' đã hủy';
+      else preview.textContent = '☎ ' + callText;
     } else {
       preview.textContent = msg.mediaType
         ? (String(msg.mediaType).toLowerCase() === 'video' ? '🎥 Video' : String(msg.mediaType).toLowerCase() === 'file' ? '📎 ' + (msg.mediaName || 'Tệp') : '📷 Ảnh')

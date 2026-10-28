@@ -21,7 +21,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 class NotificationServiceDeliveryTest {
     @Test
-    void doesNotDuplicateRealtimeDeliveryWhenReliablePushFails() {
+    void realtimeNotificationIsStillEmittedWhenReliablePushFails() {
         Fixture fixture = fixture();
         org.mockito.Mockito.doThrow(new IllegalStateException("temporary FCM outage"))
                 .when(fixture.push)
@@ -29,21 +29,22 @@ class NotificationServiceDeliveryTest {
 
         assertThrows(IllegalStateException.class, () -> fixture.service.deliverQueued(fixture.event));
 
-        verify(fixture.messaging, never())
-                .convertAndSendToUser(any(String.class), any(String.class), any());
+        verify(fixture.messaging)
+                .convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
+        org.junit.jupiter.api.Assertions.assertNotNull(fixture.event.getInAppDeliveredAt());
     }
 
     @Test
-    void emitsRealtimeNotificationOnlyAfterReliablePushIsAccepted() {
+    void emitsRealtimeNotificationBeforeReliablePushAttempt() {
         Fixture fixture = fixture();
 
         fixture.service.deliverQueued(fixture.event);
 
-        var order = inOrder(fixture.push, fixture.messaging);
-        order.verify(fixture.push)
-                .sendNotificationToUserReliably(2L, "ALOUTE", "alice liked", "/activity");
+        var order = inOrder(fixture.messaging, fixture.push);
         order.verify(fixture.messaging)
                 .convertAndSendToUser(eq("bob"), eq("/queue/notifications"), any());
+        order.verify(fixture.push)
+                .sendNotificationToUserReliably(2L, "ALOUTE", "alice liked", "/activity");
     }
 
     private Fixture fixture() {

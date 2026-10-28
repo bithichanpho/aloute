@@ -36,11 +36,11 @@ public class AuthTokenService {
         return sha256Hex(token.trim());
     }
 
-    /** Generates a uniformly distributed, zero-padded numeric code such as {@code 048213}. */
+    /** Generates a uniformly distributed, zero-padded numeric code such as {@code 004821}. */
     public String generateOtp() {
         int bound = (int) Math.pow(10, OTP_LENGTH);
 
-        return String.format("%0" + OTP_LENGTH + "d", secureRandom.nextInt(bound));
+        return String.format(Locale.ROOT, "%0" + OTP_LENGTH + "d", secureRandom.nextInt(bound));
     }
 
     /** True when the value is exactly {@value #OTP_LENGTH} ASCII digits. */
@@ -49,7 +49,7 @@ public class AuthTokenService {
     }
 
     /**
-     * Hashes an OTP together with the email it was issued to. A six-digit code has only a million
+     * Hashes an OTP together with the email it was issued to. A six-digit code has one million
      * possible values, so binding it to the email keeps equal codes of different people from
      * producing equal hashes (the verification column is unique) and means a stored hash is only
      * useful together with the matching email address.

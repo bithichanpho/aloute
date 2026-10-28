@@ -35,6 +35,7 @@ const {chromium} = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
         if (url.pathname === '/register') return route.fulfill({contentType:'text/html; charset=utf-8',body:html,
           headers:{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'"}});
         if (url.pathname === '/verify-email') return route.fulfill({contentType:'text/html',body:'<!doctype html><p>OTP route fixture</p>'});
+      if (url.pathname === '/api/auth/register/username-availability') return route.fulfill({contentType:'application/json',body:'{"success":true,"data":{"available":true}}'});
         if (url.pathname === '/api/auth/register') {
           requests.push({body:route.request().postDataJSON(),csrf:route.request().headers()['x-xsrf-token']});
           await new Promise(resolve => setTimeout(resolve,150));

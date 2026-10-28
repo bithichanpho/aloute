@@ -1,6 +1,7 @@
 package com.aloute.notifications.application;
 
 import com.aloute.common.exception.ResourceNotFoundException;
+import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.dto.response.NotificationCursorPage;
 import com.aloute.dto.response.NotificationResponse;
 import com.aloute.model.entity.Notification;
@@ -17,6 +18,11 @@ import com.aloute.social.api.ProfileVisibility;
 import com.aloute.users.api.UserDirectory;
 
 public class NotificationApplicationService implements Notifications {
+    private static final java.util.Set<String> REMOVED_FEATURE_NOTIFICATION_TYPES =
+            java.util.Set.of("FOLLOW_REQUEST");
+    private static final java.util.Set<String> SYSTEM_NOTIFICATION_TYPES = java.util.Set.of(
+            "POST_MODERATION_FLAGGED", "POST_MODERATION_HIDDEN", "FOLLOW_REQUEST_ACCEPTED",
+            "COMMUNITY_POST_REPORTED", "CONTENT_REPORT_OPENED");
     private static final Logger log = LoggerFactory.getLogger(NotificationApplicationService.class);
 
     private final ProfileVisibility access;
@@ -50,17 +56,86 @@ public class NotificationApplicationService implements Notifications {
     }
 
     /**
+     * Queues an acceptance notice for the original requester. The follow decision has already
+     * been authorized by SocialFeatureService, so this path must not silently drop the event
+     * because profile visibility checks are asymmetric for private accounts.
+     */
+    @Override
+    public void notifyFollowRequestAccepted(Long requesterId, Long acceptedByUserId) {
+        if (requesterId == null || acceptedByUserId == null || requesterId.equals(acceptedByUserId)) return;
+        String acceptedBy = userDirectory.username(acceptedByUserId).orElse("Người dùng");
+        try {
+            enqueueDurably(requesterId, acceptedByUserId, "FOLLOW_REQUEST_ACCEPTED",
+                    String.valueOf(acceptedByUserId), acceptedBy + " đã chấp nhận yêu cầu theo dõi của bạn");
+        } catch (RuntimeException failure) {
+            log.warn("Could not queue follow-request acceptance notice (requesterId={}, acceptedById={}, cause={})",
+                    requesterId, acceptedByUserId, failure.getClass().getSimpleName());
+            throw failure;
+        }
+    }
+
+    /**
+     * Queues a system-generated moderation notice. The author's own id is used as the outbox
+     * sender to preserve the existing non-null schema; the system type bypasses actor visibility
+     * checks and is rendered as the exact message rather than "username + message".
+     */
+    @Override
+    public void notifyPostModerationResult(
+            Long authorId, String postId, com.aloute.model.document.ModerationStatus status) {
+        if (authorId == null || postId == null || postId.isBlank() || status == null) return;
+        final String type;
+        final String content;
+        if (status == com.aloute.model.document.ModerationStatus.FLAGGED) {
+            type = "POST_MODERATION_FLAGGED";
+            content = "Moderation đã đánh dấu bài viết. Nếu hệ thống đánh giá thành công, bài viết tiếp tục theo quyền hiển thị bình thường; nếu kiểm duyệt chưa hoàn tất do lỗi, bài viết sẽ tạm bị hạn chế cho đến khi có kết quả hoặc được xem xét bổ sung.";
+        } else if (status == com.aloute.model.document.ModerationStatus.HIDDEN) {
+            type = "POST_MODERATION_HIDDEN";
+            content = "Bài viết của bạn đã bị ẩn sau khi kiểm duyệt vì nội dung không được chấp nhận.";
+        } else {
+            return;
+        }
+        try {
+            enqueueDurably(authorId, authorId, type, postId, content);
+        } catch (RuntimeException failure) {
+            log.warn("Could not queue post moderation notice (postId={}, status={}, cause={})",
+                    postId, status, failure.getClass().getSimpleName());
+            throw failure;
+        }
+    }
+
+    /**
+     * Notifies the responsible community leadership. This is a system notice rather than a
+     * social interaction, so it must not be suppressed by profile-visibility checks.
+     */
+    @Override
+    public void notifyCommunityPostReported(Long receiverId, String postId) {
+        if (receiverId == null || postId == null || postId.isBlank()) return;
+        enqueueDurably(receiverId, receiverId, "COMMUNITY_POST_REPORTED", postId,
+                "Có bài viết trong cộng đồng bị báo cáo. Vui lòng xem xét nội dung.");
+    }
+
+    /** Alerts active system administrators and opens the formal moderation queue on click. */
+    @Override
+    public void notifyAdminCommunityReportOpened(Long receiverId, String reportId) {
+        if (receiverId == null || reportId == null || reportId.isBlank()) return;
+        enqueueDurably(receiverId, receiverId, "CONTENT_REPORT_OPENED", reportId,
+                "Có báo cáo bài viết trong cộng đồng mới cần được kiểm duyệt.");
+    }
+
+    /**
      * Persists a delivery intent instead of calling WebSocket/FCM inline. When invoked from a JPA
      * transaction this write participates in that transaction; otherwise repository.save starts a
      * short transaction of its own. The worker provides retry and idempotency.
      */
     public void notify(
             Long receiverId, Long senderId, String type, String referenceId, String content) {
+        // Follow requests now live in their own navigation page, not in the activity timeline.
+        if ("FOLLOW_REQUEST".equals(type)) return;
         if (receiverId == null || senderId == null || receiverId.equals(senderId)
                 || !access.profileVisible(receiverId, senderId)
                 || !access.profileVisible(senderId, receiverId)) return;
         try {
-            outboxService.enqueue(receiverId, senderId, type, referenceId, content);
+            enqueueDurably(receiverId, senderId, type, referenceId, content);
         } catch (RuntimeException failure) {
             log.warn(
                     "Could not persist notification outbox event (receiverId={}, type={}, cause={})",
@@ -74,6 +149,7 @@ public class NotificationApplicationService implements Notifications {
     public java.util.Map<Long, String> deliveryDirectory(List<NotificationOutboxEvent> events) {
         return userDirectory.usernames(events.stream()
                 .flatMap(event -> java.util.stream.Stream.of(event.getSenderId(), event.getReceiverId()))
+                .filter(java.util.Objects::nonNull)
                 .distinct().toList());
     }
 
@@ -93,9 +169,13 @@ public class NotificationApplicationService implements Notifications {
 
     private void deliverQueued(NotificationOutboxEvent event,
             java.util.function.Supplier<java.util.Map<Long, String>> directory) {
-        if (event.getReceiverId().equals(event.getSenderId())
+        // Old FOLLOW_REQUEST outbox records must not reappear in Activity after this feature moved
+        // to the dedicated Follow Requests page. The outbox worker deletes this event after return.
+        if ("FOLLOW_REQUEST".equals(event.getNotificationType())) return;
+        boolean systemNotice = SYSTEM_NOTIFICATION_TYPES.contains(event.getNotificationType());
+        if (!systemNotice && (event.getReceiverId().equals(event.getSenderId())
                 || !access.profileVisible(event.getReceiverId(), event.getSenderId())
-                || !access.profileVisible(event.getSenderId(), event.getReceiverId())) return;
+                || !access.profileVisible(event.getSenderId(), event.getReceiverId()))) return;
 
         // A queued mention/reaction must not reveal a post after access was revoked.
         // Community review uses the community owner's current manager policy instead.
@@ -106,7 +186,7 @@ public class NotificationApplicationService implements Notifications {
                 && !posts.canReviewCommunityPost(event.getReferenceId(), event.getReceiverId())) return;
 
         var names = directory.get();
-        String actorName = names.getOrDefault(event.getSenderId(), "Ai đó");
+        String actorName = systemNotice ? "" : names.getOrDefault(event.getSenderId(), "Ai đó");
         Notification saved = notificationRepository.findByOutboxEventId(event.getId())
                 .orElseGet(() -> {
                     Notification notification = new Notification();
@@ -115,28 +195,48 @@ public class NotificationApplicationService implements Notifications {
                     notification.setSenderId(event.getSenderId());
                     notification.setType(event.getNotificationType());
                     notification.setReferenceId(event.getReferenceId());
-                    notification.setContent(actorName + " " + event.getContent());
+                    notification.setContent(systemNotice ? event.getContent() : actorName + " " + event.getContent());
                     return notificationRepository.save(notification);
                 });
 
-        // Let transient Firebase failures keep the event in the outbox for retry. The database
-        // notification remains idempotent because it is keyed by outboxEventId. Send the realtime
-        // event only after Firebase accepts the push; otherwise every retry would duplicate the
-        // WebSocket notification for an online receiver.
+        // The SQL notification row is the durable source of truth. Deliver the in-app event first,
+        // independently of Firebase, because an FCM outage must not suppress an online user's
+        // notification. The outbox checkpoint prevents duplicate WebSocket toasts while FCM retries.
+        if (event.getInAppDeliveredAt() == null) {
+            String recipientUsername = names.get(event.getReceiverId());
+            if (recipientUsername != null && !recipientUsername.isBlank()) {
+                messagingTemplate.convertAndSendToUser(
+                        recipientUsername, "/queue/notifications", toResponse(saved));
+                java.time.LocalDateTime deliveredAt = java.time.LocalDateTime.now();
+                event.setInAppDeliveredAt(deliveredAt);
+                outboxService.markInAppDelivered(event.getId(), deliveredAt);
+            }
+        }
+
+        // Keep the event in the durable outbox for transient FCM failures, but never use FCM as
+        // a prerequisite for persisting or showing the in-app notification.
         pushNotificationService.sendNotificationToUserReliably(
                 event.getReceiverId(), "ALOUTE", saved.getContent(), "/activity");
-        java.util.Optional.ofNullable(names.get(event.getReceiverId())).ifPresent(username ->
-                messagingTemplate.convertAndSendToUser(
-                        username, "/queue/notifications", toResponse(saved)));
+    }
+
+    private void enqueueDurably(Long receiverId, Long senderId, String type,
+            String referenceId, String content) {
+        if (TransactionCommitHooks.isExecutingAfterCommitCallback()) {
+            outboxService.enqueueAfterCommit(receiverId, senderId, type, referenceId, content);
+        } else {
+            outboxService.enqueue(receiverId, senderId, type, referenceId, content);
+        }
     }
 
     public List<NotificationResponse> getMyNotifications(Long userId) {
         var notifications = notificationRepository.findByReceiverIdOrderByCreatedAtDesc(
                 userId, org.springframework.data.domain.PageRequest.of(0, 50));
         var visible = access.visibleProfileIds(
-                userId, notifications.stream().map(Notification::getSenderId).toList());
+                userId, notifications.stream().map(Notification::getSenderId)
+                        .filter(java.util.Objects::nonNull).toList());
         return notifications.stream()
-                .filter(n -> visible.contains(n.getSenderId()))
+                .filter(n -> (n.getType() == null || !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType())))
+                .filter(n -> (n.getType() != null && SYSTEM_NOTIFICATION_TYPES.contains(n.getType())) || visible.contains(n.getSenderId()))
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -151,9 +251,11 @@ public class NotificationApplicationService implements Notifications {
         boolean hasMore = notifications.size() > size;
         if (hasMore) notifications = new java.util.ArrayList<>(notifications.subList(0, size));
         var visible = access.visibleProfileIds(
-                userId, notifications.stream().map(Notification::getSenderId).toList());
+                userId, notifications.stream().map(Notification::getSenderId)
+                        .filter(java.util.Objects::nonNull).toList());
         List<NotificationResponse> items = notifications.stream()
-                .filter(n -> visible.contains(n.getSenderId()))
+                .filter(n -> (n.getType() == null || !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType())))
+                .filter(n -> (n.getType() != null && SYSTEM_NOTIFICATION_TYPES.contains(n.getType())) || visible.contains(n.getSenderId()))
                 .map(this::toResponse)
                 .toList();
         Long nextCursor = hasMore && !notifications.isEmpty()
@@ -163,7 +265,10 @@ public class NotificationApplicationService implements Notifications {
     }
 
     public long countUnread(Long userId) {
-        return notificationRepository.countByReceiverIdAndReadFalse(userId);
+        long total = notificationRepository.countByReceiverIdAndReadFalse(userId);
+        long removedFeatureUnread = notificationRepository.countByReceiverIdAndReadFalseAndTypeIn(
+                userId, List.copyOf(REMOVED_FEATURE_NOTIFICATION_TYPES));
+        return Math.max(0L, total - removedFeatureUnread);
     }
 
     public void markAllAsRead(Long userId) {

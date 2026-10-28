@@ -8,3 +8,25 @@ app:
   security:
     rate-limit:
       redis-required: false
+
+# Optional local development: set SPRING_DOCKER_COMPOSE_ENABLED=true to let Spring Boot
+# start Dockerized moderation with the "no-redis" profile from the project root.
+spring:
+  docker:
+    compose:
+      file: moderation/docker-compose.standalone.yml
+      # Keep the moderation container running after stopping/restarting Spring Boot, like Redis.
+      lifecycle-management: start-only
+      # Compose needs the project .env for OPENAI_API_KEY and MODERATION_API_TOKEN interpolation.
+      arguments:
+        - "--env-file=.env"
+      start:
+        command: up
+        # arguments:
+         # - "--build"
+      # Wait for the service's Docker healthcheck before finishing startup.
+      readiness:
+        timeout: 2m
+        tcp:
+          connect-timeout: 3s
+          read-timeout: 3s

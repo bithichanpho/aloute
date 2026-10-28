@@ -1,11 +1,10 @@
 package com.aloute.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
 public class ReactionRequest {
 
-    @NotBlank(message = "Vui lòng chọn cảm xúc")
+    // null expresses removal; non-null values must still be a supported reaction.
     @Pattern(
             regexp = "(?i)LIKE|LOVE|HAHA|WOW|SAD|ANGRY",
             message = "Cảm xúc không hợp lệ")

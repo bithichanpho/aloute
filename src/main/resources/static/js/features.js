@@ -63,12 +63,17 @@
       const content = field(modal, 'Nội dung', 'textarea', post.content); content.maxLength = 2000;
       const label = element('label', 'Ai có thể xem?');
       const select = element('select');
-      [['PUBLIC', 'Công khai'], ['FRIENDS', 'Bạn bè'], ['ONLY_ME', 'Chỉ mình tôi']].forEach(([value, text]) => {
+      [['PUBLIC', 'Công khai'], ['FRIENDS', 'Bạn bè'], ['CLOSE_FRIENDS', 'Bạn thân'], ['ONLY_ME', 'Chỉ mình tôi']].forEach(([value, text]) => {
         const option = element('option', text); option.value = value; select.append(option);
       });
       select.value = post.visibility || 'PUBLIC'; label.append(select); modal.append(label);
       modal.append(button('Lưu thay đổi', async () => {
-        await api('/api/posts/' + id, 'PUT', { content: content.value, imageUrl: post.imageUrl, videoUrl: post.videoUrl, visibility: select.value });
+        if (!content.value.trim() && !post.imageUrl && !post.videoUrl) {
+          Aloute.toast('Bài viết cần có nội dung, hình ảnh hoặc video', true); return;
+        }
+        // Read responses may contain transformed display URLs. The server retains owned originals.
+        await api('/api/posts/' + id, 'PUT', { content: content.value, visibility: select.value });
+        modal.close();
         location.reload();
       }));
     }));
@@ -148,6 +153,7 @@
     document.querySelectorAll('.post[data-post-id]:not([data-features])').forEach(post => {
       post.dataset.features = 'true';
       const id = post.dataset.actionPostId || post.dataset.postId;
+      const saveId = post.dataset.savedPost || id;
       const menu = post.querySelector('.post__menu-list');
 
       // Keep post management inside the top-right overflow menu instead of adding a second toolbar.
@@ -184,7 +190,7 @@
       if (actionRow && !actionRow.querySelector('.action--save')) {
         const saveButton = button('Lưu bài viết', async node => {
           const wasSaved = node.classList.contains('is-saved');
-          await api('/api/posts/' + id + '/saved', wasSaved ? 'DELETE' : 'PUT');
+          await api('/api/posts/' + saveId + '/saved', wasSaved ? 'DELETE' : 'PUT');
           const nextSaved = !wasSaved;
           node.classList.toggle('is-saved', nextSaved);
           node.setAttribute('aria-pressed', String(nextSaved));
@@ -192,12 +198,24 @@
           node.setAttribute('aria-label', label);
           node.title = label;
           Aloute.toast(nextSaved ? 'Đã lưu bài viết' : 'Đã bỏ lưu bài viết');
+          if (!nextSaved && post.hasAttribute('data-saved-post')) {
+            const stream = post.closest('.saved-stream');
+            post.remove();
+            if (stream && !stream.querySelector('.post[data-saved-post]')) {
+              const empty = element('div', null, 'feature-empty');
+              empty.append(element('strong', 'Chưa có bài viết đã lưu'),
+                element('span', 'Những bài bạn lưu sẽ xuất hiện tại đây.'));
+              stream.append(empty);
+            }
+          }
         });
-        saveButton.className = 'action action--save';
+        const initiallySaved = post.hasAttribute('data-saved-post');
+        saveButton.className = 'action action--save' + (initiallySaved ? ' is-saved' : '');
         saveButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-4-6 4V4.75Z"/></svg>';
-        saveButton.setAttribute('aria-label', 'Lưu bài viết');
-        saveButton.setAttribute('aria-pressed', 'false');
-        saveButton.title = 'Lưu bài viết';
+        const saveLabel = initiallySaved ? 'Bỏ lưu bài viết' : 'Lưu bài viết';
+        saveButton.setAttribute('aria-label', saveLabel);
+        saveButton.setAttribute('aria-pressed', String(initiallySaved));
+        saveButton.title = saveLabel;
         actionRow.append(saveButton);
       }
     });
@@ -228,55 +246,92 @@
       comment.append(menu);
     });
     const profile = document.querySelector('[data-profile-user-id]:not([data-features])');
-    const viewingOwnProfile = profile && (
-      profile.dataset.ownProfile === 'true' ||
-      String(profile.dataset.profileUserId || '').trim() === String(document.body.dataset.currentUserId || '').trim()
-    );
-    if (profile && !viewingOwnProfile) {
-      profile.dataset.features = 'true';
-      const id = profile.dataset.profileUserId;
-      profile.append(button('Chặn', async () => {
-        if (!(await AlouteUI.confirm({ title: 'Chặn tài khoản', message: 'Chặn tài khoản này? Hai bạn sẽ không thể xem hồ sơ hoặc liên hệ trực tiếp.', okText: 'Chặn' }))) return;
-        await api('/api/blocks/' + id, 'PUT'); location.href = '/settings';
-      }), button('Báo cáo tài khoản', () => report('USER', id)));
-    }
-    if (profile && viewingOwnProfile) profile.dataset.features = 'true';
+    // The profile template already renders a three-dot action menu and app.js binds its
+    // [data-profile-block] / [data-profile-report] actions. Do not add duplicate buttons to
+    // the profile stats row here.
+    if (profile) profile.dataset.features = 'true';
   }
-  let recentGoogleReauthToken = null;
-  async function securityCredentials(passwordId, codeId) {
-    const values = {
-      password: document.getElementById(passwordId)?.value || '',
-      code: document.getElementById(codeId)?.value || ''
-    };
-    if (values.password.trim()) return values;
-    try {
-      if (recentGoogleReauthToken) values.firebaseIdToken = recentGoogleReauthToken;
-      else {
-        if (!window.AlouteFirebase || typeof window.AlouteFirebase.getGoogleReauthenticationToken !== 'function') {
-          throw new Error('Không thể mở xác minh Google. Hãy nhập mật khẩu hiện tại.');
+  function accountPasswordDialog() {
+    return new Promise(resolve => {
+      const modal = element('dialog', null, 'feature-dialog account-password-dialog');
+      const title = element('h2', 'Xác minh xóa tài khoản');
+      const description = element('p', 'Nhập mật khẩu hiện tại và nhập lại chính xác mật khẩu đó để xác nhận xóa tài khoản. Dữ liệu đã xóa không thể khôi phục.');
+      const form = element('form', null, 'account-password-dialog__form');
+      const password = field(form, 'Mật khẩu hiện tại', 'password');
+      password.autocomplete = 'current-password';
+      password.required = true;
+      password.maxLength = 200;
+      const repeatedPassword = field(form, 'Nhập lại mật khẩu hiện tại', 'password');
+      repeatedPassword.autocomplete = 'off';
+      repeatedPassword.required = true;
+      repeatedPassword.maxLength = 200;
+      const feedback = element('p', null, 'feature-error account-password-dialog__error');
+      feedback.setAttribute('role', 'alert');
+      feedback.hidden = true;
+      const actions = element('div', null, 'feature-actions account-password-dialog__actions');
+      const cancel = element('button', 'Hủy');
+      cancel.type = 'button';
+      const submit = element('button', 'Xác nhận xóa tài khoản');
+      submit.type = 'submit';
+      submit.classList.add('danger');
+      actions.append(cancel, submit);
+      form.append(feedback, actions);
+      modal.append(title, description, form);
+
+      let settled = false;
+      const finish = result => {
+        if (settled) return;
+        settled = true;
+        if (modal.open) modal.close();
+        resolve(result);
+      };
+      cancel.addEventListener('click', () => finish(false));
+      modal.addEventListener('cancel', event => { event.preventDefault(); finish(false); });
+      modal.addEventListener('close', () => modal.remove());
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        feedback.hidden = true;
+        if (!password.value) {
+          feedback.textContent = 'Vui lòng nhập mật khẩu hiện tại.';
+          feedback.hidden = false;
+          password.focus();
+          return;
         }
-        recentGoogleReauthToken = await window.AlouteFirebase.getGoogleReauthenticationToken();
-        values.firebaseIdToken = recentGoogleReauthToken;
-      }
-      return values;
-    } catch (error) {
-      throw new Error(error?.message || 'Hãy nhập mật khẩu hiện tại hoặc xác minh bằng Google.');
-    }
-  }
-  function credentials() { return securityCredentials('securityPassword', 'securityCode'); }
-  function accountCredentials() { return securityCredentials('accountPassword', 'accountCode'); }
-  async function setupTwoFactor() {
-    const setup = await api('/api/account/2fa/setup', 'POST', await credentials());
-    dialog('Thêm vào ứng dụng Authenticator', modal => {
-      modal.append(element('p', 'Nhập khóa này vào ứng dụng Authenticator rồi nhập mã 6 chữ số.'), element('p', setup.secret, 'feature-secret'));
-      const otp = field(modal, 'Mã xác nhận');
-      modal.append(button('Bật 2FA', async () => {
-        const values = await credentials(); values.code = otp.value;
-        const recovery = await api('/api/account/2fa/enable', 'POST', values);
-        modal.replaceChildren(element('h2', 'Lưu mã khôi phục'));
-        recovery.forEach(value => modal.append(element('p', value, 'feature-secret')));
-        modal.append(button('Đã lưu mã', () => location.reload()));
-      }));
+        if (!repeatedPassword.value) {
+          feedback.textContent = 'Vui lòng nhập lại mật khẩu hiện tại để xác nhận.';
+          feedback.hidden = false;
+          repeatedPassword.focus();
+          return;
+        }
+        if (password.value !== repeatedPassword.value) {
+          feedback.textContent = 'Mật khẩu nhập lại không khớp. Vui lòng nhập lại cho chính xác.';
+          feedback.hidden = false;
+          repeatedPassword.focus();
+          repeatedPassword.select();
+          return;
+        }
+
+        submit.disabled = true;
+        cancel.disabled = true;
+        try {
+          await api('/api/account/delete', 'POST', {
+            password: password.value,
+            confirmPassword: repeatedPassword.value
+          });
+          finish(true);
+        } catch (error) {
+          feedback.textContent = error?.message || 'Không thể hoàn tất thao tác. Vui lòng thử lại.';
+          feedback.hidden = false;
+        } finally {
+          if (!settled) {
+            submit.disabled = false;
+            cancel.disabled = false;
+          }
+        }
+      });
+      document.body.append(modal);
+      modal.showModal();
+      password.focus();
     });
   }
   async function review(node, decision) {
@@ -292,19 +347,46 @@
     if (!list || !request || list.querySelector('[data-request-id="' + CSS.escape(String(request.id)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.requestId = request.id;
-    const link = element('a', 'Tài khoản #' + request.followerId); link.href = '/profile/' + encodeURIComponent(request.followerId);
-    const actions = element('span');
+    const link = element('a', null, 'feature-request-account'); link.href = Aloute.profileUrl(request.followerUsername, request.followerId);
+    const avatar = element('img', null, 'follow-request-avatar'); avatar.src = request.followerAvatarUrl || '/images/avatar_default.png'; avatar.alt = 'Ảnh đại diện'; avatar.loading = 'lazy';
+    const identity = element('div', null, 'follow-request-identity');
+    identity.append(element('strong', request.followerFullName?.trim() || request.followerUsername || 'Tài khoản không còn khả dụng'));
+    if (request.followerUsername) identity.append(element('small', '@' + request.followerUsername));
+    link.append(avatar, identity);
+    const actions = element('div', null, 'follow-request-actions'); actions.dataset.followRequestActions = request.id;
     const accept = element('button', 'Chấp nhận'); accept.type = 'button'; accept.dataset.action = 'accept-follow'; accept.dataset.requestId = request.id;
     const reject = element('button', 'Từ chối'); reject.type = 'button'; reject.dataset.action = 'reject-follow'; reject.dataset.requestId = request.id;
+    accept.dataset.followDecision = 'accept'; reject.dataset.followDecision = 'reject';
     actions.append(accept, reject); row.append(link, actions); list.appendChild(row);
+  }
+
+  function refreshRequestEmptyState() {
+    const list = document.getElementById('followRequestList');
+    if (list && !list.querySelector('.feature-list__row, .feature-empty'))
+      list.append(element('div', 'Không có yêu cầu theo dõi đang chờ.', 'feature-empty compact'));
   }
   function appendBlockedAccount(list, block) {
     if (!list || !block || list.querySelector('[data-block-id="' + CSS.escape(String(block.targetId)) + '"]')) return;
     list.querySelector('.feature-empty')?.remove();
     const row = element('div', null, 'feature-list__row'); row.dataset.blockId = block.targetId;
-    const label = element('span', 'Tài khoản #' + block.targetId);
+    const account = element('a', null, 'feature-request-account');
+    account.href = Aloute.profileUrl(block.targetUsername, block.targetId);
+    account.dataset.blockProfile = ''; account.title = 'Bỏ chặn để xem trang cá nhân';
+    const avatar = element('img', null, 'follow-request-avatar');
+    avatar.src = block.targetAvatarUrl || '/images/avatar_default.png'; avatar.alt = 'Ảnh đại diện'; avatar.loading = 'lazy';
+    const identity = element('div', null, 'follow-request-identity');
+    identity.append(element('strong', String(block.targetFullName || '').trim() || block.targetUsername || 'Tài khoản không còn khả dụng'));
+    if (block.targetUsername) identity.append(element('small', '@' + block.targetUsername));
+    account.append(avatar, identity);
+    const actions = element('div', null, 'follow-request-actions');
     const unblock = element('button', 'Bỏ chặn'); unblock.type = 'button'; unblock.dataset.action = 'unblock'; unblock.dataset.userId = block.targetId;
-    row.append(label, unblock); list.appendChild(row);
+    actions.append(unblock); row.append(account, actions); list.appendChild(row);
+  }
+  function showEmptyBlockedState(host) {
+    if (!host) return;
+    const list = host.querySelector('#blockedAccountList');
+    if (list && !list.querySelector('[data-block-id], .feature-empty') && !host.querySelector('[data-action="load-more-blocks"]'))
+      list.append(element('div', 'Bạn chưa chặn tài khoản nào.', 'feature-empty compact'));
   }
   async function loadSocialPage(target, kind) {
     const cursor = target.dataset.cursor || '';
@@ -315,6 +397,7 @@
     });
     target.dataset.cursor = page && page.nextCursor ? page.nextCursor : '';
     if (!page || page.hasMore !== true) target.remove();
+    if (kind === 'blocks') showEmptyBlockedState(document.getElementById('featureContent'));
   }
   function bindFeaturePage() {
     const host = document.getElementById('featureContent');
@@ -343,30 +426,32 @@
       settingsBio.addEventListener('input', updateBioCount);
       updateBioCount();
     }
-    const status = document.getElementById('twoFactorStatus');
-    if (status) api('/api/account/2fa').then(value => {
-      status.textContent = value.enabled ? '2FA đang bật' : '2FA chưa bật';
-      status.classList.toggle('is-enabled', value.enabled);
-    }).catch(error => { status.textContent = error.message; });
     host.addEventListener('click', async event => {
-      const target = event.target.closest('[data-action]'); if (!target) return;
+      if (event.target.closest('[data-block-profile]')) {
+        event.preventDefault(); Aloute.toast('Bạn cần bỏ chặn để xem trang cá nhân này.'); return;
+      }
+      const target = event.target.closest('[data-action]'); if (!target || target.hasAttribute('data-follow-decision')) return;
       const action = target.dataset.action; target.disabled = true;
       try {
         if (action === 'unsave') { await api('/api/posts/' + target.dataset.postId + '/saved', 'DELETE'); target.closest('[data-saved-post]').remove(); }
-        else if (action === 'accept-follow' || action === 'reject-follow') { await api('/api/follow-requests/' + encodeURIComponent(target.dataset.requestId), action === 'accept-follow' ? 'PUT' : 'DELETE'); target.closest('[data-request-id]').remove(); }
-        else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); }
+        else if (action === 'unblock') { await api('/api/blocks/' + target.dataset.userId, 'DELETE'); target.closest('[data-block-id]').remove(); showEmptyBlockedState(host); }
         else if (action === 'load-more-requests') await loadSocialPage(target, 'follow-requests');
         else if (action === 'load-more-blocks') await loadSocialPage(target, 'blocks');
-        else if (action === 'setup-2fa') await setupTwoFactor();
-        else if (action === 'disable-2fa') { await api('/api/account/2fa/disable', 'POST', await credentials()); location.reload(); }
-        else if (action === 'deactivate-account' || action === 'delete-account') {
-          const deleting = action === 'delete-account';
-          if (!(await AlouteUI.confirm({ title: deleting ? 'Xóa tài khoản' : 'Vô hiệu hóa tài khoản', message: deleting ? 'Xóa tài khoản và nội dung? Thao tác này không thể hoàn tác.' : 'Vô hiệu hóa tài khoản?', okText: deleting ? 'Xóa' : 'Vô hiệu hóa' }))) return;
-          await api('/api/account/' + (deleting ? 'delete' : 'deactivate'), 'POST', await accountCredentials()); location.href = '/login';
+        else if (action === 'delete-account') {
+          const confirmed = await AlouteUI.confirm({
+            title: 'Xóa tài khoản',
+            message: 'Bạn có chắc chắn muốn xóa tài khoản? Thông tin hồ sơ sẽ được ẩn danh và dữ liệu liên quan sẽ được dọn dẹp. Thao tác này không thể hoàn tác.',
+            okText: 'Tiếp tục xóa'
+          });
+          if (!confirmed) return;
+          const completed = await accountPasswordDialog();
+          if (completed) location.href = '/login';
         } else if (action === 'review-content') {
           const item = target.closest('[data-review-type]');
-          const content = await api('/api/admin/content/' + item.dataset.reviewType + '/' + encodeURIComponent(item.dataset.reviewId));
-          dialog('Nội dung cần duyệt', modal => { modal.append(element('p', content?.content || content?.username || 'Nội dung đã bị xóa')); if (content?.imageUrl) { const image = element('img'); image.src = content.imageUrl; modal.append(image); } });
+          const reportId = item.dataset.reportId;
+          const reportQuery = reportId ? '?reportId=' + encodeURIComponent(reportId) : '';
+          const content = await api('/api/admin/content/' + item.dataset.reviewType + '/' + encodeURIComponent(item.dataset.reviewId) + reportQuery);
+          dialog('Nội dung cần duyệt', modal => { modal.append(element('p', content?.content || content?.username || content?.name || 'Nội dung đã bị xóa')); if (content?.imageUrl) { const image = element('img'); image.src = content.imageUrl; modal.append(image); } });
         } else if (action.endsWith('-review')) {
           const decisions = { 'approve-review': 'APPROVE', 'hide-review': 'HIDE', 'dismiss-review': 'DISMISS' };
           await review(target.closest('[data-review-type]'), decisions[action]);
@@ -376,6 +461,17 @@
   }
   function initializePage() {
     enhance(); bindFeaturePage();
+    const reportId = new URLSearchParams(location.search).get('reportId');
+    if (reportId) {
+      requestAnimationFrame(() => {
+        const reportRow = document.querySelector('[data-review-type][data-report-id="' + CSS.escape(reportId) + '"]');
+        if (reportRow) {
+          reportRow.classList.add('feature-review--targeted');
+          reportRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          reportRow.focus?.({ preventScroll: true });
+        }
+      });
+    }
     const search = document.getElementById('searchInput');
     const query = new URLSearchParams(location.search).get('q');
     if (search && query) {
@@ -392,6 +488,82 @@
       requestAnimationFrame(() => { scheduled = false; enhance(); });
     }).observe(document.body, { childList: true, subtree: true });
   }
+  document.addEventListener('click', async event => {
+    const button = event.target.closest('[data-follow-decision]');
+    if (!button) return;
+    event.preventDefault();
+    const requestId = button.dataset.requestId;
+    const groups = [...document.querySelectorAll('[data-follow-request-actions]')]
+      .filter(group => group.dataset.followRequestActions === requestId);
+    if (!requestId || groups.some(group => group.dataset.busy === 'true')) return;
+    groups.forEach(group => {
+      group.dataset.busy = 'true';
+      group.querySelectorAll('button').forEach(control => { control.disabled = true; });
+    });
+    const decision = button.dataset.followDecision;
+    let expired = false;
+    try {
+      await api('/api/follow-requests/' + encodeURIComponent(requestId), decision === 'accept' ? 'PUT' : 'DELETE');
+    } catch (error) {
+      if (error.status === 404) expired = true;
+      else {
+        groups.forEach(group => {
+          delete group.dataset.busy;
+          group.querySelectorAll('button').forEach(control => { control.disabled = false; });
+        });
+        Aloute.toast(error.message, true);
+        return;
+      }
+    }
+    requestHintVersions.set(requestId, (requestHintVersions.get(requestId) || 0) + 1);
+    const reload = groups.some(group => group.dataset.followProfile === 'true');
+    const notifications = new Map();
+    groups.forEach(group => {
+      const notification = group.closest('[data-notification-id]');
+      if (notification) notifications.set(notification.dataset.notificationId, notification);
+      const row = group.closest('#followRequestList .feature-list__row');
+      if (row) row.remove();
+      else group.replaceWith(element('span', expired ? 'Yêu cầu không còn hiệu lực' : decision === 'accept' ? 'Đã chấp nhận' : 'Đã từ chối', 'follow-request-result'));
+    });
+    await Promise.allSettled([...notifications].map(async ([id, row]) => {
+      await api('/api/notifications/' + encodeURIComponent(id) + '/read', 'POST');
+      row.classList.remove('notif-item--unread');
+    }));
+    refreshRequestEmptyState();
+    document.dispatchEvent(new CustomEvent('aloute:follow-request-resolved', { detail: { requestId, decision } }));
+    document.dispatchEvent(new Event('aloute:follow-request-updated'));
+    if (reload) location.reload();
+  });
+  const requestHintVersions = new Map();
+  document.addEventListener('aloute:follow-requests-changed', async event => {
+    const payload = event.detail || {};
+    if (String(payload.targetId) !== String(currentUser)) return;
+    if (payload.eventType === 'REQUESTS_SEEN') return;
+    const id = String(payload.followerId) + ':' + String(payload.targetId);
+    const generation = (requestHintVersions.get(id) || 0) + 1;
+    requestHintVersions.set(id, generation);
+    const list = document.getElementById('followRequestList');
+    if (payload.eventType === 'REQUEST_CREATED' && list) {
+      try {
+        const page = await api('/api/follow-requests/cursor?size=50');
+        if (requestHintVersions.get(id) !== generation) return;
+        const request = page.items?.find(item => item.id === id);
+        if (request) {
+          appendFollowRequest(list, request);
+          const row = [...list.querySelectorAll('.feature-list__row')].find(node => node.dataset.requestId === id);
+          if (row) list.prepend(row);
+        }
+      } catch (_) { /* Persisted request list remains available on reload/poll. */ }
+    } else if (payload.eventType === 'REQUEST_CANCELLED' || payload.eventType === 'REQUEST_DECIDED') {
+      document.querySelectorAll('[data-follow-request-actions]').forEach(group => {
+        if (group.dataset.followRequestActions !== id) return;
+        const row = group.closest('#followRequestList .feature-list__row');
+        if (row) row.remove();
+        else group.replaceWith(element('span', 'Yêu cầu đã được xử lý', 'follow-request-result'));
+      });
+      refreshRequestEmptyState();
+    }
+  });
   document.addEventListener('aloute:navigated', initializePage);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

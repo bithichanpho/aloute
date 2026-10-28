@@ -117,6 +117,59 @@ class ContentAccessBatchTest {
     }
 
     @Test
+    void publicRepostCannotExposeAPublicPostFromAPrivateAccountToStrangers() {
+        Post original = post(1, PostVisibility.PUBLIC);
+        original.setId("private-author-public-post");
+        Post repost = post(2, PostVisibility.PUBLIC);
+        repost.setRepostOfId("private-author-public-post");
+
+        when(users.findAllById(any())).thenReturn(List.of(author(1, true), author(2, false)));
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of(original));
+
+        var accessBatch = service.forPosts(List.of(repost), 99L);
+
+        // The public visibility selected for the original post must not override the author's
+        // private-account boundary when the post is rendered through somebody else's repost.
+        assertFalse(accessBatch.canRead(repost));
+        assertTrue(accessBatch.readable(List.of(repost)).isEmpty());
+    }
+
+    @Test
+    void privateAccountContentRequiresAnAcceptedFollowEvenWhenThePostIsPublic() {
+        User privateAuthor = author(1, true);
+        when(users.findById(1L)).thenReturn(Optional.of(privateAuthor));
+
+        assertFalse(service.canViewAccountContent(99L, 1L));
+        when(friends.existsByFollowerIdAndFollowedId(99L, 1L)).thenReturn(true);
+        assertTrue(service.canViewAccountContent(99L, 1L));
+        assertTrue(service.canViewAccountContent(1L, 1L));
+    }
+
+    @Test
+    void messagingPrivateAccountRequiresMutualAcceptedFollows() {
+        when(users.findById(1L)).thenReturn(Optional.of(author(1, true)));
+
+        assertFalse(service.canMessageAccount(99L, 1L));
+        when(friends.existsByFollowerIdAndFollowedId(99L, 1L)).thenReturn(true);
+        assertFalse(service.canMessageAccount(99L, 1L));
+        when(friends.existsByFollowerIdAndFollowedId(1L, 99L)).thenReturn(true);
+        assertTrue(service.canMessageAccount(99L, 1L));
+    }
+
+    @Test
+    void inboxBatchHidesPrivateAccountsUnlessFollowIsMutual() {
+        when(users.findAllById(any())).thenReturn(List.of(author(1, true), author(2, false)));
+        when(friends.findByFollowerIdAndFollowedIdIn(eq(99L), any()))
+                .thenReturn(List.of(new Friend(99L, 1L)));
+
+        assertEquals(Set.of(2L), service.messageableProfileIds(99L, List.of(1L, 2L)));
+
+        when(friends.findByFollowedIdAndFollowerIdIn(eq(99L), any()))
+                .thenReturn(List.of(new Friend(1L, 99L)));
+        assertEquals(Set.of(1L, 2L), service.messageableProfileIds(99L, List.of(1L, 2L)));
+    }
+
+    @Test
     void privateCommunityPostsAreHiddenFromNonMembersWithConstantQueries() {
         var authors = IntStream.rangeClosed(1, 50).mapToObj(i -> author(i, false)).toList();
         var posts = new ArrayList<Post>();

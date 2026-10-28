@@ -16,7 +16,7 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-/** AES-GCM encryption for TOTP secrets, using a key independent from JWT signing. */
+/** AES-GCM encryption for short-lived sensitive application tokens, using a key independent from JWT signing. */
 @Service
 public class SecretEncryptionService {
     private static final int NONCE_LENGTH = 12;

@@ -56,9 +56,16 @@ public class PostEditingService implements PostEditing {
             throw new ForbiddenException("Chỉ tác giả được sửa bài");
         if (post.getModerationStatus() == ModerationStatus.HIDDEN)
             throw new ForbiddenException("Nội dung đã bị ẩn, không thể chỉnh sửa");
-        if (java.util.Objects.equals(post.getContent(), request.content())
-                && java.util.Objects.equals(post.getImageUrl(), request.imageUrl())
-                && java.util.Objects.equals(post.getVideoUrl(), request.videoUrl())
+        String nextContent = request.contentProvided() ? request.content() : post.getContent();
+        String nextImageUrl = request.imageProvided() ? request.imageUrl() : post.getImageUrl();
+        String nextVideoUrl = request.videoProvided() ? request.videoUrl() : post.getVideoUrl();
+        if ((nextContent == null || nextContent.isBlank())
+                && (nextImageUrl == null || nextImageUrl.isBlank())
+                && (nextVideoUrl == null || nextVideoUrl.isBlank()))
+            throw new BadRequestException("Bài viết cần có nội dung, hình ảnh hoặc video");
+        if (java.util.Objects.equals(post.getContent(), nextContent)
+                && java.util.Objects.equals(post.getImageUrl(), nextImageUrl)
+                && java.util.Objects.equals(post.getVideoUrl(), nextVideoUrl)
                 && java.util.Objects.equals(post.getVisibility(), requestedVisibility)) return;
         PostRevision revision = new PostRevision();
         revision.setPostId(id);
@@ -69,24 +76,24 @@ public class PostEditingService implements PostEditing {
         revision.setVisibility(
                 post.getVisibility() == null ? "PUBLIC" : post.getVisibility().name());
         if (postMediaAssets != null) {
-            postMediaAssets.validatePostMediaUrl(request.imageUrl(), post.getImageUrl(), post.getUserId());
-            postMediaAssets.validatePostMediaUrl(request.videoUrl(), post.getVideoUrl(), post.getUserId());
+            postMediaAssets.validatePostMediaUrl(nextImageUrl, post.getImageUrl(), post.getUserId());
+            postMediaAssets.validatePostMediaUrl(nextVideoUrl, post.getVideoUrl(), post.getUserId());
         }
         // Only a change to what moderators actually review (text or media) needs a new decision.
         // A visibility-only edit must neither re-approve nor "un-flag" a post.
         boolean reviewedContentChanged =
-                !java.util.Objects.equals(post.getContent(), request.content())
-                        || !java.util.Objects.equals(post.getImageUrl(), request.imageUrl())
-                        || !java.util.Objects.equals(post.getVideoUrl(), request.videoUrl());
+                !java.util.Objects.equals(post.getContent(), nextContent)
+                        || !java.util.Objects.equals(post.getImageUrl(), nextImageUrl)
+                        || !java.util.Objects.equals(post.getVideoUrl(), nextVideoUrl);
         boolean moderationRequired = moderation.isEnabled();
         boolean visibilityChanged = !java.util.Objects.equals(post.getVisibility(), requestedVisibility);
         var update = new Update()
-                .set("content", request.content())
-                .set("imageUrl", request.imageUrl())
-                .set("videoUrl", request.videoUrl())
+                .set("content", nextContent)
+                .set("imageUrl", nextImageUrl)
+                .set("videoUrl", nextVideoUrl)
                 .set("visibility", requestedVisibility)
-                .set("hashtags", ContentTags.extract(request.content(), '#'))
-                .set("mentions", ContentTags.extract(request.content(), '@'))
+                .set("hashtags", ContentTags.extract(nextContent, '#'))
+                .set("mentions", ContentTags.extract(nextContent, '@'))
                 .push("editHistory").slice(-100).each(revision)
                 .set("updatedAt", java.time.LocalDateTime.now());
         if (reviewedContentChanged) {
@@ -113,9 +120,9 @@ public class PostEditingService implements PostEditing {
             throw new BadRequestException("Bài viết vừa thay đổi. Hãy tải lại trước khi sửa.");
         if (postMediaAssets != null) {
             try {
-                postMediaAssets.attachPostMedia(request.imageUrl(), post.getId(), post.getUserId());
-                if (request.videoUrl() == null || !request.videoUrl().equals(request.imageUrl())) {
-                    postMediaAssets.attachPostMedia(request.videoUrl(), post.getId(), post.getUserId());
+                postMediaAssets.attachPostMedia(nextImageUrl, post.getId(), post.getUserId());
+                if (nextVideoUrl == null || !nextVideoUrl.equals(nextImageUrl)) {
+                    postMediaAssets.attachPostMedia(nextVideoUrl, post.getId(), post.getUserId());
                 }
             } catch (RuntimeException trackingFailure) {
                 log.warn("Post edit media attachment tracking deferred (postId={}, cause={})",

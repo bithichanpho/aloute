@@ -283,7 +283,7 @@ public class DemoDataSeeder implements CommandLineRunner {
     }
 
     private List<ChatGroup> seedGroups(List<User> users) {
-        String[] names = {"ALOUTE · Team Web", "ALOUTE · Team Đồ án", "ALOUTE · Bạn thân"};
+        String[] names = {"ALOUTE · Team Web", "ALOUTE · Team Đồ án", "ALOUTE · Chia sẻ"};
         List<ChatGroup> groups = new ArrayList<>();
         for (int i = 0; i < names.length; i++) {
             ChatGroup g = new ChatGroup();
@@ -361,6 +361,7 @@ public class DemoDataSeeder implements CommandLineRunner {
                             + "\n\nBài demo số "
                             + (i + 1)
                             + " để kiểm tra cuộn, like và comment.");
+            post.setHashtags(com.aloute.service.ContentTagService.extract(post.getContent(), '#'));
             post.setImageUrl(
                     i % 4 == 0 ? "/images/demo/demo-post-" + ((i % 6) + 1) + ".svg" : null);
             post.setLikeCount(0);
@@ -381,6 +382,7 @@ public class DemoDataSeeder implements CommandLineRunner {
             post.setUserId(String.valueOf(users.get(author).getId()));
             post.setCommunityId(String.valueOf(community.getId()));
             post.setContent("[" + community.getName() + "] " + p[0] + "\n" + p[1]);
+            post.setHashtags(com.aloute.service.ContentTagService.extract(post.getContent(), '#'));
             post.setImageUrl(
                     i % 5 == 0 ? "/images/demo/demo-post-" + ((i % 6) + 1) + ".svg" : null);
             post.setLikeCount(0);

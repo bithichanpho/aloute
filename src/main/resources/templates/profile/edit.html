@@ -57,14 +57,15 @@
   </div>
 
   <div class="feed-panel" style="padding: 24px 22px; margin-top:16px;">
-    <h2 style="font-size:16px;margin:0 0 16px;">Đổi mật khẩu</h2>
+    <h2 style="font-size:16px;margin:0 0 8px;">Đổi mật khẩu</h2>
+    <p class="field-hint" style="margin:0 0 16px;">Lần lượt nhập mật khẩu hiện tại, mật khẩu mới và xác nhận mật khẩu mới. Nếu bạn trước đây chỉ đăng nhập bằng Google và chưa biết mật khẩu ALOUTE, hãy dùng <a href="/forgot-password">Quên mật khẩu</a> để thiết lập mật khẩu trước.</p>
 
     <div id="changePasswordError" class="form-error" style="display:none;"></div>
     <div id="changePasswordSuccess" class="form-success" style="display:none;"></div>
 
-    <form id="changePasswordForm">
+    <form id="changePasswordForm" novalidate>
       <div class="field">
-        <input type="password" id="currentPassword" placeholder="Mật khẩu hiện tại" autocomplete="current-password" required>
+        <input type="password" id="currentPassword" placeholder="Mật khẩu hiện tại" autocomplete="current-password" maxlength="72" required>
       </div>
       <div class="field">
         <input type="password" id="newPassword" placeholder="8–72 ký tự, có hoa, thường, số và ký tự đặc biệt" autocomplete="new-password" minlength="8" maxlength="72" required>
@@ -72,7 +73,7 @@
       <div class="field">
         <input type="password" id="confirmNewPassword" placeholder="Xác nhận mật khẩu mới" autocomplete="new-password" minlength="8" maxlength="72" required>
       </div>
-      <button type="submit" class="btn-outline" style="width:auto; padding:10px 20px;">Đổi mật khẩu</button>
+      <button type="submit" class="btn-outline" style="width:auto; padding:10px 20px;">Xác nhận đổi mật khẩu</button>
     </form>
   </div>
 

@@ -8,6 +8,8 @@
   const googleButton = document.getElementById('googleSignInBtn');
   const googleDivider = document.getElementById('googleSignInDivider');
   const googleStatus = document.getElementById('googleSignInStatus');
+  const googleRegistrationHint = document.getElementById('googleRegistrationHint');
+  const googleVerificationHint = document.getElementById('googleVerificationHint');
   const pushButton = document.getElementById('enablePushNotificationsBtn');
   const pushStatus = document.getElementById('pushNotificationStatus');
   const pushFidStorageKey = 'aloute-fcm-fid';
@@ -57,6 +59,9 @@
   // serve as a fallback toast if the WebSocket/STOMP connection is disconnected.
   if (!googleButton && !pushButton && !hasExistingPushEnrollment) return;
 
+  // Keep the Google button available even while configuration is loading. The click handler
+  // reports an actionable error if Firebase is not configured; bootstrap must not erase the entry point.
+  if (googleButton) googleButton.addEventListener('click', googleSignIn);
 
   function csrfHeaders(headers, method) {
     if (window.Aloute && typeof window.Aloute.csrfHeaders === 'function') {
@@ -152,6 +157,12 @@
             throw new Error((payload && payload.message) || 'Không đọc được cấu hình Firebase.');
           }
           return payload.data;
+        })
+        .catch((error) => {
+          // Do not cache a rejected config request: the user may retry after a transient
+          // network/server problem without reloading the login page.
+          configPromise = null;
+          throw error;
         });
     }
     return configPromise;
@@ -162,6 +173,9 @@
     googleButton.disabled = true;
     googleButton.setAttribute('aria-busy', 'true');
     setStatus(googleStatus, 'Đang kết nối Google...', false);
+    if (googleRegistrationHint) googleRegistrationHint.hidden = true;
+    if (googleVerificationHint) googleVerificationHint.hidden = true;
+    let attemptedGoogleEmail = '';
     try {
       const config = await getConfig();
       if (!config.googleLoginEnabled) {
@@ -173,33 +187,17 @@
       provider.setCustomParameters({ prompt: 'select_account' });
       const result = await authSdk.signInWithPopup(auth, provider);
       if (!result.user) throw new Error('Google không trả về tài khoản.');
+      attemptedGoogleEmail = (result.user.email || '').trim();
       const idToken = await result.user.getIdToken(true);
-      let code = '';
-      let payload = null;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const response = await fetch('/api/auth/firebase/login', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: csrfHeaders({ 'Content-Type': 'application/json' }, 'POST'),
-          body: JSON.stringify({ idToken, code })
-        });
-        payload = await response.json().catch(() => null);
-        if (response.ok && payload && payload.success !== false) break;
-        const message = (payload && payload.message) || '';
-        // Account has 2FA enabled: ask for the TOTP / recovery code and retry with the same idToken.
-        if (response.status === 401 && message.includes('xác thực hai lớp') && attempt < 2) {
-          const entered = window.prompt('Tài khoản đã bật xác thực hai lớp. Nhập mã Authenticator hoặc mã khôi phục:');
-          if (!entered || !entered.trim()) throw new Error('Cần mã xác thực hai lớp để đăng nhập bằng Google.');
-          code = entered.trim();
-          continue;
-        }
-        if (response.status === 401 && message.includes('2FA') && attempt < 2) {
-          const entered = window.prompt('Mã không hợp lệ. Nhập lại mã Authenticator hoặc mã khôi phục:');
-          if (!entered || !entered.trim()) throw new Error(message);
-          code = entered.trim();
-          continue;
-        }
-        throw new Error(message || 'Không thể đăng nhập vào ALOUTE bằng Google.');
+      const response = await fetch('/api/auth/firebase/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }, 'POST'),
+        body: JSON.stringify({ idToken })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || payload.success === false) {
+        throw new Error((payload && payload.message) || 'Không thể đăng nhập vào ALOUTE bằng Google.');
       }
       window.location.assign('/feed');
     } catch (error) {
@@ -208,7 +206,22 @@
       if (code === 'auth/popup-closed-by-user') message = 'Bạn đã đóng cửa sổ đăng nhập Google.';
       if (code === 'auth/unauthorized-domain') message = 'Tên miền chưa được thêm vào Authorized domains trong Firebase Authentication.';
       if (code === 'auth/popup-blocked') message = 'Trình duyệt đã chặn cửa sổ đăng nhập. Hãy cho phép popup rồi thử lại.';
-      setStatus(googleStatus, message, true);
+      const normalizedMessage = message.toLocaleLowerCase('vi');
+      const needsRegistration = normalizedMessage.includes('chưa được đăng ký trên aloute');
+      const needsVerification = !needsRegistration
+        && normalizedMessage.includes('chưa xác thực')
+        && normalizedMessage.includes('đăng ký aloute');
+      setStatus(googleStatus, message, !needsRegistration && !needsVerification);
+      if (googleRegistrationHint) googleRegistrationHint.hidden = !needsRegistration;
+      if (googleVerificationHint) googleVerificationHint.hidden = !needsVerification;
+      const registerLink = document.getElementById('googleRegistrationLink');
+      if (registerLink && needsRegistration && attemptedGoogleEmail) {
+        registerLink.href = '/register?email=' + encodeURIComponent(attemptedGoogleEmail);
+      }
+      const verificationLink = document.getElementById('googleVerificationLink');
+      if (verificationLink && needsVerification && attemptedGoogleEmail) {
+        verificationLink.href = '/verify-email?email=' + encodeURIComponent(attemptedGoogleEmail);
+      }
       googleButton.disabled = false;
       googleButton.removeAttribute('aria-busy');
     }
@@ -379,16 +392,14 @@
     try {
       const config = await getConfig();
       if (googleButton) {
-        if (config.googleLoginEnabled) {
-          googleButton.hidden = false;
-          if (googleDivider) googleDivider.hidden = false;
-          googleButton.addEventListener('click', googleSignIn);
+        googleButton.hidden = false;
+        if (googleDivider) googleDivider.hidden = false;
+        if (!config.googleLoginEnabled) {
+          setStatus(googleStatus,
+            'Nút Google vẫn khả dụng, nhưng backend chưa bật đăng nhập Firebase. Hãy kiểm tra FIREBASE_PROJECT_ID và service-account credentials.',
+            true);
         } else {
-          googleButton.hidden = true;
-          if (googleDivider) googleDivider.hidden = true;
-          if (config.webEnabled) {
-            setStatus(googleStatus, 'Cần cấu hình Firebase Admin credentials ở backend để bật đăng nhập Google.', false);
-          }
+          setStatus(googleStatus, '', false);
         }
       }
 
@@ -431,9 +442,11 @@
       }
     } catch (error) {
       if (googleButton) {
-        googleButton.hidden = true;
-        if (googleDivider) googleDivider.hidden = true;
-        setStatus(googleStatus, error.message || 'Không thể khởi tạo Firebase.', true);
+        googleButton.hidden = false;
+        if (googleDivider) googleDivider.hidden = false;
+        googleButton.disabled = false;
+        googleButton.removeAttribute('aria-busy');
+        setStatus(googleStatus, error.message || 'Không thể khởi tạo Firebase. Hãy thử lại bằng nút Google.', true);
       }
       if (pushButton) {
         pushButton.hidden = true;

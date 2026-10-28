@@ -22,18 +22,29 @@ public class ContentAccessService {
     private final IFriendRepository friends;
     private final ICommunityRepository communities;
     private final ICommunityMemberRepository communityMembers;
+    private final com.aloute.social.api.CloseFriendships closeFriendships;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ContentAccessService(
             PostgresDocumentStore documentStore,
             IUserRepository users,
             IFriendRepository friends,
             ICommunityRepository communities,
-            ICommunityMemberRepository communityMembers) {
+            ICommunityMemberRepository communityMembers,
+            com.aloute.social.api.CloseFriendships closeFriendships) {
         this.documentStore = documentStore;
         this.users = users;
         this.friends = friends;
         this.communities = communities;
         this.communityMembers = communityMembers;
+        this.closeFriendships = closeFriendships;
+    }
+
+    /** Compatibility construction cannot grant close-friend access without its public port. */
+    public ContentAccessService(PostgresDocumentStore store, IUserRepository users,
+            IFriendRepository friends, ICommunityRepository communities,
+            ICommunityMemberRepository members) {
+        this(store, users, friends, communities, members, (viewer, candidates) -> Set.of());
     }
 
     private static final String PRIVACY_PRIVATE = "PRIVATE";
@@ -114,15 +125,25 @@ public class ContentAccessService {
                 authors.stream().anyMatch(User::isPrivateAccount)
                         || posts.stream()
                                 .filter(Objects::nonNull)
-                                .anyMatch(p -> p.getVisibility() == PostVisibility.FRIENDS)
+                                .anyMatch(p -> p.getVisibility() == PostVisibility.FRIENDS
+                                        || p.getVisibility() == PostVisibility.CLOSE_FRIENDS)
                         || originals.values().stream()
-                                .anyMatch(p -> p.getVisibility() == PostVisibility.FRIENDS);
+                                .anyMatch(p -> p.getVisibility() == PostVisibility.FRIENDS
+                                        || p.getVisibility() == PostVisibility.CLOSE_FRIENDS);
         if (viewer != null && needsRelationships && !authorIds.isEmpty()) {
             friends.findByFollowerIdAndFollowedIdIn(viewer, authorIds)
                     .forEach(f -> outgoing.add(f.getFollowedId()));
             friends.findByFollowedIdAndFollowerIdIn(viewer, authorIds)
                     .forEach(f -> incoming.add(f.getFollowerId()));
         }
+        Set<Long> closeFriendAuthors = new HashSet<>();
+        java.util.stream.Stream.concat(posts.stream(), originals.values().stream())
+                .filter(Objects::nonNull)
+                .filter(p -> p.getVisibility() == PostVisibility.CLOSE_FRIENDS)
+                .map(p -> Long.valueOf(p.getUserId())).filter(id -> !id.equals(viewer))
+                .forEach(closeFriendAuthors::add);
+        Set<Long> acceptedCloseFriends = viewer == null || closeFriendAuthors.isEmpty()
+                ? Set.of() : closeFriendships.acceptedAmong(viewer, closeFriendAuthors);
         Set<String> communityIds = new HashSet<>();
         posts.stream()
                 .filter(Objects::nonNull)
@@ -140,7 +161,7 @@ public class ContentAccessService {
                 outgoing,
                 incoming,
                 originals,
-                deniedCommunityIds(viewer, communityIds));
+                deniedCommunityIds(viewer, communityIds), acceptedCloseFriends);
     }
 
     public Set<Long> visibleUserIds(Long viewer, Collection<User> authors) {
@@ -186,7 +207,13 @@ public class ContentAccessService {
             Set<Long> following,
             Set<Long> followers,
             Map<String, Post> originals,
-            Set<String> deniedCommunities) {
+            Set<String> deniedCommunities,
+            Set<Long> closeFriends) {
+        public AccessBatch(Long viewer, Map<Long, User> users, Set<Long> blocked,
+                Set<Long> following, Set<Long> followers, Map<String, Post> originals,
+                Set<String> deniedCommunities) {
+            this(viewer, users, blocked, following, followers, originals, deniedCommunities, Set.of());
+        }
         public List<Post> readable(Collection<Post> posts) {
             return posts.stream().filter(this::canRead).toList();
         }
@@ -209,9 +236,13 @@ public class ContentAccessService {
                             != com.aloute.model.document.CommunityPostStatus.APPROVED) return false;
             if (post.getModerationStatus() == ModerationStatus.HIDDEN
                     || post.getModerationStatus() == ModerationStatus.PENDING
-                    || post.getModerationStatus() == ModerationStatus.FLAGGED) return false;
+                    || (post.getModerationStatus() == ModerationStatus.FLAGGED
+                            && post.getModerationFailureReason() != null
+                            && !post.getModerationFailureReason().isBlank())) return false;
             if (user.isPrivateAccount() && !following.contains(author)) return false;
             if (post.getVisibility() == PostVisibility.ONLY_ME) return false;
+            if (post.getVisibility() == PostVisibility.CLOSE_FRIENDS)
+                return following.contains(author) && followers.contains(author) && closeFriends.contains(author);
             return post.getVisibility() != PostVisibility.FRIENDS
                     || (following.contains(author) && followers.contains(author));
         }
@@ -226,6 +257,65 @@ public class ContentAccessService {
                                         Criteria.where("ownerId").is(a).and("targetId").is(b),
                                         Criteria.where("ownerId").is(b).and("targetId").is(a))),
                 UserBlock.class);
+    }
+
+    /**
+     * A private account's posts and reposts are visible only to the owner or an accepted follower.
+     * A profile header can remain visible so a stranger can submit a follow request.
+     */
+    public boolean canViewAccountContent(Long viewer, Long owner) {
+        if (owner == null) return false;
+        User account = users.findById(owner).orElse(null);
+        if (account == null || !account.isActive() || blocked(viewer, owner)) return false;
+        if (Objects.equals(viewer, owner)) return true;
+        if (!account.isPrivateAccount()) return true;
+        return viewer != null && friends.existsByFollowerIdAndFollowedId(viewer, owner);
+    }
+
+    /** Direct messages to a private account require an accepted mutual-follow relationship. */
+    public boolean canMessageAccount(Long sender, Long receiver) {
+        if (sender == null || receiver == null || sender.equals(receiver) || blocked(sender, receiver))
+            return false;
+        User target = users.findById(receiver).orElse(null);
+        if (target == null || !target.isActive()) return false;
+        if (!target.isPrivateAccount()) return true;
+        return friends.existsByFollowerIdAndFollowedId(sender, receiver)
+                && friends.existsByFollowerIdAndFollowedId(receiver, sender);
+    }
+
+    /** Batch version used by inbox rendering to avoid one relationship query per conversation. */
+    public Set<Long> messageableProfileIds(Long sender, Collection<Long> targetIds) {
+        if (sender == null || targetIds == null || targetIds.isEmpty()) return Set.of();
+        Set<Long> candidates = targetIds.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> !sender.equals(id))
+                .collect(Collectors.toSet());
+        if (candidates.isEmpty()) return Set.of();
+
+        List<User> accounts = users.findAllById(candidates);
+        Set<Long> visible = visibleUserIds(sender, accounts);
+        Map<Long, User> byId = accounts.stream().collect(Collectors.toMap(
+                User::getId, user -> user, (first, ignored) -> first));
+        Set<Long> privateIds = accounts.stream()
+                .filter(User::isPrivateAccount)
+                .map(User::getId)
+                .filter(visible::contains)
+                .collect(Collectors.toSet());
+        if (privateIds.isEmpty()) return visible;
+
+        Set<Long> senderFollows = friends.findByFollowerIdAndFollowedIdIn(sender, privateIds).stream()
+                .map(com.aloute.model.entity.Friend::getFollowedId)
+                .collect(Collectors.toSet());
+        Set<Long> targetFollowsSender = friends.findByFollowedIdAndFollowerIdIn(sender, privateIds).stream()
+                .map(com.aloute.model.entity.Friend::getFollowerId)
+                .collect(Collectors.toSet());
+        Set<Long> messageable = new HashSet<>(visible);
+        for (Long id : privateIds) {
+            if (!senderFollows.contains(id) || !targetFollowsSender.contains(id)) messageable.remove(id);
+        }
+        // Defensive guard if a repository returns an unexpected/duplicate id.
+        messageable.removeIf(id -> !byId.containsKey(id));
+        return messageable;
     }
 
     public boolean profileVisible(Long viewer, Long author) {
@@ -266,15 +356,18 @@ public class ContentAccessService {
                         != com.aloute.model.document.CommunityPostStatus.APPROVED) return false;
         if (post.getModerationStatus() == ModerationStatus.HIDDEN
                 || post.getModerationStatus() == ModerationStatus.PENDING
-                || post.getModerationStatus() == ModerationStatus.FLAGGED) return false;
+                || (post.getModerationStatus() == ModerationStatus.FLAGGED
+                        && post.getModerationFailureReason() != null
+                        && !post.getModerationFailureReason().isBlank())) return false;
         if (user.isPrivateAccount()
                 && (viewer == null || !friends.existsByFollowerIdAndFollowedId(viewer, author)))
             return false;
         if (post.getVisibility() == PostVisibility.ONLY_ME) return false;
-        if (post.getVisibility() == PostVisibility.FRIENDS
-                && (viewer == null
-                        || !friends.existsByFollowerIdAndFollowedId(viewer, author)
+        if ((post.getVisibility() == PostVisibility.FRIENDS || post.getVisibility() == PostVisibility.CLOSE_FRIENDS)
+                && (viewer == null || !friends.existsByFollowerIdAndFollowedId(viewer, author)
                         || !friends.existsByFollowerIdAndFollowedId(author, viewer))) return false;
+        if (post.getVisibility() == PostVisibility.CLOSE_FRIENDS
+                && !closeFriendships.acceptedAmong(viewer, List.of(author)).contains(author)) return false;
         return true;
     }
 

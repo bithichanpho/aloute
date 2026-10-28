@@ -213,21 +213,35 @@ public class PasswordManagementService {
 
     @Transactional
     public void changePassword(Long userId, String currentPassword, String newPassword) {
+        changePassword(userId, currentPassword, newPassword, newPassword);
+    }
 
-        User user =
-                userRepository
-                        .findById(userId)
-                        .orElseThrow(
-                                () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
-
-        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
-
+    @Transactional
+    public void changePassword(Long userId, String currentPassword, String newPassword, String confirmNewPassword) {
+        // Keep the requested validation order: current password first, then the new password,
+        // and only then verify the confirmation. No password is changed on any failed step.
+        if (currentPassword == null || currentPassword.isBlank()) {
+            throw new BadRequestException("Vui lòng nhập mật khẩu hiện tại");
+        }
+        if (currentPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
             throw new BadRequestException("Mật khẩu hiện tại không đúng");
         }
-
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new BadRequestException("Mật khẩu hiện tại không đúng");
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new BadRequestException("Vui lòng nhập mật khẩu mới");
+        }
+        if (!isStrongPassword(newPassword)) {
+            throw new BadRequestException("Mật khẩu mới phải có 8–72 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt; tối đa 72 byte UTF-8");
+        }
+        if (confirmNewPassword == null || !newPassword.equals(confirmNewPassword)) {
+            throw new BadRequestException("Mật khẩu mới và phần nhập lại không khớp");
+        }
         if (passwordEncoder.matches(newPassword, user.getPassword())) {
-
-            throw new BadRequestException("Mật khẩu mới phải khác " + "mật khẩu hiện tại");
+            throw new BadRequestException("Mật khẩu mới phải khác mật khẩu hiện tại");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));
@@ -235,6 +249,21 @@ public class PasswordManagementService {
         userRepository.save(user);
         if (refreshTokens != null) refreshTokens.revokeAll(user.getId(), user.getTokensRevokedAt());
         invalidateAuthenticationSnapshotAfterCommit(user.getUsername());
+    }
+
+    private boolean isStrongPassword(String value) {
+        if (value.length() < 8 || value.length() > 72
+                || value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) return false;
+        boolean upper = false, lower = false, digit = false, special = false;
+        for (int offset = 0; offset < value.length();) {
+            int cp = value.codePointAt(offset);
+            upper |= Character.isUpperCase(cp);
+            lower |= Character.isLowerCase(cp);
+            digit |= Character.isDigit(cp);
+            special |= !Character.isLetterOrDigit(cp) && !Character.isWhitespace(cp);
+            offset += Character.charCount(cp);
+        }
+        return upper && lower && digit && special;
     }
 
     private void invalidateAuthenticationSnapshotAfterCommit(String username) {

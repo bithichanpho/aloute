@@ -124,6 +124,7 @@ public class PostModerationCoordinator implements com.aloute.posts.api.PostRevie
                         .unset("moderationLeaseUntil"), Post.class);
         if (result.getModifiedCount() > 0) {
             log.warn("Post {} exhausted moderation retries and was flagged for administrator review", post.getId());
+            worker.notifyPostModerationStatus(post.getUserId(), post.getId(), ModerationStatus.FLAGGED);
             evictFeedCache(post.getUserId());
         }
     }

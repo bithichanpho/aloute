@@ -31,7 +31,7 @@ public class HostDashboardController {
     }
 
     @PreAuthorize("hasRole('HOST')")
-    @GetMapping("/admin/dashboard")
+    @GetMapping({"/admin/dashboard", "/host/server"})
     public String dashboard(
             Authentication authentication,
             Model model,
@@ -43,10 +43,11 @@ public class HostDashboardController {
         HostDashboardResponse dashboard = dashboardService.load(from, to);
         model.addAttribute("pageTitle", "Quản trị máy chủ");
         model.addAttribute("activeNav", "host-dashboard");
+        model.addAttribute("hostDashboardPath", "/host/server");
         model.addAttribute("currentUser", userService.getLiteProfile(userId));
         model.addAttribute("unreadCount", 0L);
         model.addAttribute("unreadMessageCount", 0L);
-        model.addAttribute("isSystemAdmin", false);
+        model.addAttribute("isSystemAdmin", true);
         model.addAttribute("isHost", true);
         model.addAttribute("dashboard", dashboard);
         model.addAttribute("today", dashboardService.today());

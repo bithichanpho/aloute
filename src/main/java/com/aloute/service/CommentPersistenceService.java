@@ -108,8 +108,12 @@ public class CommentPersistenceService {
             if (!postId.equals(parent.getPostId())) {
                 throw new ResourceNotFoundException("Bình luận không thuộc bài viết này");
             }
-            if (parent.getModerationStatus() != null
-                    && parent.getModerationStatus() != ModerationStatus.APPROVED) {
+            boolean parentReadable = parent.getModerationStatus() == null
+                    || parent.getModerationStatus() == ModerationStatus.APPROVED
+                    || (parent.getModerationStatus() == ModerationStatus.FLAGGED
+                            && (parent.getModerationFailureReason() == null
+                                    || parent.getModerationFailureReason().isBlank()));
+            if (!parentReadable) {
                 throw new ResourceNotFoundException("Không tìm thấy bình luận gốc để trả lời");
             }
         }
@@ -121,7 +125,8 @@ public class CommentPersistenceService {
         comment.setContent(request.getContent());
         comment.setModerationStatus(moderationStatus);
         comment.setParentCommentId(parent == null ? null : parent.getId());
-        boolean countersApplied = moderationStatus == ModerationStatus.APPROVED;
+        boolean countersApplied = moderationStatus == ModerationStatus.APPROVED
+                || moderationStatus == ModerationStatus.FLAGGED;
         comment.setModerationCountersApplied(countersApplied);
         comment.setNotifyAfterModeration(moderationStatus == ModerationStatus.PENDING);
 
@@ -148,8 +153,8 @@ public class CommentPersistenceService {
 
 
     /**
-     * Replaces an approved comment with a pending edit without leaving public counters inflated
-     * while the edited content is hidden from everyone except its author. A write conflict retries
+     * Replaces a publicly visible comment (APPROVED or successfully FLAGGED) with a pending edit
+     * without leaving public counters inflated while the edited content is hidden from everyone except its author. A write conflict retries
      * in a new PostgreSQL transaction, just like comment creation and deletion.
      */
     public Comment updatePendingForModeration(Comment comment, String normalizedContent) {
@@ -163,8 +168,10 @@ public class CommentPersistenceService {
     private Comment updatePendingForModerationInTransaction(Comment comment, String normalizedContent) {
         if (comment == null) throw new IllegalArgumentException("comment is required");
         ModerationStatus oldStatus = comment.getModerationStatus();
+        boolean visibleSuccessfulFlag = oldStatus == ModerationStatus.FLAGGED
+                && (comment.getModerationFailureReason() == null || comment.getModerationFailureReason().isBlank());
         boolean publiclyCounted = comment.isModerationCountersApplied()
-                && (oldStatus == null || oldStatus == ModerationStatus.APPROVED);
+                && (oldStatus == null || oldStatus == ModerationStatus.APPROVED || visibleSuccessfulFlag);
         Criteria oldStatusCriteria = oldStatus == null
                 ? Criteria.where("moderationStatus").is(null)
                 : Criteria.where("moderationStatus").is(oldStatus);

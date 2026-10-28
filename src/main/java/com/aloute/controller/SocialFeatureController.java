@@ -3,7 +3,7 @@ package com.aloute.controller;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
-import com.aloute.dto.request.CreatePostRequest;
+import com.aloute.dto.request.EditPostRequest;
 import com.aloute.security.SecurityUtils;
 import com.aloute.service.SocialFeatureService;
 
@@ -28,12 +28,12 @@ public class SocialFeatureController {
     }
 
     public record Report(
-            @NotBlank @Pattern(regexp = "POST|COMMENT|USER", message = "Loại báo cáo không hợp lệ") String targetType,
+            @NotBlank @Pattern(regexp = "POST|COMMENT|USER|COMMUNITY", message = "Loại báo cáo không hợp lệ") String targetType,
             @NotBlank @Size(max = 100) String targetId,
             @NotBlank @Size(max = 1000) String reason) {}
 
     public record Decision(
-            @NotBlank @Pattern(regexp = "POST|COMMENT|USER", message = "Loại nội dung không hợp lệ") String targetType,
+            @NotBlank @Pattern(regexp = "POST|COMMENT|USER|COMMUNITY", message = "Loại nội dung không hợp lệ") String targetType,
             @NotBlank @Size(max = 100) String targetId,
             @NotBlank @Pattern(regexp = "APPROVE|HIDE|DISMISS", message = "Quyết định không hợp lệ") String decision,
             @Size(max = 256) String reportId) {}
@@ -69,6 +69,11 @@ public class SocialFeatureController {
         return ApiResponse.success(null);
     }
 
+    @GetMapping("/follow-requests/unread-count")
+    public ApiResponse<java.util.Map<String, Long>> pendingFollowRequestCount(Authentication a) {
+        return ApiResponse.success(java.util.Map.of("count", service.countUnreadRequests(user(a))));
+    }
+
     @GetMapping("/follow-requests")
     public ApiResponse<?> requests(Authentication a) {
         return ApiResponse.success(service.requests(user(a)));
@@ -102,7 +107,8 @@ public class SocialFeatureController {
                 service.report(user(a), r.targetType(), r.targetId(), r.reason()));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    /** Manual fallback queue: only user reports and items automatically FLAGGED by moderation. */
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOST')")
     @GetMapping("/admin/moderation")
     public ApiResponse<?> queue(
             Authentication a,
@@ -111,16 +117,18 @@ public class SocialFeatureController {
         return ApiResponse.success(service.queue(user(a), page, size));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOST')")
     @GetMapping("/admin/content/{type}/{id}")
     public ApiResponse<?> reviewContent(
             Authentication a,
-            @PathVariable @Pattern(regexp = "(?i)POST|COMMENT|USER", message = "Loại nội dung không hợp lệ") String type,
-            @PathVariable @NotBlank(message = "Thiếu mã nội dung") String id) {
-        return ApiResponse.success(service.reviewContent(user(a), type, id));
+            @PathVariable @Pattern(regexp = "(?i)POST|COMMENT|USER|COMMUNITY", message = "Loại nội dung không hợp lệ") String type,
+            @PathVariable @NotBlank(message = "Thiếu mã nội dung") String id,
+            @RequestParam(required = false) @Size(max = 256) String reportId) {
+        return ApiResponse.success(service.reviewContent(user(a), type, id, reportId));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    /** Admin actions are secondary review; normal approve/hide decisions remain owned by moderation. */
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOST')")
     @PostMapping("/admin/moderation")
     public ApiResponse<?> moderate(Authentication a, @Valid @RequestBody Decision d) {
         service.moderate(user(a), d.targetType(), d.targetId(), d.decision(), d.reportId());
@@ -150,7 +158,7 @@ public class SocialFeatureController {
     public ApiResponse<?> edit(
             Authentication a,
             @PathVariable @NotBlank(message = "Thiếu mã bài viết") String id,
-            @Valid @RequestBody CreatePostRequest r) {
+            @Valid @RequestBody EditPostRequest r) {
         service.edit(user(a), id, r);
         return ApiResponse.success(null);
     }

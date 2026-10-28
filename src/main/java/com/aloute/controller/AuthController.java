@@ -1,7 +1,6 @@
 package com.aloute.controller;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
-import com.aloute.common.exception.TwoFactorRequiredException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.response.ApiResponse;
 import com.aloute.config.JwtAuthFilter;
@@ -88,6 +87,26 @@ public class AuthController {
         this.accessRevocations = accessRevocations;
     }
 
+    public record RegistrationUsernameRequest(
+            @NotBlank @Size(min = 3, max = 50)
+            @Pattern(regexp = "^[A-Za-z0-9_](?:[A-Za-z0-9_.-]{1,48}[A-Za-z0-9_])?$") String username,
+            @Size(max = 254) String email) {}
+
+    public record RegistrationUsernameAvailability(boolean available) {}
+
+    @PostMapping("/register/username-availability")
+    public ResponseEntity<ApiResponse<RegistrationUsernameAvailability>> registrationUsernameAvailability(
+            @Valid @RequestBody RegistrationUsernameRequest request, HttpServletRequest httpRequest) {
+        authRateLimitService.checkAndRecord(
+                "REGISTER_USERNAME_IP", clientIpResolver.resolve(httpRequest), 60,
+                java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(15),
+                "Bạn đã kiểm tra tên đăng nhập quá nhiều lần. Thử lại sau khoảng %d phút.",
+                "Bạn đã kiểm tra tên đăng nhập quá nhiều lần. Vui lòng thử lại sau.");
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(ApiResponse.success(
+                new RegistrationUsernameAvailability(
+                        authService.registrationUsernameAvailable(request.username(), request.email()))));
+    }
+
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
             @Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
@@ -134,8 +153,6 @@ public class AuthController {
             authRateLimitService.reset("LOGIN_ACCOUNT", accountKey);
             authRateLimitService.reset(LOGIN_ACCOUNT_GLOBAL, accountIdentifier);
             return withAuthCookie(auth, "Đăng nhập thành công");
-        } catch (TwoFactorRequiredException required) {
-            throw required;
         } catch (UnauthorizedException failed) {
             authRateLimitService.checkAndRecord(
                     "LOGIN_ACCOUNT", accountKey, 10,
@@ -166,11 +183,9 @@ public class AuthController {
                 ip,
                 "IP này đã gửi quá nhiều yêu cầu đăng nhập Google. Vui lòng thử lại sau khoảng %d phút.");
         try {
-            AuthResponse auth = firebaseIdentityService.loginWithGoogle(request.getIdToken(), request.getCode());
+            AuthResponse auth = firebaseIdentityService.loginWithGoogle(request.getIdToken());
             authRateLimitService.reset("FIREBASE_LOGIN_IP", ip);
             return withAuthCookie(auth, "Đăng nhập Google thành công");
-        } catch (TwoFactorRequiredException required) {
-            throw required; // not a failed attempt: don't count it against the IP limiter
         } catch (UnauthorizedException failed) {
             authRateLimitService.checkAndRecord(
                     "FIREBASE_LOGIN_IP",
@@ -240,7 +255,7 @@ public class AuthController {
         String ip = clientIpResolver.resolve(httpRequest);
         String email = normalizeRateIdentifier(request.email());
 
-        // A six-digit code has only a million values, so guesses are throttled hard: per email
+        // A six-digit code has one million values, so guesses are throttled hard: per email
         // (an attacker cannot dodge it by rotating IPs) and per IP.
         authRateLimitService.checkAndRecord(
                 "VERIFY_OTP_TARGET", email,
@@ -328,7 +343,13 @@ public class AuthController {
     }
 
     private String normalizeRateIdentifier(String value) {
-        return value == null ? "unknown" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (value == null) return "unknown";
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        // Keep rate-limit buckets identical whether a person enters username or @username.
+        if (normalized.startsWith("@") && normalized.indexOf('@', 1) < 0) {
+            normalized = normalized.substring(1);
+        }
+        return normalized;
     }
 
     private ResponseEntity<ApiResponse<AuthResponse>> withAuthCookie(

@@ -222,17 +222,11 @@ public class ViewController {
     @GetMapping("/people/{username}")
     public String mentionedProfile(
             Authentication authentication,
-            @PathVariable @Size(min = 3, max = 50, message = "Tên đăng nhập không hợp lệ") String username) {
+            @PathVariable @Size(min = 3, max = 50, message = "Tên đăng nhập không hợp lệ") String username,
+            Model model) {
         Long viewer = requireLogin(authentication);
         if (viewer == null) return "redirect:/login";
-        return userService.searchUsers(username, viewer).stream()
-                .filter(u -> u.getUsername().equalsIgnoreCase(username))
-                .findFirst()
-                .map(u -> "redirect:/profile/" + u.getId())
-                .orElseThrow(
-                        () ->
-                                new ResourceNotFoundException(
-                                        "Không tìm thấy tài khoản"));
+        return renderProfile(userService.getProfileByUsername(username, viewer), viewer, model);
     }
 
     @GetMapping("/profile/me")
@@ -289,7 +283,7 @@ public class ViewController {
         model.addAttribute("currentUser", currentUser);
         response.setHeader("X-Next-Cursor", page.nextCursor());
         response.setHeader("X-Has-More", Boolean.toString(page.hasMore()));
-        return "feed/index :: .post";
+        return "fragments/post-cards :: postCards";
     }
 
     @GetMapping("/api/posts/user/{userId}/fragment")
@@ -307,14 +301,7 @@ public class ViewController {
         model.addAttribute("repostPosts", Collections.emptyList());
         model.addAttribute(
                 "mediaPosts",
-                postPage.items().stream()
-                        .filter(
-                                post ->
-                                        (post.getImageUrl() != null
-                                                        && !post.getImageUrl().isBlank())
-                                                || (post.getVideoUrl() != null
-                                                        && !post.getVideoUrl().isBlank()))
-                        .collect(java.util.stream.Collectors.toList()));
+                profileMediaPosts(postPage.items(), userId));
         model.addAttribute("isOwnProfile", currentUserId.equals(userId));
         response.setHeader("X-Next-Cursor", postPage.nextCursor());
         response.setHeader("X-Has-More", Boolean.toString(postPage.hasMore()));
@@ -347,9 +334,27 @@ public class ViewController {
         Long userId = requireLogin(authentication);
         if (userId == null) return "redirect:/login";
 
+        // Opening Activity means the user has visited the notification inbox: mark all existing
+        // notifications read before rendering so the list and navbar start in sync.
+        notificationService.markAllAsRead(userId);
         model.addAttribute("notifications", notificationService.getMyNotifications(userId));
         addCommonAttributes(model, userId, "activity");
         return "activity/index";
+    }
+
+    @GetMapping("/follow-requests")
+    public String followRequests(Authentication authentication, Model model) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+        socialFeatureService.markRequestsSeen(userId);
+        var requestPage = socialFeatureService.requests(userId, null, 50);
+        model.addAttribute("followRequests", requestPage.items());
+        model.addAttribute("requestsNextCursor", requestPage.nextCursor());
+        model.addAttribute("requestsHasMore", requestPage.hasMore());
+        model.addAttribute("pageTitle", "Yêu cầu theo dõi");
+        model.addAttribute("pageKind", "follow-requests");
+        addCommonAttributes(model, userId, "follow-requests");
+        return "follow-requests/index";
     }
 
     @GetMapping("/saved")
@@ -408,11 +413,22 @@ public class ViewController {
         var currentUser = new UserProfileDto();
         currentUser.setId(userId);
         model.addAttribute("currentUser", currentUser);
-        return "feed/index :: .post";
+        return "fragments/post-cards :: postCards";
     }
 
     private String renderProfile(Long profileUserId, Long currentUserId, Model model) {
-        UserProfileDto profile = userService.getProfile(profileUserId, currentUserId);
+        return renderProfile(userService.getProfile(profileUserId, currentUserId), currentUserId, model);
+    }
+
+    private List<PostResponse> profileMediaPosts(List<PostResponse> posts, Long ownerId) {
+        return posts.stream().filter(post -> ownerId.equals(post.getUserId()) && post.getRepostOf() == null)
+                .filter(post -> (post.getImageUrl() != null && !post.getImageUrl().isBlank())
+                        || (post.getVideoUrl() != null && !post.getVideoUrl().isBlank()))
+                .toList();
+    }
+
+    private String renderProfile(UserProfileDto profile, Long currentUserId, Model model) {
+        Long profileUserId = profile.getId();
         var postPage = postService.getPostsByUserCursor(profileUserId, currentUserId, null, 20);
         List<PostResponse> userPosts = postPage.items();
 
@@ -421,31 +437,38 @@ public class ViewController {
 
         model.addAttribute(
                 "mediaPosts",
-                userPosts.stream()
-                        .filter(
-                                post ->
-                                        (post.getImageUrl() != null
-                                                        && !post.getImageUrl().isBlank())
-                                                || (post.getVideoUrl() != null
-                                                        && !post.getVideoUrl().isBlank()))
-                        .collect(java.util.stream.Collectors.toList()));
+                profileMediaPosts(userPosts, profileUserId));
 
         model.addAttribute("profilePostsNextCursor", postPage.nextCursor());
         model.addAttribute("profilePostsHasMore", postPage.hasMore());
         model.addAttribute("repostPosts", Collections.emptyList());
-        model.addAttribute("profileRepostsDeferred", true);
+        boolean isOwnProfile = currentUserId != null && currentUserId.equals(profileUserId);
+        boolean privateContentRestricted = profile.isPrivateAccount()
+                && !isOwnProfile && !profile.isFollowedByCurrentUser();
+        model.addAttribute("privateContentRestricted", privateContentRestricted);
+        model.addAttribute("profileRepostsDeferred", !privateContentRestricted);
         model.addAttribute("profileRepostsNextCursor", "");
-        model.addAttribute("profileRepostsHasMore", true);
+        model.addAttribute("profileRepostsHasMore", !privateContentRestricted);
         model.addAttribute("postCount", postService.countPostsByUser(profileUserId));
-        model.addAttribute(
-                "isOwnProfile", currentUserId != null && currentUserId.equals(profileUserId));
+        model.addAttribute("isOwnProfile", isOwnProfile);
         if (currentUserId != null) {
             addCommonAttributes(model, currentUserId, "profile");
         }
         return "profile/view";
     }
 
-    @GetMapping({"/settings", "/admin/moderation"})
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'HOST')")
+    @GetMapping({"/admin/accounts", "/host/accounts"})
+    public String adminAccountsPage(Authentication authentication, Model model) {
+        Long userId = requireLogin(authentication);
+        if (userId == null) return "redirect:/login";
+        model.addAttribute("pageTitle", "Quản lý tài khoản");
+        model.addAttribute("pageKind", "admin-accounts");
+        addCommonAttributes(model, userId, "admin-accounts");
+        return "admin/accounts";
+    }
+
+    @GetMapping({"/settings", "/admin/moderation", "/host/moderation"})
     public String featurePage(
             Authentication authentication,
             Model model,
@@ -456,22 +479,25 @@ public class ViewController {
         String path = request.getRequestURI();
         if (path.startsWith("/admin")
                 && authentication.getAuthorities().stream()
-                        .noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN")))
+                        .noneMatch(a -> java.util.Set.of("ROLE_ADMIN", "ROLE_HOST")
+                                .contains(a.getAuthority())))
             throw new UnauthorizedException(
-                    "Chỉ quản trị viên xử lý báo cáo được truy cập");
+                    "Chỉ quản trị viên hoặc HOST mới được truy cập khu vực quản trị");
         boolean settingsPage = "/settings".equals(path);
+        String moderationPath = path.startsWith("/host/") ? "/host/moderation" : "/admin/moderation";
+        model.addAttribute("moderationPath", moderationPath);
         String pageKind = settingsPage ? "settings" : "moderation";
-        model.addAttribute("pageTitle", settingsPage ? "Cài đặt và an toàn" : "Xử lý báo cáo vi phạm");
+        model.addAttribute("pageTitle", settingsPage ? "Cài đặt và an toàn" : "Kiểm duyệt và báo cáo vi phạm");
         model.addAttribute("pageKind", pageKind);
         if (settingsPage) {
-            var blockPage = socialFeatureService.blocks(userId, null, 50);
             var requestPage = socialFeatureService.requests(userId, null, 50);
-            model.addAttribute("blocks", blockPage.items());
-            model.addAttribute("blocksNextCursor", blockPage.nextCursor());
-            model.addAttribute("blocksHasMore", blockPage.hasMore());
             model.addAttribute("followRequests", requestPage.items());
             model.addAttribute("requestsNextCursor", requestPage.nextCursor());
             model.addAttribute("requestsHasMore", requestPage.hasMore());
+            var blockPage = socialFeatureService.blocks(userId, null, 50);
+            model.addAttribute("blocks", blockPage.items());
+            model.addAttribute("blocksNextCursor", blockPage.nextCursor());
+            model.addAttribute("blocksHasMore", blockPage.hasMore());
             model.addAttribute("profileUser", userService.getProfile(userId, userId));
         } else {
             model.addAttribute("moderationQueue", socialFeatureService.queue(userId, queuePage, 20));
@@ -488,18 +514,21 @@ public class ViewController {
                 "isSystemAdmin",
                 authentication != null
                         && authentication.getAuthorities().stream()
-                                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")));
+                                .anyMatch(a -> java.util.Set.of("ROLE_ADMIN", "ROLE_HOST")
+                                        .contains(a.getAuthority())));
         model.addAttribute(
                 "isHost",
                 authentication != null
                         && authentication.getAuthorities().stream()
                                 .anyMatch(a -> a.getAuthority().equals("ROLE_HOST")));
         model.addAttribute("activeNav", activeNav);
+        model.addAttribute("currentUserId", currentUserId);
         if (currentUserId == null) return;
         model.addAttribute("currentUser", userService.getLiteProfile(currentUserId));
 
         model.addAttribute("unreadCount", 0L);
         model.addAttribute("unreadMessageCount", 0L);
+        model.addAttribute("followRequestCount", socialFeatureService.countUnreadRequests(currentUserId));
     }
 
     private boolean isLoggedIn(Authentication authentication) {

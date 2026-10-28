@@ -10,13 +10,13 @@ public class UserProfileDto implements java.io.Serializable {
     private String bio;
     private long followerCount;
     private long followingCount;
-    private long closeFriendCount;
     private boolean isFollowedByCurrentUser;
     private boolean mutualFriend;
-    private String closeFriendStatus = "NONE";
     private boolean privateAccount;
     private boolean canMessage;
     @lombok.Getter @lombok.Setter private boolean followRequestPending;
+    @lombok.Getter @lombok.Setter private String incomingFollowRequestId;
+    @lombok.Getter @lombok.Setter private String closeFriendStatus = "NONE";
     private String suggestionReason;
 
     public Long getId() {
@@ -83,14 +83,6 @@ public class UserProfileDto implements java.io.Serializable {
         this.followingCount = followingCount;
     }
 
-    public long getCloseFriendCount() {
-        return closeFriendCount;
-    }
-
-    public void setCloseFriendCount(long closeFriendCount) {
-        this.closeFriendCount = closeFriendCount;
-    }
-
     public boolean isFollowedByCurrentUser() {
         return isFollowedByCurrentUser;
     }
@@ -105,14 +97,6 @@ public class UserProfileDto implements java.io.Serializable {
 
     public void setMutualFriend(boolean mutualFriend) {
         this.mutualFriend = mutualFriend;
-    }
-
-    public String getCloseFriendStatus() {
-        return closeFriendStatus;
-    }
-
-    public void setCloseFriendStatus(String closeFriendStatus) {
-        this.closeFriendStatus = closeFriendStatus;
     }
 
     public boolean isPrivateAccount() {

@@ -72,36 +72,40 @@ class CommentAsyncModerationTest {
     }
 
     @Test
-    void createCommentPublishesImmediatelyWithoutGlobalModeration() {
+    void createCommentStartsModerationWithoutWaitingForAnAdmin() {
         CreateCommentRequest request = new CreateCommentRequest();
         request.setContent("Hello from ALOUTE");
         Comment saved = comment("comment-1", "1", request.getContent());
-        saved.setModerationStatus(ModerationStatus.APPROVED);
-        when(persistence.create(eq("post-1"), eq(1L), eq(request), eq(ModerationStatus.APPROVED), eq(null)))
+        saved.setModerationStatus(ModerationStatus.PENDING);
+        when(persistence.create(eq("post-1"), eq(1L), eq(request), eq(ModerationStatus.PENDING), eq(null)))
                 .thenReturn(saved);
 
         CommentResponse response = service.createComment("post-1", 1L, request);
 
         assertEquals("comment-1", response.getId());
-        assertEquals(ModerationStatus.APPROVED, response.getModerationStatus());
-        verify(coordinator, never()).submit(any());
-        verify(moderation, never()).check(any());
+        assertEquals(ModerationStatus.PENDING, response.getModerationStatus());
+        verify(coordinator).submit("comment-1");
+        verify(moderation).isEnabled();
     }
 
     @Test
-    void editCommentRemainsPublishedWithoutGlobalModeration() {
+    void editCommentReturnsToModerationWhenEnabled() {
         Comment original = comment("comment-2", "1", "old text");
         when(comments.findById("comment-2")).thenReturn(Optional.of(original));
-        when(comments.save(any(Comment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(persistence.updatePendingForModeration(original, "new text")).thenAnswer(invocation -> {
+            original.setContent("new text");
+            original.setModerationStatus(ModerationStatus.PENDING);
+            original.setModerationCountersApplied(false);
+            return original;
+        });
 
         CommentResponse response = service.editComment("comment-2", 1L, "new text");
 
         assertNotNull(response);
-        assertEquals(ModerationStatus.APPROVED, response.getModerationStatus());
+        assertEquals(ModerationStatus.PENDING, response.getModerationStatus());
         assertEquals("new text", response.getContent());
+        verify(coordinator).submit("comment-2");
         verify(coordinator, never()).invalidateFeedCache();
-        verify(coordinator, never()).submit(any());
-        verify(moderation, never()).check(any());
     }
 
     @Test

@@ -23,7 +23,7 @@
           <span th:if="${activeTab == 'foryou'}">Chưa có bài viết nào. Hãy là người đầu tiên chia sẻ!</span>
         </div>
 
-        <div class="post" th:each="post,postStat : ${posts}" th:id="|post-${post.id}|" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}"
+        <div class="post" th:fragment="postCards(posts, savedPage)" th:each="post,postStat : ${posts}" th:id="|post-${post.id}|" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}, data-saved-post=${savedPage == true ? post.id : null}"
              th:classappend="${post.repostOf != null} ? 'post--repost'"
              th:with="hasCaption=${post.content != null and !post.content.isEmpty()},
                       isRepost=${post.repostOf != null},
@@ -31,7 +31,9 @@
                       mainAvatarUrl=${(isRepost and !isQuote) ? post.repostOf.userAvatarUrl : post.userAvatarUrl},
                       mainUserId=${(isRepost and !isQuote) ? post.repostOf.userId : post.userId},
                       mainUsername=${(isRepost and !isQuote) ? post.repostOf.username : post.username},
-                      mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo}">
+                      mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo},
+                      mainVisibility=${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility},
+                      mainModerationStatus=${post.moderationStatus}">
 
           <div class="post__repost-banner" data-repost-banner
                th:if="${post.recentReposters != null and !#lists.isEmpty(post.recentReposters)}">
@@ -40,7 +42,7 @@
               <th:block th:each="actor,stat : ${post.recentReposters}">
                 <span th:if="${stat.index > 0 and !stat.last}">, </span>
                 <span th:if="${stat.index > 0 and stat.last}"> và </span>
-                <a class="post__reposter" th:href="@{'/profile/' + ${actor.userId}}" th:text="${actor.username}">username</a>
+                <a class="post__reposter" th:href="${actor.username != null} ? @{/people/{username}(username=${actor.username})} : @{'/profile/' + ${actor.userId}}" th:text="${actor.username}">username</a>
               </th:block>
             </span>
             <th:block th:if="${post.otherReposterCount > 0}">
@@ -52,7 +54,7 @@
                         data-reposters-trigger
                         th:text="${post.otherReposterCount + ' người khác'}">2 người khác</button>
                 <div class="post__repost-others-list" data-reposters-list>
-                  <span class="post__repost-others-status">Nhấn để xem danh sách</span>
+                  <span class="post__repost-others-status">Đang tải...</span>
                 </div>
               </span>
             </th:block>
@@ -60,7 +62,7 @@
           </div>
 
           <div class="post__avatar-col">
-            <a th:href="@{'/profile/' + ${mainUserId}}">
+            <a th:href="${mainUsername != null} ? @{/people/{username}(username=${mainUsername})} : @{'/profile/' + ${mainUserId}}">
               <img class="post__avatar"
                    th:src="${mainAvatarUrl != null ? mainAvatarUrl : '/images/avatar_default.png'}"
                    src="/images/avatar_default.png" alt="avatar" loading="lazy" decoding="async">
@@ -68,8 +70,36 @@
           </div>
           <div class="post__body">
             <div class="post__header">
-              <a th:href="@{'/profile/' + ${mainUserId}}" class="post__username" th:text="${mainUsername}">username</a>
+              <a th:href="${mainUsername != null} ? @{/people/{username}(username=${mainUsername})} : @{'/profile/' + ${mainUserId}}" class="post__username" th:text="${mainUsername}">username</a>
               <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+              <span class="post__moderation-status post__moderation-status--pending"
+                    th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'PENDING'}"
+                    title="Bài viết chỉ hiển thị với bạn trong lúc chờ kiểm duyệt" aria-label="Đang kiểm duyệt, chỉ bạn thấy">
+                <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Đang kiểm duyệt</span>
+              </span>
+              <span class="post__moderation-status post__moderation-status--flagged"
+                    th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'FLAGGED'}"
+                    title="Moderation đã đánh dấu nội dung để theo dõi bổ sung; không mặc định chờ ADMIN" aria-label="Moderation đã đánh dấu để theo dõi bổ sung">
+                <i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Đã đánh dấu</span>
+              </span>
+              <span class="post__moderation-status post__moderation-status--hidden"
+                    th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'HIDDEN'}"
+                    title="Bài viết đã bị ẩn sau khi kiểm duyệt" aria-label="Bài viết đã bị ẩn">
+                <i class="bi bi-eye-slash" aria-hidden="true"></i><span>Đã ẩn</span>
+              </span>
+              <span class="post__moderation-status post__moderation-status--pending"
+                    th:if="${mainModerationStatus == null}"
+                    title="Chưa nhận được trạng thái kiểm duyệt; không xác nhận bài viết là công khai" aria-label="Chưa xác minh trạng thái kiểm duyệt">
+                <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Chưa xác minh</span>
+              </span>
+              <span class="post__visibility" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'PUBLIC'}"
+                    title="Công khai" aria-label="Bài viết công khai"><i class="bi bi-globe2" aria-hidden="true"></i></span>
+              <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'FRIENDS'}"
+                    title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"><i class="bi bi-people-fill" aria-hidden="true"></i></span>
+              <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'CLOSE_FRIENDS'}"
+                    title="Bạn thân" aria-label="Bài viết dành cho bạn thân"><i class="bi bi-star-fill" aria-hidden="true"></i></span>
+              <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'ONLY_ME'}"
+                    title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
               <div class="post__menu">
                 <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                         aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
@@ -99,7 +129,7 @@
             <div class="repost-card" th:if="${isQuote and !post.repostOf.deleted}">
               <div class="repost-card__header">
                 <img th:src="${post.repostOf.userAvatarUrl != null ? post.repostOf.userAvatarUrl : '/images/avatar_default.png'}" alt="avatar" loading="lazy" decoding="async">
-                <a th:href="@{'/profile/' + ${post.repostOf.userId}}" th:text="${post.repostOf.username}">username</a>
+                <a th:href="${post.repostOf.username != null} ? @{/people/{username}(username=${post.repostOf.username})} : @{'/profile/' + ${post.repostOf.userId}}" th:text="${post.repostOf.username}">username</a>
                 <span th:text="${post.repostOf.timeAgo}">6 giờ</span>
               </div>
               <p th:text="${post.repostOf.content}">Nội dung bài gốc</p>
@@ -169,7 +199,7 @@
 
       <div class="feed-suggestions__list" th:if="${not #lists.isEmpty(suggestedUsers)}">
         <div class="feed-suggestion" th:each="user : ${suggestedUsers}">
-          <a class="feed-suggestion__profile" th:href="@{'/profile/' + ${user.id}}">
+          <a class="feed-suggestion__profile" th:href="${user.username != null} ? @{/people/{username}(username=${user.username})} : @{'/profile/' + ${user.id}}">
             <img class="feed-suggestion__avatar"
                  th:src="${user.avatarUrl != null ? user.avatarUrl : '/images/avatar_default.png'}"
                  src="/images/avatar_default.png" alt="avatar" loading="lazy" decoding="async">

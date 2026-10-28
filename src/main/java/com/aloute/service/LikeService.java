@@ -20,8 +20,6 @@ import com.aloute.persistence.postgres.document.Criteria;
 import com.aloute.persistence.postgres.document.Query;
 import org.springframework.stereotype.Service;
 import com.aloute.common.util.TransactionCommitHooks;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -190,13 +188,8 @@ public class LikeService {
                         notificationFailure.getClass().getSimpleName());
             }
         };
-        // Notifications writes to PostgreSQL. Publish only after PostgreSQL commits.
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override public void afterCommit() { notification.run(); }
-            });
-        } else {
-            notification.run();
-        }
+        // Use the shared hook so outbox writes know they are running after the original
+        // transaction has committed and can open a fresh REQUIRES_NEW transaction.
+        TransactionCommitHooks.afterCommit(notification);
     }
 }

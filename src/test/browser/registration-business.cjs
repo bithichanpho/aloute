@@ -21,6 +21,7 @@ const {chromium} = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
       const url=new URL(route.request().url());
       if(url.hostname!=='aloute.test')return route.abort();
       if(url.pathname==='/register')return route.fulfill({contentType:'text/html; charset=utf-8',body:source});
+      if (url.pathname === '/api/auth/register/username-availability') return route.fulfill({contentType:'application/json',body:'{"success":true,"data":{"available":true}}'});
       if(url.pathname==='/api/auth/register'){
         requests++;
         if(mode==='hang')return;
@@ -67,7 +68,9 @@ const {chromium} = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
     if(!before)assert.equal(report.readOnlyDuringRequest,true);
     release();
     await page.waitForFunction(()=>!document.getElementById('submitBtn').disabled);
-    assert.equal(await page.locator('#formError').isVisible(),true);
+    assert.equal(await page.locator('#formError').isVisible(),false);
+    assert.equal(await page.locator('#usernameError').innerText(),'Tên đăng nhập đã được sử dụng');
+    await assign(standard);
     // A timeout cannot be presented as registration failure with a known server outcome.
     mode='hang'; await page.clock.install(); await page.locator('#submitBtn').click();
     await page.clock.fastForward(31000); await page.waitForTimeout(100);

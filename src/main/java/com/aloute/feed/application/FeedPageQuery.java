@@ -77,7 +77,7 @@ public class FeedPageQuery {
         }
         if (batches >= 20 && result.size() < size) hasMore = true;
         if (result.isEmpty() && !hasMore) nextCursor = "";
-        posts.attachRecentReposters(result);
+        posts.attachRecentReposters(viewerId, result);
         return new FeedCursorPage(result, hasMore ? nextCursor : (result.isEmpty() ? "" : nextCursor), hasMore);
     }
 

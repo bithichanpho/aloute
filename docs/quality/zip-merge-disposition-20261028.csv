@@ -1,0 +1,143 @@
+﻿path,archive_comparison,decision,reason
+.env,sensitive-skipped,EXCLUDED_SECRET,Khong doc/copy gia tri nhay cam
+.env.example,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+.gitignore,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+.secret/aloute-app-firebase-adminsdk-fbsvc-28e15ed21b.json,sensitive-skipped,EXCLUDED_SECRET,Khong doc/copy gia tri nhay cam
+CALLING_SAME_LAN_SETUP_VI.md,zip-only,CONSOLIDATED,Hop nhat vao CALLING_SETUP.md; sua tai lieu cu/ky tu hong
+CALLING_SETUP.md,zip-only,CONSOLIDATED,Hop nhat vao CALLING_SETUP.md; sua tai lieu cu/ky tu hong
+CALL_HISTORY_DURATION_VI.md,zip-only,CONSOLIDATED,Hop nhat vao CALLING_SETUP.md; sua tai lieu cu/ky tu hong
+deploy/database/.env.pgadmin.example,sensitive-skipped,EXCLUDED_SECRET,Khong doc/copy gia tri nhay cam
+dev-certs/aloute-lan-ca.cer,zip-only,GENERATE_LOCALLY_ONLY,"Artifact rieng may, helper tao khi can"
+dev-certs/aloute-lan.p12,sensitive-skipped,EXCLUDED_SECRET,Khong doc/copy gia tri nhay cam
+dev-certs/ca-thumbprint.txt,zip-only,GENERATE_LOCALLY_ONLY,"Artifact rieng may, helper tao khi can"
+dev-certs/keystore-password.txt,sensitive-skipped,EXCLUDED_SECRET,Khong doc/copy gia tri nhay cam
+dev-certs/lan-ip.txt,zip-only,GENERATE_LOCALLY_ONLY,"Artifact rieng may, helper tao khi can"
+docker-compose.yml,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+moderation/main.py,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+setup-lan-call.ps1,zip-only,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/config/DemoDataSeeder.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/config/DemoFeedExpansionSeeder.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/config/DistributedCallInfrastructureCheck.java,zip-only,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/controller/AuthController.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/controller/SocialFeatureController.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/controller/ViewController.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/dto/request/EditPostRequest.java,zip-only,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/dto/request/ReactionRequest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/dto/response/ChatMessageResponse.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/dto/response/UserProfileDto.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/messaging/api/CallHistoryAuthorization.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/messaging/api/MissedCallHistory.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/messaging/calls/application/CallRegistryService.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/messaging/calls/application/DurableCallHistoryAuthorization.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/messaging/calls/domain/CallSessions.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/messaging/calls/infrastructure/JdbcCallSessions.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/model/document/ChatMessage.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/model/document/FollowRequest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/model/document/PostVisibility.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/notifications/application/NotificationApplicationService.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/posts/api/PostEditCommand.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/posts/application/PostEditingService.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/posts/infrastructure/PostFeedReader.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/repository/ICloseFriendRepository.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/repository/IUserRepository.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/service/AuthService.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/service/ChatMessageMapper.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/service/ChatService.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/service/ContentAccessService.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/service/NotificationService.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/service/PostService.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/service/SocialFeatureService.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/java/com/aloute/service/UserService.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/social/FollowRequestRealtimePublisher.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/users/api/UserDirectory.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/java/com/aloute/users/infrastructure/JpaUserDirectory.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/application-call-distributed.yml,zip-only,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/resources/application-lan-call.yml,zip-only,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/resources/application-no-redis.yml,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/application.yml,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/css/auth-register.css,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/css/features.css,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/css/main.css,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/css/theme.css,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/js/app.js,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/js/auth-register.js,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/static/js/chat.js,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/resources/static/js/features.js,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/resources/static/js/friends-panel.js,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/auth/forgot-password.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/auth/login.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/auth/register.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/auth/reset-password.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/auth/verify-reset-code.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/auth/verify.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/chat/index.html,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/resources/templates/features/index.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/feed/index.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/follow-requests/index.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/fragments/bottom-nav.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/fragments/navbar.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/fragments/post-composer.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/layout/base.html,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/main/resources/templates/profile/view.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/main/resources/templates/search/index.html,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/browser/register-validation.cjs,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/browser/registration-business.cjs,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/controller/AuthControllerWebTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/controller/PaginationControllerTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/controller/PostControllerWebTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/FeatureTemplateTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/feed/FeedCachedVisibilityTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/notifications/NotificationApplicationServiceTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/posts/PostEditingServiceTest.java,changed,MERGED_SELECTIVELY,"Ghep phan moi, giu cac ban sua va contracts hien tai"
+src/test/java/com/aloute/service/AuthServiceRegisterTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/service/FeedQueryBudgetTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/service/SocialFeatureServiceTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/service/UserProfileQueryBudgetTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+src/test/java/com/aloute/users/UserDirectoryTest.java,changed,KEEP_CURRENT,ZIP dua ve nen cu hoac bo ha tang/cau hinh hien co
+deploy/start-local-redis.ps1,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/follow-request-seen-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/local-redis-wsl-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/post-audience-count-restored-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/post-reaction-removal-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/privacy-rules-restored-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/profile-grid-username-20261028.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/registration-simultaneous-validation-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/saved-card-height-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/saved-feed-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/search-tabs-hashtags-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/social-requests-blocks-restore-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+docs/quality/theme-switch-monochrome-20261027.md,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/controller/CloseFriendController.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/dto/response/BlockedAccountResponse.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/dto/response/FollowRequestResponse.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/posts/infrastructure/PostHashtagQuery.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/service/CloseFriendService.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/social/api/CloseFriendships.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/java/com/aloute/social/infrastructure/JpaCloseFriendships.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/resources/templates/fragments/follow-request.html,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/main/resources/templates/fragments/theme-switch.html,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/blocked-accounts-workflow.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/close-friend-privacy.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/compose-audience-workflow.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/follow-request-seen.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/post-reaction-removal.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/private-follow-workflow.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/profile-grid-workflow.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/register-username-taken.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/saved-feed-workflow.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/browser/search-workflow.cjs,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/PrivateProfileTemplateTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/controller/ActivityPageTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/controller/CloseFriendPrivacyControllerTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/controller/FollowRequestInboxTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/controller/ProfilePostCountTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/controller/ProfileUsernameRouteTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/persistence/postgres/document/PostHashtagQueryTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/schema/DisposablePostgres.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/schema/PostHashtagSearchIT.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/schema/ProfilePostCountIT.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/service/CloseFriendPostVisibilityTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/service/CloseFriendPrivacyTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/service/PrivateProfileContentTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/social/CloseFriendshipsTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai
+src/test/java/com/aloute/social/FollowRequestSeenEventTest.java,current-only,KEEP_CURRENT,Giu tinh nang/kiem thu hien tai

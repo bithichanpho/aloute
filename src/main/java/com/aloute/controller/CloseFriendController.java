@@ -68,7 +68,8 @@ public class CloseFriendController {
                     @jakarta.validation.constraints.Max(10000) int page,
             @RequestParam(defaultValue = "50") @jakarta.validation.constraints.Min(1)
                     @jakarta.validation.constraints.Max(100) int size) {
-        Long currentUserId = SecurityUtils.currentUserId(authentication);
+        Long currentUserId = requireUserId(authentication);
+        closeFriendService.requireListAccess(currentUserId, userId);
 
         List<UserProfileDto> profiles =
                 userService.getProfiles(

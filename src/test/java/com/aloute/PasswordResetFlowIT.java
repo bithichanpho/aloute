@@ -69,7 +69,7 @@ class PasswordResetFlowIT {
         mvc.perform(post("/api/auth/verify-reset-code").servletPath("/api/auth/verify-reset-code").contentType("application/json").content(body))
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/auth/verify-reset-code").servletPath("/api/auth/verify-reset-code").cookie(csrf).header("X-XSRF-TOKEN",csrf.getValue())
-                .contentType("application/json").content(body.replace("012345","111111"))).andExpect(status().isBadRequest())
+                .contentType("application/json").content(body.replace("012345","1111111"))).andExpect(status().isBadRequest())
                 .andExpect(cookie().doesNotExist(com.aloute.controller.PasswordResetController.COOKIE));
         var result=mvc.perform(post("/api/auth/verify-reset-code").servletPath("/api/auth/verify-reset-code").cookie(csrf).header("X-XSRF-TOKEN",csrf.getValue())
                 .contentType("application/json").content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.data").isEmpty()).andReturn().getResponse();

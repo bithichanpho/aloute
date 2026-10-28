@@ -49,6 +49,7 @@
 .u244 .u244-in:focus { box-shadow: inset 0 0 0 2px var(--ux-accent); }
 .u244 .u244-in:focus-visible { outline: 2px solid var(--ux-accent); outline-offset: 3px; }
 .u244 .u244-fd.is-bad .u244-in { box-shadow: inset 0 0 0 2px var(--ux-danger); }
+.u244 .u244-fd.is-bad .u244-in:focus-visible { outline-color: var(--ux-danger); }
 .u244 .u244-fd.is-good .u244-in { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ux-mint) 60%, transparent); }
 .u244 .u244-fd.is-shake .u244-bx { animation: u244-sh .4s; }
 @keyframes u244-sh { 20%,60% { transform: translateX(-5px); } 40%,80% { transform: translateX(5px); } }

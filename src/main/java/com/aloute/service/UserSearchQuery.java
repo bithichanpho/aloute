@@ -41,17 +41,33 @@ public class UserSearchQuery {
     /** Returns one bounded result page without materializing every matching account id. */
     @Transactional(readOnly = true)
     public List<Long> findIds(String term, int page, int size) {
+        return findIds(term, page, size, null);
+    }
+
+    /**
+     * Returns one bounded result page, optionally excluding the current account.
+     * Exclusion occurs in the database so the current account does not consume a page slot.
+     */
+    @Transactional(readOnly = true)
+    public List<Long> findIds(String term, int page, int size, Long excludedUserId) {
         entityManager
                 .createNativeQuery("select set_config('plan_cache_mode', 'force_custom_plan', true)")
                 .getSingleResult();
-        return entityManager
-                .createQuery(
-                        "select u.id from User u"
-                                + " where lower(u.username) like lower(:pattern) escape '!'"
-                                + " or lower(u.fullName) like lower(:pattern) escape '!'"
-                                + " order by u.id desc",
-                        Long.class)
-                .setParameter("pattern", LikePatternUtil.contains(term))
+
+        String jpql = "select u.id from User u"
+                + " where (lower(u.username) like lower(:pattern) escape '!'"
+                + " or lower(u.fullName) like lower(:pattern) escape '!')";
+        if (excludedUserId != null) {
+            jpql += " and u.id <> :excludedUserId";
+        }
+        jpql += " order by u.id desc";
+
+        var query = entityManager.createQuery(jpql, Long.class)
+                .setParameter("pattern", LikePatternUtil.contains(term));
+        if (excludedUserId != null) {
+            query.setParameter("excludedUserId", excludedUserId);
+        }
+        return query
                 .setFirstResult(Math.multiplyExact(page, size))
                 .setMaxResults(size)
                 .getResultList();

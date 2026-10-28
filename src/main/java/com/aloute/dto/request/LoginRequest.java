@@ -13,7 +13,6 @@ public class LoginRequest {
     @Size(max = 72, message = "Mật khẩu tối đa 72 ký tự")
     private String password;
 
-    @lombok.Getter @lombok.Setter @Size(max = 64, message = "Mã xác thực quá dài") private String code;
 
     public String getUsername() {
         return username;

@@ -321,11 +321,42 @@ body { background: var(--bg); }
   background: var(--danger);
 }
 
-/* Công tắc theme: hiện mặt trời khi đang tối, mặt trăng khi đang sáng */
-[data-bs-theme="dark"] .theme-icon--to-dark,
+/* The text describes the mode the button will switch to. */
 [data-bs-theme="dark"] .theme-text--to-dark,
-[data-bs-theme="light"] .theme-icon--to-light,
 [data-bs-theme="light"] .theme-text--to-light { display: none !important; }
+
+/* Adapted from Uiverse.io by Creatlydev; scoped to ALOUTE's existing theme buttons. */
+.theme-switch__disc {
+  background: transparent;
+  color: var(--text-primary);
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  line-height: 1;
+  pointer-events: none;
+}
+.theme-switch__icon {
+  grid-column: 1 / 1;
+  grid-row: 1 / 1;
+  width: 22px;
+  height: 22px;
+  transition: transform 500ms;
+  line-height: .1;
+}
+.theme-switch__icon--moon { transition-delay: 200ms; }
+.theme-switch__icon--sun { transform: scale(0); }
+/* Match the icon to the destination mode named by the adjacent text. */
+[data-bs-theme="dark"] .theme-switch__icon--moon { transform: rotate(360deg) scale(0); }
+[data-bs-theme="dark"] .theme-switch__icon--sun { transition-delay: 200ms; transform: scale(1) rotate(360deg); }
+.mobile-topbar__btn[data-theme-toggle] { padding: 0; }
+.mobile-topbar__btn .theme-switch__icon { width: 20px; height: 20px; }
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch__icon { transition: none !important; transition-delay: 0s !important; }
+}
 
 /* ---------- 5. Shell: desktop ---------- */
 .main-column { padding-left: var(--rail-width); min-width: 0; }
@@ -497,6 +528,9 @@ img { max-width: 100%; }
 }
 .sidebar__logo { font-weight: 850; letter-spacing: -.045em; }
 .sidebar__logo svg { flex: 0 0 26px; }
+.sidebar__logo .sidebar__logo-icon { flex: 0 0 30px; width: 30px; height: 30px; }
+.mobile-topbar__logo .mobile-topbar__logo-icon { width: 27px; height: 27px; }
+.auth-card__logo img { width: 58px; height: 58px; color: inherit; }
 .sidebar__row { min-height: 46px; transition: background-color var(--ui-motion), color var(--ui-motion), transform var(--ui-motion); }
 .sidebar__row:hover { transform: translateX(1px); }
 .sidebar__row--active { box-shadow: none; }
@@ -762,13 +796,9 @@ body.page-chat .main-column { min-width: 0; }
 .btn-primary { color: #fff; background: var(--accent-gradient); border-radius: var(--ui-control-radius); min-height: 46px; }
 .auth-theme-toggle {
   position: fixed; z-index: 10; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
-  width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); border-radius: 50%; color: var(--text-primary); background: var(--bg-panel);
-  box-shadow: var(--shadow-sm); cursor: pointer; transition: transform var(--ui-motion), background-color var(--ui-motion);
+  width: 42px; height: 42px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; cursor: pointer;
 }
-.auth-theme-toggle:hover { background: var(--bg-hover); transform: translateY(-1px); }
-[data-bs-theme="dark"] .auth-theme-toggle .theme-icon--to-dark,
-[data-bs-theme="light"] .auth-theme-toggle .theme-icon--to-light { display: none; }
 
 /* Toasts, dialogs, dropdowns and forms */
 .modal-content { border: 1px solid var(--border); box-shadow: var(--shadow-md); }
@@ -1414,7 +1444,7 @@ body.page-feed .compose-page { margin-block-end: 24px !important; }
 .friends-chat-window__name-wrap { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .friends-chat-window__name-wrap strong { overflow: hidden; font-size: 12px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
 .friends-chat-window__status { color: var(--text-tertiary); font-size: 10px; }
-.friends-chat-window__header-actions { display: flex; align-items: center; gap: 2px; }
+.friends-chat-window__header-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .friends-chat-window__header-btn {
   display: inline-flex;
   align-items: center;
@@ -1478,6 +1508,17 @@ body.page-feed .compose-page { margin-block-end: 24px !important; }
   border-radius: 16px 16px 5px 16px;
 }
 .friends-chat-window__bubble a { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.post-pagination__status { padding: 20px 12px; color: var(--text-secondary); text-align: center; font-size: 14px; }
+.friends-chat-window__attachment { display: block; width: fit-content; max-width: 100%; overflow: hidden; border-radius: 12px; background: #000; }
+.friends-chat-window__attachment img { display: block; max-width: 100%; height: auto; object-fit: contain; }
+.friends-chat-window__attachment.has-error { padding: 9px 12px; background: var(--bg-hover); color: var(--text-primary); }
+.friends-chat-window__call { min-width: 0; max-width: 100%; }
+.friends-chat-window__call .bubble__call { width: min(280px, 100%); }
+#videoCallModal { z-index: 1300; }
+#videoCallModal [hidden] { display: none !important; }
+#videoCallModal .video-call-card { max-height: calc(100dvh - 40px); overflow-y: auto; }
+#videoCallModal .video-call-actions > button { width: auto; margin: 0; }
+#videoCallModal .audio-call-profile strong { color: var(--text-primary); }
 .friends-chat-window__message-row.has-error .friends-chat-window__bubble { outline: 1px solid #e05656; }
 .friends-chat-window__delivery { color: var(--text-tertiary); font-size: 10px; line-height: 1.25; padding-inline: 4px; text-align: right; min-height: 1em; }
 .friends-chat-window__feedback { min-height: 0; padding: 0 12px; color: var(--text-tertiary); font-size: 10px; }
@@ -1534,4 +1575,55 @@ body.page-feed .compose-page { margin-block-end: 24px !important; }
 @media (prefers-reduced-motion: reduce) {
   .friends-chat-window { animation: none; }
   .friends-panel__friend, .friends-panel__chat-icon { transition: none; }
+}
+
+
+/* ADMIN ACCOUNTS: full-width layout override. Keep this at the end of the final stylesheet.
+   The page must not inherit the narrow feed/article max-width. */
+body .main-column .admin-accounts.content-inner {
+  display: block;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box;
+}
+body .main-column .admin-accounts.content-inner .admin-accounts__header,
+body .main-column .admin-accounts.content-inner .admin-accounts__search,
+body .main-column .admin-accounts.content-inner .admin-accounts__notice,
+body .main-column .admin-accounts.content-inner .admin-accounts__table-wrap,
+body .main-column .admin-accounts.content-inner .admin-accounts__pagination {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+body .main-column .admin-accounts.content-inner .admin-accounts__table {
+  width: 100%;
+  min-width: 1120px;
+  table-layout: auto;
+}
+body .main-column .admin-accounts.content-inner .admin-accounts__table th:last-child,
+body .main-column .admin-accounts.content-inner .admin-accounts__table td:last-child {
+  min-width: 270px;
+}
+body .main-column .admin-accounts.content-inner .admin-accounts__actions {
+  min-width: 250px;
+  gap: 7px;
+}
+body .main-column .admin-accounts.content-inner .admin-accounts__actions button {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  body .main-column .admin-accounts.content-inner {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  body .main-column .admin-accounts.content-inner .admin-accounts__table { min-width: 1060px; }
+}
+@media (max-width: 640px) {
+  body .main-column .admin-accounts.content-inner {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
 }

@@ -22,6 +22,14 @@ public interface IUserRepository extends JpaRepository<User, Long> {
         String getUsername();
     }
 
+    interface ProfileLabelEntry extends DirectoryEntry {
+        String getFullName();
+        String getAvatarUrl();
+    }
+
+    @Query("select u.id as id, u.username as username, u.fullName as fullName, u.avatarUrl as avatarUrl from User u where u.id in :ids")
+    List<ProfileLabelEntry> findProfileLabels(@Param("ids") java.util.Collection<Long> ids);
+
     @Query("select u.username from User u where u.id = :id")
     Optional<String> findDirectoryUsername(@Param("id") Long id);
 
@@ -92,6 +100,10 @@ public interface IUserRepository extends JpaRepository<User, Long> {
     int consumeVerifiedResetToken(@Param("id") Long id,@Param("tokenHash") String tokenHash,
             @Param("expectedExpiry") LocalDateTime expectedExpiry,@Param("password") String password,
             @Param("revokedAt") Instant revokedAt,@Param("now") LocalDateTime now);
+
+    /** Active system administrators who receive durable moderation queue alerts. */
+    @Query("select u.id from User u where u.active = true and u.role.name in ('ROLE_ADMIN', 'ROLE_HOST')")
+    List<Long> findActiveSystemAdministratorIds();
 
     List<User> findTop60ByOrderByIdDesc();
 

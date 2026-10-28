@@ -389,7 +389,8 @@ public class ChatController {
                                         java.time.Duration.ofMinutes(1), java.time.Duration.ofMinutes(1))) return;
                                 Long receiverId = payload.receiverId();
                                 if (!sender.isActive()
-                                        || !access.profileVisible(sender.getId(), receiverId))
+                                        || !access.profileVisible(sender.getId(), receiverId)
+                                        || !access.canMessageAccount(sender.getId(), receiverId))
                                     return;
                                 authenticationUserCache
                                         .findById(receiverId)

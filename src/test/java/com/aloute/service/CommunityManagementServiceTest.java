@@ -86,6 +86,20 @@ class CommunityManagementServiceTest {
     }
 
     @Test
+    void leadershipRequiresMembershipForPrivateGroup() {
+        Community privateCommunity = new Community();
+        privateCommunity.setId(7L);
+        privateCommunity.setName("Nhóm riêng tư");
+        privateCommunity.setPrivacy(CommunityService.PRIVACY_PRIVATE);
+        when(communities.findById(7L)).thenReturn(Optional.of(privateCommunity));
+        when(members.existsByCommunityIdAndUserIdAndRoleIn(eq(7L), eq(20L), anyCollection()))
+                .thenReturn(false);
+
+        assertThrows(ForbiddenException.class, () -> service.leadership(7L, 20L));
+        verify(members, never()).findByCommunityIdAndRoleInOrderByJoinedAtAsc(eq(7L), anyCollection(), any());
+    }
+
+    @Test
     void regularMemberCannotReadModerationQueue() {
         when(members.findByCommunityIdAndUserId(7L, 20L))
                 .thenReturn(Optional.of(new CommunityMember(7L, 20L, CommunityService.ROLE_MEMBER)));

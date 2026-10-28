@@ -123,18 +123,22 @@ public class PostResponseMapper {
         if (post.getRepostOfId() != null) {
             dto.setRepostOf(buildRepostOrigin(post.getRepostOfId()));
         }
-        repostPresentationService.attachRecentReposters(java.util.List.of(dto));
+        repostPresentationService.attachRecentReposters(currentUserId, java.util.List.of(dto));
 
         return dto;
     }
 
     private boolean isPubliclyModerated(Post post) {
         ModerationStatus status = post == null ? null : post.getModerationStatus();
-        // Treat legacy records without a status as approved. PENDING, FLAGGED and HIDDEN
-        // contents must not leak through counters/media of a repost.
+        // Treat legacy records without a status as approved. HIDDEN and PENDING remain blocked.
+        // FLAGGED is a moderation signal, not an automatic publishing gate, when the engine
+        // successfully evaluated the content. A FLAGGED result with a failure reason stays fail-closed.
         com.aloute.model.document.CommunityPostStatus communityStatus =
                 post == null ? null : post.getCommunityPostStatus();
-        return (status == null || status == ModerationStatus.APPROVED)
+        boolean moderationReadable = status == null || status == ModerationStatus.APPROVED
+                || (status == ModerationStatus.FLAGGED
+                        && (post.getModerationFailureReason() == null || post.getModerationFailureReason().isBlank()));
+        return moderationReadable
                 && (communityStatus == null
                         || communityStatus == com.aloute.model.document.CommunityPostStatus.APPROVED);
     }
@@ -150,6 +154,7 @@ public class PostResponseMapper {
         }
 
         origin.setContent(original.getContent());
+        origin.setVisibility(original.getVisibility());
         origin.setImageUrl(
                 CloudinaryUrlUtil.feedImage(original.getImageUrl()));
         origin.setVideoUrl(original.getVideoUrl());
@@ -294,6 +299,7 @@ public class PostResponseMapper {
                                     origin.setDeleted(true);
                                 } else {
                                     origin.setContent(original.getContent());
+                                    origin.setVisibility(original.getVisibility());
                                     origin.setImageUrl(
                                             CloudinaryUrlUtil.feedImage(
                                                     original.getImageUrl()));

@@ -6,9 +6,8 @@
 <nav class="sidebar sidebar--fixed-rail" th:fragment="navbar" aria-label="Điều hướng chính">
     <div class="sidebar__panel">
         <a class="sidebar__logo" th:href="@{/feed}" aria-label="Aloute">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4.5 5.5h15v10h-8l-4.5 4v-4H4.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            </svg>
+            <img class="sidebar__logo-icon" th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+                 src="/images/aloute-bird-logo.png" alt="">
             <span class="sidebar__label">ALOUTE</span>
         </a>
 
@@ -19,7 +18,7 @@
             </a>
             <a class="sidebar__row" th:classappend="${activeNav == 'chat'} ? 'sidebar__row--active' : ''" th:href="@{/chat}" title="Tin nhắn">
                 <span class="sidebar__icon-wrap">
-                    <i class="bi bi-messenger" aria-hidden="true"></i>
+                    <i class="bi" th:classappend="${activeNav == 'chat'} ? 'bi-chat-dots-fill' : 'bi-chat-dots'" aria-hidden="true"></i>
                     <span id="chatUnreadBadge" class="badge" th:text="${unreadMessageCount > 99 ? '99+' : unreadMessageCount}" th:style="${unreadMessageCount > 0 ? '' : 'display:none'}">0</span>
                 </span>
                 <span class="sidebar__label">Tin nhắn</span>
@@ -35,11 +34,18 @@
                 </span>
                 <span class="sidebar__label">Thông báo</span>
             </a>
+            <a class="sidebar__row" th:classappend="${activeNav == 'follow-requests'} ? 'sidebar__row--active' : ''" th:href="@{/follow-requests}" title="Yêu cầu theo dõi">
+                <span class="sidebar__icon-wrap">
+                    <i class="bi bi-person-plus" aria-hidden="true"></i>
+                    <span id="followRequestBadge" class="badge" th:text="${followRequestCount > 99 ? '99+' : followRequestCount}" th:style="${followRequestCount > 0 ? '' : 'display:none'}">0</span>
+                </span>
+                <span class="sidebar__label">Yêu cầu theo dõi</span>
+            </a>
             <a class="sidebar__row" th:classappend="${activeNav == 'compose'} ? 'sidebar__row--active' : ''" th:href="@{/compose}" title="Tạo">
                 <i class="bi" th:classappend="${activeNav == 'compose'} ? 'bi-plus-square-fill' : 'bi-plus-square'" aria-hidden="true"></i>
                 <span class="sidebar__label">Tạo</span>
             </a>
-            <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" th:href="@{/profile/me}" title="Trang cá nhân">
+            <a class="sidebar__row" th:classappend="${activeNav == 'profile'} ? 'sidebar__row--active' : ''" th:href="${currentUser != null and currentUser.username != null} ? @{/people/{username}(username=${currentUser.username})} : @{/profile/me}" title="Trang cá nhân">
                 <img src="/images/avatar_default.png" th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}" alt="avatar"/>
                 <span class="sidebar__label">Trang cá nhân</span>
             </a>
@@ -59,11 +65,15 @@
                 <i class="bi" th:classappend="${pageKind == 'settings'} ? 'bi-gear-fill' : 'bi-gear'" aria-hidden="true"></i>
                 <span class="sidebar__label">Cài đặt</span>
             </a>
-            <a class="sidebar__row sidebar__row--sub" th:if="${isSystemAdmin == true}" th:classappend="${pageKind == 'moderation'} ? 'sidebar__row--active' : ''" th:href="@{/admin/moderation}" title="Báo cáo vi phạm">
+            <a class="sidebar__row sidebar__row--sub" th:if="${isSystemAdmin == true}" th:classappend="${pageKind == 'moderation'} ? 'sidebar__row--active' : ''" th:href="${isHost == true ? '/host/moderation' : '/admin/moderation'}" title="Kiểm duyệt và báo cáo">
                 <i class="bi bi-flag" aria-hidden="true"></i>
-                <span class="sidebar__label">Báo cáo vi phạm</span>
+                <span class="sidebar__label">Kiểm duyệt &amp; báo cáo</span>
             </a>
-            <a class="sidebar__row sidebar__row--sub" th:if="${isHost == true}" th:classappend="${activeNav == 'host-dashboard'} ? 'sidebar__row--active' : ''" th:href="@{/admin/dashboard}" title="Quản trị máy chủ">
+            <a class="sidebar__row sidebar__row--sub" th:if="${isSystemAdmin == true}" th:classappend="${activeNav == 'admin-accounts'} ? 'sidebar__row--active' : ''" th:href="${isHost == true ? '/host/accounts' : '/admin/accounts'}" title="Quản lý tài khoản">
+                <i class="bi bi-person-gear" aria-hidden="true"></i>
+                <span class="sidebar__label">Quản lý tài khoản</span>
+            </a>
+            <a class="sidebar__row sidebar__row--sub" th:if="${isHost == true}" th:classappend="${activeNav == 'host-dashboard'} ? 'sidebar__row--active' : ''" th:href="@{/host/server}" title="Quản trị máy chủ">
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
                 <span class="sidebar__label">Quản trị máy chủ</span>
             </a>
@@ -72,8 +82,7 @@
         <div class="sidebar__footer">
             <!-- Công tắc sáng/tối: ui.js bắt sự kiện bằng data-theme-toggle (delegation) -->
             <button type="button" class="sidebar__row sidebar__theme" data-theme-toggle title="Chuyển giao diện sáng/tối" aria-label="Chuyển giao diện sáng/tối">
-                <i class="bi bi-moon-stars theme-icon theme-icon--to-dark" aria-hidden="true"></i>
-                <i class="bi bi-sun theme-icon theme-icon--to-light" aria-hidden="true"></i>
+                <span th:replace="~{fragments/theme-switch :: icon}"></span>
                 <span class="sidebar__label">
                     <span class="theme-text theme-text--to-dark">Giao diện tối</span>
                     <span class="theme-text theme-text--to-light">Giao diện sáng</span>
@@ -90,16 +99,14 @@
 <!-- ===== Thanh trên cho mobile: logo, tìm kiếm, đổi theme, menu "thêm" ===== -->
 <header class="mobile-topbar" th:fragment="mobileTopbar">
     <a class="mobile-topbar__logo" th:href="@{/feed}" aria-label="Aloute">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4.5 5.5h15v10h-8l-4.5 4v-4H4.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-        </svg>
+        <img class="mobile-topbar__logo-icon" th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+             src="/images/aloute-bird-logo.png" alt="">
         <span>ALOUTE</span>
     </a>
     <div class="mobile-topbar__actions">
         <a class="mobile-topbar__btn" th:href="@{/search}" aria-label="Tìm kiếm"><i class="bi bi-search"></i></a>
         <button type="button" class="mobile-topbar__btn" data-theme-toggle aria-label="Chuyển giao diện sáng/tối">
-            <i class="bi bi-moon-stars theme-icon theme-icon--to-dark"></i>
-            <i class="bi bi-sun theme-icon theme-icon--to-light"></i>
+            <span th:replace="~{fragments/theme-switch :: icon}"></span>
         </button>
         <div class="dropdown">
             <button type="button" class="mobile-topbar__btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Thêm">
@@ -109,8 +116,9 @@
                 <li><a class="dropdown-item" th:href="@{/communities}"><i class="bi bi-people me-2"></i>Hội nhóm</a></li>
                 <li><a class="dropdown-item" th:href="@{/saved}"><i class="bi bi-bookmark me-2"></i>Đã lưu</a></li>
                 <li><a class="dropdown-item" th:href="@{/settings}"><i class="bi bi-gear me-2"></i>Cài đặt</a></li>
-                <li th:if="${isSystemAdmin == true}"><a class="dropdown-item" th:href="@{/admin/moderation}"><i class="bi bi-flag me-2"></i>Báo cáo vi phạm</a></li>
-                <li th:if="${isHost == true}"><a class="dropdown-item" th:href="@{/admin/dashboard}"><i class="bi bi-speedometer2 me-2"></i>Quản trị máy chủ</a></li>
+                <li th:if="${isSystemAdmin == true}"><a class="dropdown-item" th:href="${isHost == true ? '/host/moderation' : '/admin/moderation'}"><i class="bi bi-flag me-2"></i>Báo cáo vi phạm</a></li>
+                <li th:if="${isSystemAdmin == true}"><a class="dropdown-item" th:href="${isHost == true ? '/host/accounts' : '/admin/accounts'}"><i class="bi bi-person-gear me-2"></i>Quản lý tài khoản</a></li>
+                <li th:if="${isHost == true}"><a class="dropdown-item" th:href="@{/host/server}"><i class="bi bi-speedometer2 me-2"></i>Quản trị máy chủ</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item text-danger" th:href="@{/logout}" data-logout="1"><i class="bi bi-box-arrow-right me-2"></i>Đăng xuất</a></li>
             </ul>

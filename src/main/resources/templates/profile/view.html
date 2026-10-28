@@ -3,7 +3,8 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title th:text="${profileUser != null ? profileUser.fullName + ' — ALOUTE' : 'Hồ sơ — ALOUTE'}">Hồ sơ — ALOUTE</title></head>
 <body>
-<section class="content-inner content-inner--profile">
+<section class="content-inner content-inner--profile"
+         th:with="privateContentRestricted=${profileUser != null and profileUser.privateAccount and !isOwnProfile and !profileUser.followedByCurrentUser}">
 
   <div class="profile-cover" th:if="${profileUser != null}">
 
@@ -40,49 +41,65 @@
         <strong th:text="${profileUser.followingCount}">0</strong>
         <span>đang theo dõi</span>
       </button>
-      <button type="button" class="profile-stat" data-people-tab="close">
-        <strong th:text="${profileUser.closeFriendCount}">0</strong>
-        <span>bạn thân</span>
-      </button>
     </div>
 
     <div class="profile-cover__actions" th:if="${isOwnProfile}">
-      <button type="button" class="btn-profile" onclick="location.href='/profile/edit'">Chỉnh sửa trang cá nhân</button>
-      <button type="button" class="btn-profile" onclick="location.href='/saved'">Đã lưu</button>
+      <a class="btn-profile btn-profile--link" th:href="@{/profile/edit}">Chỉnh sửa trang cá nhân</a>
+      <a class="btn-profile btn-profile--link" th:href="@{/saved}">Đã lưu</a>
     </div>
 
     <div class="profile-cover__actions" th:unless="${isOwnProfile}">
       <button class="btn-profile btn-profile--primary btn-follow"
-              th:classappend="${profileUser.followedByCurrentUser} ? ' is-following' : ''"
-              th:attr="data-user-id=${profileUser.id}"
-              th:text="${profileUser.followedByCurrentUser ? 'Đang theo dõi' : (profileUser.followRequestPending ? 'Đã gửi yêu cầu · Hủy' : 'Theo dõi')}">Theo dõi</button>
+              th:classappend="${profileUser.followedByCurrentUser ? ' is-following' : (profileUser.followRequestPending ? ' is-pending' : '')}"
+              th:attr="data-user-id=${profileUser.id},data-follow-status=${profileUser.followedByCurrentUser ? 'FOLLOWING' : (profileUser.followRequestPending ? 'PENDING' : 'NONE')}"
+              th:text="${profileUser.followedByCurrentUser ? 'Đang theo dõi' : (profileUser.followRequestPending ? 'Hủy yêu cầu' : 'Theo dõi')}">Theo dõi</button>
 
-      <button class="btn-profile"
-              th:classappend="${!profileUser.canMessage} ? ' is-disabled' : ''"
-              th:disabled="${!profileUser.canMessage}"
-              th:attr="title=${profileUser.canMessage} ? null : 'Tài khoản này ở chế độ riêng tư — cần theo dõi lẫn nhau để nhắn tin'"
-              th:onclick="|location.href='/chat?userId=' + ${profileUser.id}|">Nhắn tin</button>
+      <!-- Use a normal link instead of inline onclick: the application's CSP blocks inline handlers. -->
+      <a class="btn-profile btn-profile--link"
+         th:if="${profileUser.canMessage}"
+         th:href="@{/chat(userId=${profileUser.id})}">Nhắn tin</a>
+      <button type="button" class="btn-profile is-disabled"
+              th:unless="${profileUser.canMessage}"
+              disabled
+              title="Tài khoản này ở chế độ riêng tư — cần theo dõi lẫn nhau để nhắn tin">Nhắn tin</button>
+
+      <button type="button" class="btn-profile btn-close-friend" th:if="${profileUser.mutualFriend and profileUser.closeFriendStatus != 'PENDING_RECEIVED'}"
+              th:attr="data-user-id=${profileUser.id},data-status=${profileUser.closeFriendStatus}"
+              th:text="${profileUser.closeFriendStatus == 'ACCEPTED' ? 'Bạn thân' : (profileUser.closeFriendStatus == 'PENDING_SENT' ? 'Đã gửi lời mời bạn thân' : (profileUser.closeFriendStatus == 'PENDING_RECEIVED' ? 'Chấp nhận bạn thân' : 'Kết bạn thân'))}">Kết bạn thân</button>
+
+      <div class="profile-action-menu" data-profile-action-menu th:attr="data-user-id=${profileUser.id}">
+        <button type="button" class="profile-action-menu__trigger" aria-label="Tùy chọn hồ sơ"
+                aria-haspopup="menu" aria-expanded="false" title="Tùy chọn hồ sơ">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/>
+          </svg>
+        </button>
+        <div class="profile-action-menu__list" role="menu" hidden>
+          <button type="button" class="profile-action-menu__item profile-action-menu__item--danger"
+                  role="menuitem" data-profile-block>Chặn</button>
+          <button type="button" class="profile-action-menu__item" role="menuitem" data-profile-report>
+            Báo cáo tài khoản
+          </button>
+        </div>
+      </div>
     </div>
 
-    <div class="profile-cover__actions profile-cover__actions--secondary"
-         th:if="${!isOwnProfile and profileUser.mutualFriend and profileUser.closeFriendStatus != 'PENDING_RECEIVED'}">
-      <button class="btn-profile btn-close-friend"
-              th:with="cfAccepted=${profileUser.closeFriendStatus == 'ACCEPTED'}, cfPending=${profileUser.closeFriendStatus == 'PENDING_SENT'}"
-              th:classappend="${cfAccepted ? ' is-close' : (cfPending ? ' is-pending' : '')}"
-              th:attr="data-user-id=${profileUser.id}, data-status=${profileUser.closeFriendStatus}"
-              th:text="${cfAccepted ? '★ Bạn thân' : (cfPending ? 'Đã gửi lời mời' : '+ Bạn thân')}">+ Bạn thân</button>
+    <div class="profile-follow-request-bar" th:if="${!isOwnProfile and profileUser.incomingFollowRequestId != null}">
+      <span>Người này đã gửi yêu cầu theo dõi bạn.</span>
+      <div th:replace="~{fragments/follow-request :: actions(${profileUser.incomingFollowRequestId}, true)}"></div>
     </div>
 
-    <div th:if="${!isOwnProfile and profileUser.closeFriendStatus == 'PENDING_RECEIVED'}"
-         class="close-friend-request-bar" th:attr="data-user-id=${profileUser.id}">
-      <span th:text="${profileUser.fullName + ' đã gửi lời mời kết bạn thân'}">đã gửi lời mời kết bạn thân</span>
-      <div class="close-friend-request-bar__actions">
+    <div class="profile-follow-request-bar close-friend-request-bar"
+         th:if="${!isOwnProfile and profileUser.mutualFriend and profileUser.closeFriendStatus == 'PENDING_RECEIVED'}"
+         th:attr="data-user-id=${profileUser.id}">
+      <span>Người này muốn kết bạn thân với bạn.</span>
+      <div class="follow-request-actions">
         <button type="button" class="close-friend-request-bar__accept">Chấp nhận</button>
         <button type="button" class="close-friend-request-bar__decline">Từ chối</button>
       </div>
     </div>
 
-    <div class="profile-views">
+    <div class="profile-views" th:if="${!privateContentRestricted}">
       <button type="button" class="profile-view is-active" data-profile-view="list">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 6h16M4 12h16M4 18h16"/>
@@ -108,11 +125,14 @@
 
   <div th:if="${profileUser == null}" class="empty-state">Không tìm thấy người dùng này.</div>
 
-  <div class="profile-posts" id="profilePosts" th:if="${profileUser != null}">
+  <div class="empty-state private-profile-notice" th:if="${privateContentRestricted}">Đây là tài khoản riêng tư.</div>
+
+  <div class="profile-posts" id="profilePosts" th:if="${profileUser != null and !privateContentRestricted}">
 
     <div th:if="${#lists.isEmpty(userPosts)}" class="empty-state">
-      <span th:if="${isOwnProfile}">Bạn chưa có bài viết nào. <a th:href="@{/compose}" style="color:inherit;text-decoration:underline;">Đăng bài đầu tiên</a> nhé!</span>
-      <span th:unless="${isOwnProfile}">Người dùng này chưa có bài viết nào.</span>
+      <span th:if="${privateContentRestricted}">Tài khoản này ở chế độ riêng tư. Hãy gửi yêu cầu theo dõi để xem bài viết.</span>
+      <span th:if="${!privateContentRestricted and isOwnProfile}">Bạn chưa có bài viết nào. <a th:href="@{/compose}" style="color:inherit;text-decoration:underline;">Đăng bài đầu tiên</a> nhé!</span>
+      <span th:if="${!privateContentRestricted and !isOwnProfile}">Người dùng này chưa có bài viết nào.</span>
     </div>
 
     <div class="post" th:fragment="profileTimelinePost" th:each="post : ${userPosts}" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}"
@@ -121,7 +141,9 @@
                   isQuote=${post.repostOf != null and post.content != null and !post.content.isEmpty()},
                   mainAvatarUrl=${(isRepost and !isQuote) ? post.repostOf.userAvatarUrl : post.userAvatarUrl},
                   mainUsername=${(isRepost and !isQuote) ? post.repostOf.username : post.username},
-                  mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo}">
+                  mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo},
+                  mainVisibility=${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility},
+                  mainModerationStatus=${post.moderationStatus}">
 
       <div class="post__repost-banner" th:if="${isRepost}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
@@ -138,6 +160,34 @@
         <div class="post__header">
           <span class="post__username" th:text="${mainUsername}">username</span>
           <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+          <span class="post__moderation-status post__moderation-status--pending"
+                th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'PENDING'}"
+                title="Bài viết chỉ hiển thị với bạn trong lúc chờ kiểm duyệt" aria-label="Đang kiểm duyệt, chỉ bạn thấy">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Đang kiểm duyệt</span>
+          </span>
+          <span class="post__moderation-status post__moderation-status--flagged"
+                th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'FLAGGED'}"
+                title="Moderation đã đánh dấu nội dung để theo dõi bổ sung; không mặc định chờ ADMIN" aria-label="Moderation đã đánh dấu để theo dõi bổ sung">
+            <i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Đã đánh dấu</span>
+          </span>
+          <span class="post__moderation-status post__moderation-status--hidden"
+                th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'HIDDEN'}"
+                title="Bài viết đã bị ẩn sau khi kiểm duyệt" aria-label="Bài viết đã bị ẩn">
+            <i class="bi bi-eye-slash" aria-hidden="true"></i><span>Đã ẩn</span>
+          </span>
+          <span class="post__moderation-status post__moderation-status--pending"
+                th:if="${mainModerationStatus == null}"
+                title="Chưa nhận được trạng thái kiểm duyệt; không xác nhận bài viết là công khai" aria-label="Chưa xác minh trạng thái kiểm duyệt">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Chưa xác minh</span>
+          </span>
+          <span class="post__visibility" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'PUBLIC'}"
+                title="Công khai" aria-label="Bài viết công khai"><i class="bi bi-globe2" aria-hidden="true"></i></span>
+          <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'FRIENDS'}"
+                title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"><i class="bi bi-people-fill" aria-hidden="true"></i></span>
+          <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'CLOSE_FRIENDS'}"
+                    title="Bạn thân" aria-label="Bài viết dành cho bạn thân"><i class="bi bi-star-fill" aria-hidden="true"></i></span>
+          <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'ONLY_ME'}"
+                title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
           <div class="post__menu">
             <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                     aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
@@ -225,11 +275,11 @@
             th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/fragment'},data-cursor=${profilePostsNextCursor}">Tải thêm</button>
   </div>
 
-  <div class="profile-grid-wrap" id="profileGridWrap" th:if="${profileUser != null}" hidden>
-    <div th:if="${#lists.isEmpty(mediaPosts)}" class="empty-state">
+  <div class="profile-grid-wrap" id="profileGridWrap" th:if="${profileUser != null and !privateContentRestricted}" hidden>
+    <div th:if="${#lists.isEmpty(mediaPosts)}" class="empty-state" data-profile-media-empty>
       Chưa có bài viết nào kèm ảnh hoặc video.
     </div>
-    <div class="profile-grid" id="profileGrid" th:if="${not #lists.isEmpty(mediaPosts)}">
+    <div class="profile-grid" id="profileGrid">
       <button type="button" class="grid-tile" th:each="post : ${mediaPosts}"
               th:attr="data-goto-post=${post.id}">
         <img class="grid-tile__image" th:if="${post.imageUrl != null}" th:src="${post.imageUrl}" alt="" loading="lazy" decoding="async">
@@ -248,12 +298,13 @@
     </div>
   </div>
 
-  <div class="profile-posts profile-reposts-wrap" id="profileRepostsWrap" th:if="${profileUser != null}" hidden>
+  <div class="profile-posts profile-reposts-wrap" id="profileRepostsWrap" th:if="${profileUser != null and !privateContentRestricted}" hidden>
 
     <div th:if="${#lists.isEmpty(repostPosts)}" class="empty-state"
          data-profile-reposts-empty th:hidden="${profileRepostsDeferred}">
-      <span th:if="${isOwnProfile}">Bạn chưa đăng lại bài viết nào.</span>
-      <span th:unless="${isOwnProfile}">Người dùng này chưa đăng lại bài viết nào.</span>
+      <span th:if="${privateContentRestricted}">Nội dung đăng lại của tài khoản riêng tư chỉ hiển thị với người theo dõi đã được chấp nhận.</span>
+      <span th:if="${!privateContentRestricted and isOwnProfile}">Bạn chưa đăng lại bài viết nào.</span>
+      <span th:if="${!privateContentRestricted and !isOwnProfile}">Người dùng này chưa đăng lại bài viết nào.</span>
     </div>
 
     <div class="post" th:fragment="profileRepostPost" th:each="post : ${repostPosts}" th:attr="data-post-id=${post.id}, data-action-post-id=${post.repostOf != null ? post.repostOf.postId : post.id}"
@@ -262,7 +313,9 @@
                   isQuote=${post.repostOf != null and post.content != null and !post.content.isEmpty()},
                   mainAvatarUrl=${(isRepost and !isQuote) ? post.repostOf.userAvatarUrl : post.userAvatarUrl},
                   mainUsername=${(isRepost and !isQuote) ? post.repostOf.username : post.username},
-                  mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo}">
+                  mainTimeAgo=${(isRepost and !isQuote) ? post.repostOf.timeAgo : post.timeAgo},
+                  mainVisibility=${(isRepost and !isQuote) ? post.repostOf.visibility : post.visibility},
+                  mainModerationStatus=${post.moderationStatus}">
 
       <div class="post__repost-banner" th:if="${isRepost}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
@@ -279,6 +332,34 @@
         <div class="post__header">
           <span class="post__username" th:text="${mainUsername}">username</span>
           <span class="post__time" th:text="${mainTimeAgo}">6 giờ</span>
+          <span class="post__moderation-status post__moderation-status--pending"
+                th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'PENDING'}"
+                title="Bài viết chỉ hiển thị với bạn trong lúc chờ kiểm duyệt" aria-label="Đang kiểm duyệt, chỉ bạn thấy">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Đang kiểm duyệt</span>
+          </span>
+          <span class="post__moderation-status post__moderation-status--flagged"
+                th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'FLAGGED'}"
+                title="Moderation đã đánh dấu nội dung để theo dõi bổ sung; không mặc định chờ ADMIN" aria-label="Moderation đã đánh dấu để theo dõi bổ sung">
+            <i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Đã đánh dấu</span>
+          </span>
+          <span class="post__moderation-status post__moderation-status--hidden"
+                th:if="${mainModerationStatus != null and mainModerationStatus.name() == 'HIDDEN'}"
+                title="Bài viết đã bị ẩn sau khi kiểm duyệt" aria-label="Bài viết đã bị ẩn">
+            <i class="bi bi-eye-slash" aria-hidden="true"></i><span>Đã ẩn</span>
+          </span>
+          <span class="post__moderation-status post__moderation-status--pending"
+                th:if="${mainModerationStatus == null}"
+                title="Chưa nhận được trạng thái kiểm duyệt; không xác nhận bài viết là công khai" aria-label="Chưa xác minh trạng thái kiểm duyệt">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Chưa xác minh</span>
+          </span>
+          <span class="post__visibility" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'PUBLIC'}"
+                title="Công khai" aria-label="Bài viết công khai"><i class="bi bi-globe2" aria-hidden="true"></i></span>
+          <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'FRIENDS'}"
+                title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"><i class="bi bi-people-fill" aria-hidden="true"></i></span>
+          <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'CLOSE_FRIENDS'}"
+                    title="Bạn thân" aria-label="Bài viết dành cho bạn thân"><i class="bi bi-star-fill" aria-hidden="true"></i></span>
+          <span class="post__visibility post__visibility--private" th:if="${(mainModerationStatus != null and mainModerationStatus.name() == 'APPROVED') and mainVisibility != null and mainVisibility.name() == 'ONLY_ME'}"
+                title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
           <div class="post__menu">
             <button type="button" class="post__more post__menu-trigger" data-post-menu-trigger
                     aria-label="Tùy chọn bài viết" aria-haspopup="menu" aria-expanded="false" title="Tùy chọn bài viết">
@@ -366,7 +447,7 @@
             th:attr="data-url=@{'/api/posts/user/' + ${profileUser.id} + '/reposts/fragment'},data-cursor=${profileRepostsNextCursor}">Tải bài đăng lại</button>
   </div>
 
-  <div class="people-modal" id="peopleModal" th:if="${profileUser != null}" hidden>
+  <div class="people-modal" id="peopleModal" th:if="${profileUser != null and !privateContentRestricted}" hidden>
     <div class="people-modal__backdrop" data-people-close></div>
     <div class="people-modal__panel" role="dialog" aria-modal="true" aria-labelledby="peopleModalTitle">
       <div class="people-modal__head">
@@ -383,9 +464,6 @@
         </button>
         <button type="button" class="people-tab" data-tab="following">
           Đang theo dõi <span th:text="${profileUser.followingCount}">0</span>
-        </button>
-        <button type="button" class="people-tab" data-tab="close">
-          Bạn thân <span th:text="${profileUser.closeFriendCount}">0</span>
         </button>
       </div>
       <div class="people-modal__body" id="peopleModalBody"></div>

@@ -4,12 +4,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aloute.dto.response.LikeResponse;
+import com.aloute.dto.response.ReactionResponse;
 import com.aloute.dto.response.FeedCursorPage;
 import com.aloute.dto.response.PostResponse;
 import com.aloute.model.entity.Role;
@@ -23,6 +25,8 @@ import com.aloute.service.LikeService;
 import com.aloute.service.PostService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -71,6 +75,58 @@ class PostControllerWebTest {
 
         verify(limits).checkAndRecord(eq("LIKE"), eq("7"), eq(120), any(), any(), any(), any());
         verify(likes).setLike("post-1", 7L, true);
+    }
+
+    @Test
+    void authenticatedUserCanRemoveReactionWithNullType() throws Exception {
+        when(likes.setReaction("post-1", 7L, null))
+                .thenReturn(new ReactionResponse("post-1", null, 3, java.util.Map.of("LIKE", 3)));
+
+        mvc.perform(post("/api/posts/post-1/react")
+                        .principal(reactionAuthentication())
+                        .contentType("application/json")
+                        .content("{\"type\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.currentUserReaction").isEmpty())
+                .andExpect(jsonPath("$.data.totalCount").value(3));
+
+        verify(limits).checkAndRecord(eq("REACTION"), eq("7"), eq(120), any(), any(), any(), any());
+        verify(likes).setReaction("post-1", 7L, null);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "love"})
+    void validReactionTypesStillReachTheService(String type) throws Exception {
+        when(likes.setReaction("post-1", 7L, type))
+                .thenReturn(new ReactionResponse("post-1", type.toUpperCase(), 4, java.util.Map.of()));
+        mvc.perform(post("/api/posts/post-1/react")
+                        .principal(reactionAuthentication())
+                        .contentType("application/json")
+                        .content("{\"type\":\"" + type + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentUserReaction").value(type.toUpperCase()));
+        verify(likes).setReaction("post-1", 7L, type);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "BOGUS", "null", "LOVE OR LIKE"})
+    void invalidNonNullReactionIsRejectedBeforeAnyMutation(String type) throws Exception {
+        mvc.perform(post("/api/posts/post-1/react")
+                        .principal(reactionAuthentication())
+                        .contentType("application/json")
+                        .content("{\"type\":\"" + type + "\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(likes, limits);
+    }
+
+    private UsernamePasswordAuthenticationToken reactionAuthentication() {
+        var user = new User();
+        user.setId(7L);
+        user.setUsername("alice");
+        user.setRole(new Role("ROLE_USER"));
+        var principal = new AloutePrincipal(user);
+        return new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
     }
 
     @Test

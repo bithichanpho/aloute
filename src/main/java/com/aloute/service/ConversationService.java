@@ -125,6 +125,7 @@ public class ConversationService {
             conversations.add(0, toFriendPreviewResponse(ensureOtherUserId));
             fillOtherUserInfo(conversations);
         }
+        retainVisibleDirectProfiles(userId, conversations);
         return conversations;
     }
 
@@ -371,8 +372,8 @@ public class ConversationService {
     private void retainVisibleDirectProfiles(Long userId, List<ConversationResponse> conversations) {
         List<Long> directIds = conversations.stream().filter(c -> !c.isGroup())
                 .map(ConversationResponse::getOtherUserId).filter(Objects::nonNull).toList();
-        Set<Long> visible = access.visibleProfileIds(userId, directIds);
-        conversations.removeIf(c -> !c.isGroup() && !visible.contains(c.getOtherUserId()));
+        Set<Long> messageable = access.messageableProfileIds(userId, directIds);
+        conversations.removeIf(c -> !c.isGroup() && !messageable.contains(c.getOtherUserId()));
     }
 
     private ConversationResponse toDirectConversationResponse(

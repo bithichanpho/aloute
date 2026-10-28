@@ -22,14 +22,16 @@ public class CloseFriendService {
     private final ICloseFriendRepository closeFriendRepository;
     private final FriendService friendService;
     private final Notifications notificationService;
+    private final ContentAccessService access;
 
     public CloseFriendService(
             ICloseFriendRepository closeFriendRepository,
             FriendService friendService,
-            Notifications notificationService) {
+            Notifications notificationService, ContentAccessService access) {
         this.closeFriendRepository = closeFriendRepository;
         this.friendService = friendService;
         this.notificationService = notificationService;
+        this.access = access;
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -37,6 +39,7 @@ public class CloseFriendService {
         if (requesterId == null || receiverId == null || requesterId.equals(receiverId)) {
             throw new BadRequestException("Không thể tự kết bạn thân với chính mình");
         }
+        access.requireProfile(requesterId, receiverId);
         if (!friendService.isFriend(requesterId, receiverId)) {
             throw new BadRequestException(
                     "Cần theo dõi lẫn nhau (là bạn bè) trước khi kết bạn thân");
@@ -72,6 +75,9 @@ public class CloseFriendService {
 
     @org.springframework.transaction.annotation.Transactional
     public String acceptRequest(Long currentUserId, Long otherUserId) {
+        if (currentUserId == null || otherUserId == null || currentUserId.equals(otherUserId))
+            throw new BadRequestException("Lời mời không hợp lệ");
+        access.requireProfile(currentUserId, otherUserId);
         if (!friendService.isFriend(currentUserId, otherUserId))
             throw new BadRequestException("Hai tài khoản cần theo dõi lẫn nhau");
         CloseFriend request =
@@ -81,13 +87,16 @@ public class CloseFriendService {
                                 () ->
                                         new ResourceNotFoundException(
                                                 "Không tìm thấy lời mời kết bạn thân này"));
+        if (CloseFriend.ACCEPTED.equals(request.getStatus())) return "ACCEPTED";
         if (!CloseFriend.PENDING.equals(request.getStatus())) {
             throw new BadRequestException("Lời mời này không còn ở trạng thái chờ");
         }
 
-        request.setStatus(CloseFriend.ACCEPTED);
-        request.setRespondedAt(java.time.LocalDateTime.now());
-        closeFriendRepository.save(request);
+        if (closeFriendRepository.acceptPending(otherUserId, currentUserId, java.time.LocalDateTime.now()) == 0) {
+            if (closeFriendRepository.findByRequesterIdAndReceiverId(otherUserId, currentUserId)
+                    .filter(current -> CloseFriend.ACCEPTED.equals(current.getStatus())).isPresent()) return "ACCEPTED";
+            throw new ResourceNotFoundException("Lời mời này không còn ở trạng thái chờ");
+        }
 
         notificationService.notify(
                 otherUserId,
@@ -100,6 +109,8 @@ public class CloseFriendService {
 
     @org.springframework.transaction.annotation.Transactional
     public void removeRelationship(Long currentUserId, Long otherUserId) {
+        if (currentUserId == null || otherUserId == null || currentUserId.equals(otherUserId))
+            throw new BadRequestException("Quan hệ bạn thân không hợp lệ");
         closeFriendRepository
                 .findByRequesterIdAndReceiverId(currentUserId, otherUserId)
                 .ifPresent(closeFriendRepository::delete);
@@ -144,26 +155,6 @@ public class CloseFriendService {
         return "NONE";
     }
 
-    public Map<Long, String> getStatusMap(Long currentUserId) {
-        if (currentUserId == null) {
-            return Map.of();
-        }
-
-        Map<Long, String> statuses = new HashMap<>();
-        for (CloseFriend cf : closeFriendRepository.findByRequesterId(currentUserId)) {
-            statuses.put(
-                    cf.getReceiverId(),
-                    CloseFriend.ACCEPTED.equals(cf.getStatus()) ? "ACCEPTED" : "PENDING_SENT");
-        }
-        for (CloseFriend cf : closeFriendRepository.findByReceiverId(currentUserId)) {
-            String incoming =
-                    CloseFriend.ACCEPTED.equals(cf.getStatus()) ? "ACCEPTED" : "PENDING_RECEIVED";
-
-            statuses.merge(cf.getRequesterId(), incoming, (a, b) -> "ACCEPTED".equals(a) ? a : b);
-        }
-        return statuses;
-    }
-
     public Map<Long, String> getStatusMap(Long currentUserId, java.util.Collection<Long> otherIds) {
         if (currentUserId == null || otherIds == null || otherIds.isEmpty()) return Map.of();
         Map<Long, String> statuses = new HashMap<>();
@@ -177,6 +168,12 @@ public class CloseFriendService {
             statuses.merge(otherId, status, (left, right) -> "ACCEPTED".equals(left) ? left : right);
         }
         return statuses;
+    }
+
+    public void requireListAccess(Long viewer, Long owner) {
+        access.requireProfile(viewer, owner);
+        if (!access.canViewAccountContent(viewer, owner))
+            throw new ResourceNotFoundException("Không tìm thấy danh sách bạn thân");
     }
 
     public List<Long> getCloseFriendIds(Long userId) {

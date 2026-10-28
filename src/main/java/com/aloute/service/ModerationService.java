@@ -81,6 +81,8 @@ public class ModerationService implements com.aloute.moderation.api.ModerationPo
         this.jsonMapper = jsonMapper == null ? JsonMapper.builder().build() : jsonMapper;
         if (!enabled) {
             log.warn("Content moderation is disabled by configuration; non-post media uploads fail closed");
+        } else {
+            log.info("Content moderation enabled; upstream endpoint={}", this.serviceUrl);
         }
         Duration safeConnectTimeout = positiveOrDefault(connectTimeout, Duration.ofSeconds(2));
         this.readTimeout = positiveOrDefault(readTimeout, Duration.ofSeconds(45));
@@ -290,6 +292,18 @@ public class ModerationService implements com.aloute.moderation.api.ModerationPo
 
     public boolean isMediaApproved(String url, String mediaType) {
         return isMediaApproved(url, mediaType, false);
+    }
+
+    /**
+     * Preserve the full moderation decision for media in the asynchronous post pipeline.
+     * Upload admission can continue using isMediaApprovedForUpload(), while post moderation
+     * distinguishes FLAGGED (eligible for ordinary visibility and optional review) from HIDDEN.
+     */
+    public ModerationStatus resolveMediaStatus(String url, String mediaType) {
+        if (url == null || url.isBlank()) return ModerationStatus.APPROVED;
+        ModerationResult result = checkMedia(url, mediaType);
+        requireKnownResult(result);
+        return resolveStatus(result);
     }
 
     public boolean isMediaApprovedForUpload(String url, String mediaType) {

@@ -70,6 +70,43 @@ class AuthControllerWebTest {
     }
 
     @Test
+    void usernameAvailabilityReturnsOnlyAvailabilityWithoutIssuingTokensOrRegistering() throws Exception {
+        when(clientIp.resolve(any())).thenReturn("203.0.113.10");
+        when(authService.registrationUsernameAvailable("alice", "new@example.invalid")).thenReturn(false);
+        mvc.perform(post("/api/auth/register/username-availability").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"alice\",\"email\":\"new@example.invalid\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(false))
+                .andExpect(jsonPath("$.data.email").doesNotExist())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().doesNotExist("Set-Cookie"));
+        verify(limits).checkAndRecord(eq("REGISTER_USERNAME_IP"), eq("203.0.113.10"), eq(60),
+                eq(Duration.ofMinutes(15)), eq(Duration.ofMinutes(15)), anyString(), anyString());
+        verify(authService, never()).register(any());
+        verifyNoInteractions(refreshTokens, accessRevocations, jwtUtil);
+    }
+
+    @Test
+    void invalidAvailabilityHandleIsRejectedBeforeDatabaseRead() throws Exception {
+        mvc.perform(post("/api/auth/register/username-availability").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"bad handle\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(authService, limits);
+    }
+
+    @Test
+    void availabilityRateLimitStopsTheLookup() {
+        when(clientIp.resolve(any())).thenReturn("203.0.113.10");
+        doThrow(new TooManyRequestsException("limited")).when(limits).checkAndRecord(
+                eq("REGISTER_USERNAME_IP"), anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                any(Duration.class), any(Duration.class), anyString(), anyString());
+        org.junit.jupiter.api.Assertions.assertThrows(jakarta.servlet.ServletException.class,
+                () -> mvc.perform(post("/api/auth/register/username-availability").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"alice\"}")));
+        verifyNoInteractions(authService);
+    }
+
+    @Test
     void logoutAlwaysAddsCurrentAccessTokenToDenylist() throws Exception {
         java.time.Instant expiry = java.time.Instant.now().plusSeconds(600);
         when(jwtUtil.expiresAt("access-token")).thenReturn(expiry);
@@ -136,6 +173,15 @@ class AuthControllerWebTest {
 
         verify(authService).verifyEmail("user@example.com", "123456");
         verify(limits).reset("VERIFY_OTP_TARGET", "user@example.com");
+    }
+
+    @Test
+    void emailVerificationRejectsSevenDigitOtp() throws Exception {
+        mvc.perform(post("/api/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"User@Example.com\",\"code\":\"1234567\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(authService);
     }
 
     @Test

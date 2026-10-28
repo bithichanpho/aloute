@@ -61,7 +61,7 @@ class DocumentDateTimeIT {
     @ParameterizedTest
     @ValueSource(strings = {"null", "\"\"", "\"yesterday\"", "[2026,2,30,0,0]", "[2026,10,23,0,21,23,1000000000]",
             "[2026,10,23]", "{}", "true", "[2026,10,23,0,21,null]", "[2026,10,23,0,21,2.5]",
-            "\"2026-02-30T00:00:00\"", "\"2026-10-23T00:00:00Z\"", "\"2026-10-23T00:00:00.1234567890\"",
+            "\"2026-02-30T00:00:00\"", "\"2026-10-23T00:00:00Z\"", "\"2026-10-23T00:00:00.123456890\"",
             "\"+2026-10-23T00:00\"", "\"10000-01-01T00:00\"", "\"-0000-01-01T00:00\""})
     void malformedAndNullValuesHaveNoTemporalKeyAndNeverEnterFeed(String value) {
         transactions.executeWithoutResult(tx -> {
@@ -91,7 +91,7 @@ class DocumentDateTimeIT {
                 assertEquals(time, store.findById(post.getId(), Post.class).getCreatedAt());
             }
             var revision = new com.aloute.model.document.PostRevision();
-            Instant instant = Instant.parse("2026-10-23T00:21:23.123456789Z"); revision.setCreatedAt(instant);
+            Instant instant = Instant.parse("2026-10-23T00:21:23.12345689Z"); revision.setCreatedAt(instant);
             store.updateFirst(query(), new Update().set("updatedAt", time)
                     .push("editHistory").each(revision), Post.class);
             Post updated = store.findOne(query().addCriteria(Criteria.where("updatedAt").is(time)), Post.class).orElseThrow();

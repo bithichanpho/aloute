@@ -278,6 +278,7 @@ public class PostResponse implements java.io.Serializable {
         private String imageUrl;
         private String videoUrl;
         private String timeAgo;
+        @lombok.Getter @lombok.Setter private PostVisibility visibility;
 
         private int repostCount;
 

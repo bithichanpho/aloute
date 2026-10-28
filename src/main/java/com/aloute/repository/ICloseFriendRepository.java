@@ -11,6 +11,14 @@ public interface ICloseFriendRepository extends JpaRepository<CloseFriend, Long>
 
     Optional<CloseFriend> findByRequesterIdAndReceiverId(Long requesterId, Long receiverId);
 
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("update CloseFriend c set c.status = 'ACCEPTED', c.respondedAt = :respondedAt"
+            + " where c.requesterId = :requester and c.receiverId = :receiver and c.status = 'PENDING'")
+    int acceptPending(
+            @org.springframework.data.repository.query.Param("requester") Long requester,
+            @org.springframework.data.repository.query.Param("receiver") Long receiver,
+            @org.springframework.data.repository.query.Param("respondedAt") java.time.LocalDateTime respondedAt);
+
     List<CloseFriend> findByRequesterIdAndStatus(Long requesterId, String status);
 
     List<CloseFriend> findByReceiverIdAndStatus(Long receiverId, String status);

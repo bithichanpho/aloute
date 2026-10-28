@@ -2,33 +2,38 @@
 <!DOCTYPE html>
 <html lang="vi" data-bs-theme="dark" xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8">
+  
+  <link rel="icon" type="image/x-icon" th:href="@{/favicon.ico?v=20261027-bird-v1}">
+  <link rel="icon" type="image/png" sizes="32x32" th:href="@{/images/aloute-icon-32.png?v=20261027-bird-v1}">
+  <link rel="apple-touch-icon" sizes="180x180" th:href="@{/images/aloute-icon-180.png?v=20261027-bird-v1}">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
   <script th:src="@{/js/theme-init.js?v=20261019-global-theme-v1}"></script>
   <title>Đăng ký / ALOUTE</title>
-  <link rel="stylesheet" th:href="@{/css/main.css?v=20261017-moderation-toast-v2}">
+  <link rel="stylesheet" th:href="@{/css/main.css?v=20261027-bird-privacy-v1}">
   <link rel="stylesheet" th:href="@{/vendor/bootstrap-icons/bootstrap-icons.min.css}">
-  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261017-moderation-toast-v2}">
-  <link rel="stylesheet" th:href="@{/css/auth-register.css?v=20261024-validation-v1}">
+  <link rel="stylesheet" th:href="@{/css/theme.css?v=20261027-moon-sun-switch-v3}">
+  <link rel="stylesheet" th:href="@{/css/auth-register.css?v=20261027-username-error-v1}">
   <script th:src="@{/js/ui.js?v=20261019-global-theme-v1}" defer></script>
 </head>
 <body class="auth-body">
   <button type="button" class="auth-theme-toggle" data-theme-toggle aria-label="Chuyển giao diện sáng/tối" title="Chuyển giao diện sáng/tối">
-    <i class="bi bi-moon-stars theme-icon theme-icon--to-dark" aria-hidden="true"></i>
-    <i class="bi bi-sun theme-icon theme-icon--to-light" aria-hidden="true"></i>
+    <span th:replace="~{fragments/theme-switch :: icon}"></span>
   </button>
 
   <div class="auth-shell">
     <section class="auth-card u244" aria-labelledby="registerTitle">
       <div class="u244-sc">
       <div class="auth-card__logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3c-4.5 0-7.5 2.9-7.5 7.2 0 3.6 2.2 5.8 4 6.8-.2 1.1-.7 2.4-1.6 3.3 2.3.2 4.3-.6 5.6-1.9 3.7-.3 6.5-3 6.5-6.9C19 6.4 15.9 3 12 3Z"/>
-        </svg>
+        <img th:src="@{/images/aloute-bird-logo.png?v=20261027-bird-v1}"
+             src="/images/aloute-bird-logo.png" alt="ALOUTE" width="64" height="64">
       </div>
       <h1 id="registerTitle">Tạo tài khoản ALOUTE</h1>
       <p class="u244-intro">Điền thông tin để nhận mã xác thực qua email.</p>
+      <p class="u244-intro" id="googleRegistrationNotice" hidden>
+        Email Google này chưa có tài khoản ALOUTE. Hãy tạo tên đăng nhập và mật khẩu ALOUTE, sau đó xác thực OTP. Bạn sẽ dùng được email hoặc tên đăng nhập cùng mật khẩu để đăng nhập; Google cũng sẽ liên kết theo cùng email đã xác thực.
+      </p>
 
       <form id="registerForm" novalidate aria-labelledby="registerTitle">
         <div class="u244-sm" id="validationSummary" role="alert" aria-atomic="true" aria-hidden="true" inert>
@@ -86,7 +91,7 @@
     </section>
   </div>
 
-  <script th:src="@{/js/app.js?v=20261017-moderation-toast-v2}"></script>
-  <script th:src="@{/js/auth-register.js?v=20261025-business-v2}"></script>
+  <script th:src="@{/js/app.js?v=20261027-password-login-v1}"></script>
+  <script th:src="@{/js/auth-register.js?v=20261027-username-check-v2}"></script>
 </body>
 </html>

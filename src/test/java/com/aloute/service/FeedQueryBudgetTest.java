@@ -20,6 +20,25 @@ import java.util.Set;
 
 class FeedQueryBudgetTest {
     @Test
+    void profileCountUsesOneSqlAggregateWithoutFilteringAudienceOrLoadingPosts() {
+        var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(42L);
+        var store = new PostgresDocumentStore(jdbc,
+                new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules());
+        assertEquals(42L, newService(mock(IPostRepository.class), store).countPostsByUser(1L));
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        var parameters = org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).queryForObject(sql.capture(), eq(Long.class), parameters.capture());
+        assertTrue(sql.getValue().contains("SELECT count(*)"));
+        assertFalse(sql.getValue().contains("visibility"));
+        assertTrue(sql.getValue().contains("userId"));
+        assertTrue(sql.getValue().contains("moderationStatus"));
+        assertTrue(sql.getValue().contains("repostOfId"));
+        assertTrue(java.util.Arrays.asList(parameters.getValue()).containsAll(List.of("posts", "1", "HIDDEN")));
+        verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test
     void cursorFeedUsesPostgresKeysetQueryAndDoesNotFetchLegacyJpaFeedWindow() {
         IPostRepository relationalPostRepository = mock(IPostRepository.class);
         PostgresDocumentStore documentStore = mock(PostgresDocumentStore.class);
@@ -142,6 +161,7 @@ class FeedQueryBudgetTest {
                         mock(PostgresTransactionRetryExecutor.class),
                         mock(IFriendRepository.class));
 
+        when(access.canViewAccountContent(2L, 2L)).thenReturn(true);
         var page = service.getPostsByUserCursor(2L, 2L, null, 20);
 
         assertEquals(List.of(firstResponse, secondResponse), page.items());

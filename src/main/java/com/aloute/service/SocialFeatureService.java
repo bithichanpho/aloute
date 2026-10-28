@@ -53,6 +53,14 @@ public class SocialFeatureService {
     private final MediaAssetLifecycleService postMediaAssets;
     private final com.aloute.posts.api.PostEditing postEditing;
     private final com.aloute.posts.api.SavedPosts savedPosts;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aloute.social.FollowRequestRealtimePublisher followRequestRealtimePublisher;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aloute.repository.ICommunityRepository communityRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aloute.repository.ICommunityMemberRepository communityMemberRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private IUserRepository userRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
     public SocialFeatureService(
@@ -164,12 +172,12 @@ public class SocialFeatureService {
         posts.invalidateViewerFeedCache(target);
     }
 
-    public List<UserBlock> blocks(Long user) {
-        return documentStore.find(
-                Query.query(Criteria.where("ownerId").is(user)).limit(200), UserBlock.class);
+    public List<com.aloute.dto.response.BlockedAccountResponse> blocks(Long user) {
+        return blockResponses(documentStore.find(
+                Query.query(Criteria.where("ownerId").is(user)).limit(200), UserBlock.class));
     }
 
-    public SocialCursorPage<UserBlock> blocks(Long user, String cursor, int requestedSize) {
+    public SocialCursorPage<com.aloute.dto.response.BlockedAccountResponse> blocks(Long user, String cursor, int requestedSize) {
         int size = Math.max(1, Math.min(100, requestedSize));
         SocialCursor point = decodeSocialCursor(cursor);
         Query query = Query.query(Criteria.where("ownerId").is(user));
@@ -183,15 +191,51 @@ public class SocialFeatureService {
                 ? encodeSocialCursor(items.get(items.size() - 1).getCreatedAt(),
                         items.get(items.size() - 1).getId())
                 : "";
-        return new SocialCursorPage<>(items, next, hasMore);
+        return new SocialCursorPage<>(blockResponses(items), next, hasMore);
     }
 
-    public List<FollowRequest> requests(Long user) {
-        return documentStore.find(
-                Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class);
+    private List<com.aloute.dto.response.BlockedAccountResponse> blockResponses(List<UserBlock> blocks) {
+        if (blocks.isEmpty()) return List.of();
+        var labels = users.profileLabels(blocks.stream().map(UserBlock::getTargetId)
+                .filter(java.util.Objects::nonNull).distinct().toList());
+        return blocks.stream().map(block -> {
+            var label = block.getTargetId() == null ? null : labels.get(block.getTargetId());
+            return new com.aloute.dto.response.BlockedAccountResponse(block.getId(), block.getOwnerId(),
+                    block.getTargetId(), block.getCreatedAt(), label == null ? null : label.username(),
+                    label == null ? null : label.fullName(),
+                    com.aloute.common.util.AvatarUtil.resolve(label == null ? null : label.avatarUrl()));
+        }).toList();
     }
 
-    public SocialCursorPage<FollowRequest> requests(
+    public List<com.aloute.dto.response.FollowRequestResponse> requests(Long user) {
+        return requestResponses(documentStore.find(
+                Query.query(Criteria.where("targetId").is(user)).limit(200), FollowRequest.class));
+    }
+
+    public long countRequests(Long user) {
+        return documentStore.count(Query.query(Criteria.where("targetId").is(user)), FollowRequest.class);
+    }
+
+    public long countUnreadRequests(Long user) {
+        return documentStore.count(Query.query(
+                Criteria.where("targetId").is(user).and("seenAt").is(null)), FollowRequest.class);
+    }
+
+    /** Opening the inbox acknowledges existing requests without deciding or deleting them. */
+    @Transactional
+    public void markRequestsSeen(Long user) {
+        if (user == null) throw new com.aloute.common.exception.UnauthorizedException("Bạn cần đăng nhập");
+        var result = documentStore.updateMulti(Query.query(
+                Criteria.where("targetId").is(user).and("seenAt").is(null)),
+                new Update().set("seenAt", Instant.now()), FollowRequest.class);
+        if (result.getModifiedCount() > 0) {
+            afterCommitSafely("follow-request inbox seen realtime", () -> {
+                if (followRequestRealtimePublisher != null) followRequestRealtimePublisher.publishSeen(user);
+            });
+        }
+    }
+
+    public SocialCursorPage<com.aloute.dto.response.FollowRequestResponse> requests(
             Long user, String cursor, int requestedSize) {
         int size = Math.max(1, Math.min(100, requestedSize));
         SocialCursor point = decodeSocialCursor(cursor);
@@ -206,7 +250,19 @@ public class SocialFeatureService {
                 ? encodeSocialCursor(items.get(items.size() - 1).getCreatedAt(),
                         items.get(items.size() - 1).getId())
                 : "";
-        return new SocialCursorPage<>(items, next, hasMore);
+        return new SocialCursorPage<>(requestResponses(items), next, hasMore);
+    }
+
+    private List<com.aloute.dto.response.FollowRequestResponse> requestResponses(List<FollowRequest> requests) {
+        if (requests.isEmpty()) return List.of();
+        var labels = users.profileLabels(requests.stream().map(FollowRequest::getFollowerId).distinct().toList());
+        return requests.stream().map(request -> {
+            var label = labels.get(request.getFollowerId());
+            return new com.aloute.dto.response.FollowRequestResponse(request.getId(), request.getFollowerId(),
+                    request.getTargetId(), request.getCreatedAt(), label == null ? null : label.username(),
+                    label == null ? null : label.fullName(),
+                    com.aloute.common.util.AvatarUtil.resolve(label == null ? null : label.avatarUrl()));
+        }).toList();
     }
 
     private String encodeSocialCursor(java.time.Instant createdAt, String id) {
@@ -241,9 +297,10 @@ public class SocialFeatureService {
             throw new ResourceNotFoundException("Không tìm thấy yêu cầu");
         access.requireProfile(user, request.getFollowerId());
         if (!accept) {
-            // Declining only changes PostgreSQL. Delete directly rather than registering a PostgreSQL
-            // side effect after a PostgreSQL transaction that has no SQL write to commit.
+            // Declining only changes the request document; push a realtime event so the recipient's
+            // nav badge and the sender's follow button update without waiting for polling.
             documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
+            afterCommitSafely("follow-request rejection realtime", () -> publishFollowRequestDecision(user, request, false));
             return;
         }
         if (!friends.existsByFollowerIdAndFollowedId(request.getFollowerId(), user)) {
@@ -251,10 +308,29 @@ public class SocialFeatureService {
         }
         // If this PostgreSQL cleanup fails after the SQL commit, reconciliation observes the persisted
         // Friend edge and safely removes the stale FollowRequest later.
-        afterCommitSafely("follow-request cleanup", () ->
-                documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class));
+        afterCommitSafely("follow-request cleanup", () -> {
+            try {
+                documentStore.remove(Query.query(Criteria.where("_id").is(request.getId())), FollowRequest.class);
+            } catch (RuntimeException cleanupFailure) {
+                // The accepted SQL follow edge is authoritative; reconciliation removes stale request
+                // documents later. Still publish the decision and queue the requester's notice now.
+                log.warn("Could not remove accepted follow-request document (requestId={}, cause={})",
+                        request.getId(), cleanupFailure.getClass().getSimpleName());
+            }
+            publishFollowRequestDecision(user, request, true);
+            notificationService.notifyFollowRequestAccepted(request.getFollowerId(), user);
+        });
         posts.invalidateViewerFeedCache(user);
         posts.invalidateViewerFeedCache(request.getFollowerId());
+    }
+
+    private void publishFollowRequestDecision(Long targetUserId, FollowRequest request, boolean accepted) {
+        if (followRequestRealtimePublisher == null || request == null) return;
+        followRequestRealtimePublisher.publish(
+                targetUserId, "REQUEST_DECIDED", request.getFollowerId(), targetUserId, "NONE");
+        followRequestRealtimePublisher.publish(
+                request.getFollowerId(), "STATE_CHANGED", request.getFollowerId(), targetUserId,
+                accepted ? "FOLLOWING" : "NONE");
     }
 
     public ContentReport report(Long user, String type, String id, String reason) {
@@ -268,8 +344,19 @@ public class SocialFeatureService {
                 "Bạn đã gửi quá nhiều báo cáo");
         if (reason == null || reason.isBlank() || reason.length() > 1000)
             throw new BadRequestException("Lý do cần 1–1000 ký tự");
+        ContentReport report = new ContentReport();
+        report.setId(user + ":" + type + ":" + id);
+        ContentReport existing = documentStore.findById(report.getId(), ContentReport.class);
+        // Idempotent retries should return the original report without creating another notice.
+        if (existing != null) return existing;
+
+        Post postForReport = null;
         switch (type) {
-            case "POST" -> access.requirePost(id, user);
+            case "POST" -> {
+                access.requirePost(id, user);
+                postForReport = documentStore.findById(id, Post.class);
+                if (postForReport == null) throw new ResourceNotFoundException("Không tìm thấy bài viết");
+            }
             case "COMMENT" -> {
                 Comment comment = documentStore.findById(id, Comment.class);
                 if (comment == null)
@@ -277,17 +364,65 @@ public class SocialFeatureService {
                 access.requirePost(comment.getPostId(), user);
             }
             case "USER" -> access.requireProfile(user, Long.valueOf(id));
+            case "COMMUNITY" -> {
+                Long communityId;
+                try { communityId = Long.valueOf(id); }
+                catch (NumberFormatException ex) { throw new BadRequestException("Mã hội nhóm không hợp lệ"); }
+                if (communityRepository == null || !communityRepository.existsById(communityId))
+                    throw new ResourceNotFoundException("Không tìm thấy hội nhóm");
+            }
             default -> throw new BadRequestException("Loại báo cáo không hợp lệ");
         }
-        ContentReport report = new ContentReport();
-        report.setId(user + ":" + type + ":" + id);
-        ContentReport existing = documentStore.findById(report.getId(), ContentReport.class);
-        if (existing != null) return existing;
         report.setReporterId(user);
         report.setTargetType(type);
         report.setTargetId(id);
         report.setReason(reason.trim());
-        return documentStore.insert(report);
+        ContentReport inserted = documentStore.insert(report);
+        if ("POST".equals(type) && postForReport != null
+                && postForReport.getCommunityId() != null && !postForReport.getCommunityId().isBlank()) {
+            notifyCommunityPostReportHandlers(postForReport, inserted);
+        }
+        return inserted;
+    }
+
+    /**
+     * Community OWNER/MANAGER receive the first-line alert and can inspect/remove the post using
+     * the existing community management controls. System administrators also receive an alert;
+     * they own the formal report decision in /admin/moderation.
+     */
+    private void notifyCommunityPostReportHandlers(Post post, ContentReport report) {
+        final Long communityId;
+        try {
+            communityId = Long.valueOf(post.getCommunityId());
+        } catch (NumberFormatException invalidCommunityId) {
+            log.warn("Cannot route community post report with invalid community id (postId={})", post.getId());
+            return;
+        }
+
+        if (communityMemberRepository != null) {
+            var leaders = communityMemberRepository.findByCommunityIdAndRoleInOrderByJoinedAtAsc(
+                    communityId, List.of("OWNER", "MANAGER", "ADMIN"),
+                    org.springframework.data.domain.PageRequest.of(0, 100));
+            for (var leader : leaders) {
+                try {
+                    notificationService.notifyCommunityPostReported(leader.getUserId(), post.getId());
+                } catch (RuntimeException notificationFailure) {
+                    log.warn("Could not queue community report notice (communityId={}, postId={}, receiverId={}, cause={})",
+                            communityId, post.getId(), leader.getUserId(), notificationFailure.getClass().getSimpleName());
+                }
+            }
+        }
+
+        if (userRepository != null) {
+            for (Long adminId : userRepository.findActiveSystemAdministratorIds()) {
+                try {
+                    notificationService.notifyAdminCommunityReportOpened(adminId, report.getId());
+                } catch (RuntimeException notificationFailure) {
+                    log.warn("Could not queue administrator report notice (reportId={}, receiverId={}, cause={})",
+                            report.getId(), adminId, notificationFailure.getClass().getSimpleName());
+                }
+            }
+        }
     }
 
     public void requireAdmin(Long user) {
@@ -311,13 +446,39 @@ public class SocialFeatureService {
         QueueSlice<ContentReport> reports = queueSlice(
                 Query.query(Criteria.where("status").is("OPEN")), ContentReport.class,
                 descendingCreated, offset, size);
-        return Map.of(
-                "reports", reports.items(),
-                "posts", List.of(),
-                "comments", List.of(),
-                "page", page,
-                "size", size,
-                "hasMore", reports.hasMore());
+        // Moderation owns the initial decision for every post/comment. This interface is a secondary
+        // inspection surface only: FLAGGED items may continue to display after a successful engine
+        // evaluation; HIDDEN items remain hidden. Admin action is optional and never a prerequisite
+        // for normal publishing. A user report is handled separately in the reports queue.
+        QueueSlice<Post> flaggedPostSlice = queueSlice(
+                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.FLAGGED)),
+                Post.class, descendingCreated, offset, size);
+        QueueSlice<Comment> flaggedCommentSlice = queueSlice(
+                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.FLAGGED)),
+                Comment.class, descendingCreated, offset, size);
+        QueueSlice<Post> hiddenPostSlice = queueSlice(
+                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.HIDDEN)),
+                Post.class, descendingCreated, offset, size);
+        QueueSlice<Comment> hiddenCommentSlice = queueSlice(
+                Query.query(Criteria.where("moderationStatus").is(ModerationStatus.HIDDEN)),
+                Comment.class, descendingCreated, offset, size);
+        return Map.ofEntries(
+                Map.entry("reports", reports.items()),
+                Map.entry("flaggedPosts", flaggedPostSlice.items()),
+                Map.entry("flaggedComments", flaggedCommentSlice.items()),
+                Map.entry("hiddenPosts", hiddenPostSlice.items()),
+                Map.entry("hiddenComments", hiddenCommentSlice.items()),
+                Map.entry("posts", List.of()),
+                Map.entry("comments", List.of()),
+                Map.entry("page", page),
+                Map.entry("size", size),
+                Map.entry("reportsHasMore", reports.hasMore()),
+                Map.entry("flaggedPostsHasMore", flaggedPostSlice.hasMore()),
+                Map.entry("flaggedCommentsHasMore", flaggedCommentSlice.hasMore()),
+                Map.entry("hiddenPostsHasMore", hiddenPostSlice.hasMore()),
+                Map.entry("hiddenCommentsHasMore", hiddenCommentSlice.hasMore()),
+                Map.entry("hasMore", reports.hasMore() || flaggedPostSlice.hasMore()
+                        || flaggedCommentSlice.hasMore() || hiddenPostSlice.hasMore() || hiddenCommentSlice.hasMore()));
     }
 
     private <T> QueueSlice<T> queueSlice(Query base, Class<T> type, Sort sort, long offset, int size) {
@@ -331,14 +492,48 @@ public class SocialFeatureService {
     private record QueueSlice<T>(List<T> items, boolean hasMore) {}
 
     public Object reviewContent(Long user, String type, String id) {
+        return reviewContent(user, type, id, null);
+    }
+
+    public Object reviewContent(Long user, String type, String id, String reportId) {
         requireAdmin(user);
-        if (type.equals("POST")) return documentStore.findById(id, Post.class);
-        if (type.equals("COMMENT")) return documentStore.findById(id, Comment.class);
-        if (type.equals("USER")) {
+        if (reportId != null && !reportId.isBlank()) {
+            ContentReport report = documentStore.findById(reportId, ContentReport.class);
+            if (report == null || !"OPEN".equalsIgnoreCase(report.getStatus())
+                    || !type.equals(report.getTargetType()) || !id.equals(report.getTargetId())) {
+                throw new BadRequestException("Báo cáo không tồn tại, đã xử lý hoặc không khớp nội dung");
+            }
+        } else {
+            requireSecondaryReviewEligible(type, id);
+        }
+        if (type.equals("POST")) {
+            Post post = documentStore.findById(id, Post.class);
+            if (post == null) throw new ResourceNotFoundException("Không tìm thấy bài viết");
+            return post;
+        }
+        if (type.equals("COMMENT")) {
+            Comment comment = documentStore.findById(id, Comment.class);
+            if (comment == null) throw new ResourceNotFoundException("Không tìm thấy bình luận");
+            return comment;
+        }
+        if (type.equals("USER") && reportId != null && !reportId.isBlank()) {
             var account = accountAdministration.reviewAccount(user, Long.valueOf(id));
             return Map.of("username", account.username(), "fullName", account.fullName(), "active", account.active());
         }
-        throw new BadRequestException("Loại nội dung không hợp lệ");
+        if (type.equals("COMMUNITY") && reportId != null && !reportId.isBlank()) {
+            final Long communityId;
+            try { communityId = Long.valueOf(id); }
+            catch (NumberFormatException invalidId) { throw new BadRequestException("Mã hội nhóm không hợp lệ"); }
+            if (communityRepository == null) throw new ResourceNotFoundException("Không tìm thấy hội nhóm");
+            var community = communityRepository.findById(communityId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy hội nhóm"));
+            return Map.of("name", community.getName(),
+                    "description", community.getDescription() == null ? "" : community.getDescription(),
+                    "privacy", community.getPrivacy(),
+                    "memberCount", community.getMemberCount(),
+                    "createdBy", community.getCreatedBy());
+        }
+        throw new BadRequestException("Chỉ nội dung Moderation đã gắn cờ/ẩn hoặc có báo cáo đang mở mới được xem xét bổ sung");
     }
 
     public void moderate(Long user, String type, String id, String decision, String reportId) {
@@ -349,9 +544,25 @@ public class SocialFeatureService {
                 reportId == null ? null : documentStore.findById(reportId, ContentReport.class);
         if (reportId != null
                 && (report == null
+                        || !"OPEN".equalsIgnoreCase(report.getStatus())
                         || !type.equals(report.getTargetType())
                         || !id.equals(report.getTargetId())))
-            throw new BadRequestException("Báo cáo không khớp nội dung");
+            throw new BadRequestException("Báo cáo không tồn tại, đã xử lý hoặc không khớp nội dung");
+
+        // Moderation makes the first decision. Without an explicit report, admins can optionally
+        // review only FLAGGED/HIDDEN items; they are not pending an admin decision. APPROVED items
+        // cannot be rewritten from this secondary-review surface. DISMISS is meaningful only for reports.
+        if (report == null) {
+            if ("DISMISS".equals(decision)) {
+                throw new BadRequestException("Chỉ có thể bác báo cáo khi có báo cáo đang mở");
+            }
+            requireSecondaryReviewEligible(type, id);
+        }
+        // The Community entity currently has no moderation/hidden state; allow reviewers to keep
+        // or dismiss a community report, but do not pretend that HIDE can hide a whole group.
+        if ("COMMUNITY".equals(type) && "HIDE".equals(decision)) {
+            throw new BadRequestException("Hội nhóm chưa có trạng thái ẩn do moderation; không thể ẩn hội nhóm bằng thao tác này");
+        }
         if (!decision.equals("DISMISS")) {
             ModerationStatus status =
                     decision.equals("HIDE") ? ModerationStatus.HIDDEN : ModerationStatus.APPROVED;
@@ -367,10 +578,22 @@ public class SocialFeatureService {
                                     Criteria.where("_id").is(id),
                                     Criteria.where("moderationStatus")
                                             .is(current.getModerationStatus()))),
-                            new Update().set("moderationStatus", status), Post.class);
+                            status == ModerationStatus.APPROVED
+                                    ? new Update().set("moderationStatus", status).unset("moderationFailureReason")
+                                    : new Update().set("moderationStatus", status), Post.class);
                     if (updated.getMatchedCount() == 0) {
                         throw new BadRequestException(
                                 "Trạng thái bài viết vừa thay đổi; vui lòng tải lại trước khi duyệt");
+                    }
+                    if (status == ModerationStatus.HIDDEN
+                            && current.getModerationStatus() != ModerationStatus.HIDDEN) {
+                        try {
+                            notificationService.notifyPostModerationResult(
+                                    Long.valueOf(current.getUserId()), current.getId(), ModerationStatus.HIDDEN);
+                        } catch (RuntimeException notificationFailure) {
+                            log.warn("Could not queue admin moderation notice (postId={}, cause={})",
+                                    id, notificationFailure.getClass().getSimpleName());
+                        }
                     }
                     if (status == ModerationStatus.HIDDEN && postMediaAssets != null) {
                         TransactionCommitHooks.afterCommit(() -> {
@@ -385,11 +608,20 @@ public class SocialFeatureService {
                 }
                 case "COMMENT" -> reviewComment(id, status, decision);
                 case "USER" -> accountModeration.setHidden(user, Long.valueOf(id), decision.equals("HIDE"));
+                case "COMMUNITY" -> {
+                    final Long communityId;
+                    try { communityId = Long.valueOf(id); }
+                    catch (NumberFormatException invalidId) { throw new BadRequestException("Mã hội nhóm không hợp lệ"); }
+                    if (communityRepository == null || communityRepository.findById(communityId).isEmpty())
+                        throw new ResourceNotFoundException("Không tìm thấy hội nhóm");
+                    // APPROVE resolves the report while leaving the existing community unchanged.
+                }
                 default -> throw new BadRequestException("Loại nội dung không hợp lệ");
             }
         }
         if (report == null) {
             report = new ContentReport();
+            report.setId("moderation:" + user + ":" + type + ":" + id);
             report.setReporterId(user);
             report.setTargetType(type);
             report.setTargetId(id);
@@ -403,24 +635,44 @@ public class SocialFeatureService {
         if (!decision.equals("DISMISS")) posts.invalidateAllFeedCache();
     }
 
+    private void requireSecondaryReviewEligible(String type, String id) {
+        ModerationStatus status;
+        if ("POST".equals(type)) {
+            Post post = documentStore.findById(id, Post.class);
+            if (post == null) throw new ResourceNotFoundException("Không tìm thấy bài viết");
+            status = post.getModerationStatus();
+        } else if ("COMMENT".equals(type)) {
+            Comment comment = documentStore.findById(id, Comment.class);
+            if (comment == null) throw new ResourceNotFoundException("Không tìm thấy bình luận");
+            status = comment.getModerationStatus();
+        } else {
+            throw new BadRequestException("Chỉ bài viết hoặc bình luận được Moderation gắn cờ/ẩn mới được xem xét bổ sung");
+        }
+        boolean secondaryReviewEligible = status == ModerationStatus.FLAGGED || status == ModerationStatus.HIDDEN;
+        if (!secondaryReviewEligible) {
+            throw new BadRequestException(
+                    "Chỉ nội dung Moderation đã gắn cờ hoặc tự động ẩn mới cho phép xem xét bổ sung");
+        }
+    }
+
     private void reviewComment(String commentId, ModerationStatus targetStatus, String decision) {
         Comment current = documentStore.findById(commentId, Comment.class);
         if (current == null) throw new ResourceNotFoundException("Không tìm thấy nội dung");
 
-        // New async comments do not affect public counters until approved. Older documents default
-        // moderationCountersApplied=true so an admin approval does not count them twice.
-        if ("APPROVE".equals(decision) && !current.isModerationCountersApplied()) {
+        boolean wasCounted = current.isModerationCountersApplied();
+        if (targetStatus == ModerationStatus.APPROVED && !wasCounted) {
             boolean notifyOwner = current.isNotifyAfterModeration();
             var result = documentStore.updateFirst(
                     Query.query(new Criteria().andOperator(
                             Criteria.where("_id").is(commentId),
-                            Criteria.where("moderationCountersApplied").is(false))),
+                            Criteria.where("moderationCountersApplied").is(false),
+                            Criteria.where("moderationStatus").is(current.getModerationStatus()))),
                     new Update().set("moderationStatus", targetStatus)
                             .set("moderationCountersApplied", true)
                             .unset("moderationLeaseUntil")
                             .unset("moderationFailureReason")
                             .unset("notifyAfterModeration"), Comment.class);
-            if (result.getModifiedCount() == 0) return; // Another admin action already finalized it.
+            if (result.getModifiedCount() == 0) return;
             documentStore.updateFirst(Query.query(Criteria.where("_id").is(current.getPostId())),
                     new Update().inc("commentCount", 1), Post.class);
             if (current.getParentCommentId() != null && !current.getParentCommentId().isBlank()) {
@@ -444,11 +696,33 @@ public class SocialFeatureService {
             }
             return;
         }
-        var update = new Update().set("moderationStatus", targetStatus)
+
+        Update update = new Update().set("moderationStatus", targetStatus)
                 .unset("moderationLeaseUntil").unset("notifyAfterModeration");
         if (targetStatus == ModerationStatus.APPROVED) update.unset("moderationFailureReason");
-        var result = documentStore.updateFirst(Query.query(Criteria.where("_id").is(commentId)), update, Comment.class);
-        if (result.getMatchedCount() == 0) throw new ResourceNotFoundException("Không tìm thấy nội dung");
+        if (targetStatus == ModerationStatus.HIDDEN && wasCounted) {
+            update.set("moderationCountersApplied", false);
+        }
+        var criteria = new Criteria().andOperator(
+                Criteria.where("_id").is(commentId),
+                Criteria.where("moderationStatus").is(current.getModerationStatus()));
+        if (wasCounted && targetStatus == ModerationStatus.HIDDEN) {
+            criteria = new Criteria().andOperator(criteria, Criteria.where("moderationCountersApplied").is(true));
+        }
+        var result = documentStore.updateFirst(Query.query(criteria), update, Comment.class);
+        if (result.getMatchedCount() == 0) {
+            throw new BadRequestException("Trạng thái bình luận vừa thay đổi; vui lòng tải lại trước khi xử lý");
+        }
+        if (targetStatus == ModerationStatus.HIDDEN && wasCounted) {
+            documentStore.updateFirst(Query.query(new Criteria().andOperator(
+                            Criteria.where("_id").is(current.getPostId()), Criteria.where("commentCount").gt(0))),
+                    new Update().inc("commentCount", -1), Post.class);
+            if (current.getParentCommentId() != null && !current.getParentCommentId().isBlank()) {
+                documentStore.updateFirst(Query.query(new Criteria().andOperator(
+                                Criteria.where("_id").is(current.getParentCommentId()), Criteria.where("replyCount").gt(0))),
+                        new Update().inc("replyCount", -1), Comment.class);
+            }
+        }
     }
 
     @Transactional
@@ -458,6 +732,12 @@ public class SocialFeatureService {
 
     public List<PostResponse> saved(Long user, int page) {
         return savedPosts.saved(user, page);
+    }
+
+    public void edit(Long user, String id, com.aloute.dto.request.EditPostRequest request) {
+        postEditing.edit(user, id, new com.aloute.posts.api.PostEditCommand(request.getContent(),
+                request.getImageUrl(), request.getVideoUrl(), request.getVisibility().name(),
+                request.contentProvided(), request.imageProvided(), request.videoProvided()));
     }
 
     public void edit(Long user, String id, CreatePostRequest request) {

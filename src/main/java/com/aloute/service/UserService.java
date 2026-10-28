@@ -32,53 +32,56 @@ public class UserService {
     private final IUserRepository userRepository;
     private final IFriendRepository friendRepository;
     private final FriendService friendService;
-    private final CloseFriendService closeFriendService;
     private final SimpMessagingTemplate messagingTemplate;
     private final FeedCacheInvalidator feedCacheInvalidator;
     private final UserSearchQuery userSearchQuery;
+    private final CloseFriendService closeFriendService;
 
     @Autowired
     public UserService(
             IUserRepository userRepository,
             IFriendRepository friendRepository,
             FriendService friendService,
-            CloseFriendService closeFriendService,
             SimpMessagingTemplate messagingTemplate,
             ContentAccessService access,
             FeedCacheInvalidator feedCacheInvalidator,
-            UserSearchQuery userSearchQuery) {
+            UserSearchQuery userSearchQuery, CloseFriendService closeFriendService) {
         this.access = access;
         this.userRepository = userRepository;
         this.friendRepository = friendRepository;
         this.friendService = friendService;
-        this.closeFriendService = closeFriendService;
         this.messagingTemplate = messagingTemplate;
         this.feedCacheInvalidator = feedCacheInvalidator;
         this.userSearchQuery = userSearchQuery;
+        this.closeFriendService = closeFriendService;
     }
 
-    /** Compatibility constructor for isolated service tests (no feed cache, no user search). */
+    public UserService(IUserRepository users, IFriendRepository friends, FriendService friendService,
+            SimpMessagingTemplate messaging, ContentAccessService access, FeedCacheInvalidator invalidator,
+            UserSearchQuery search) {
+        this(users, friends, friendService, messaging, access, invalidator, search, null);
+    }
+
+    /** Compatibility constructor for isolated service tests without cache/search collaborators. */
     public UserService(
             IUserRepository userRepository,
             IFriendRepository friendRepository,
             FriendService friendService,
-            CloseFriendService closeFriendService,
+            SimpMessagingTemplate messagingTemplate,
+            ContentAccessService access) {
+        this(userRepository, friendRepository, friendService, messagingTemplate, access, null, null);
+    }
+
+    /** Compatibility constructor for isolated service tests without the search collaborator. */
+    public UserService(
+            IUserRepository userRepository,
+            IFriendRepository friendRepository,
+            FriendService friendService,
             SimpMessagingTemplate messagingTemplate,
             ContentAccessService access,
             FeedCacheInvalidator feedCacheInvalidator) {
-        this(userRepository, friendRepository, friendService, closeFriendService, messagingTemplate,
-                access, feedCacheInvalidator, null);
-    }
-
-    /** Compatibility constructor for isolated service tests. */
-    public UserService(
-            IUserRepository userRepository,
-            IFriendRepository friendRepository,
-            FriendService friendService,
-            CloseFriendService closeFriendService,
-            SimpMessagingTemplate messagingTemplate,
-            ContentAccessService access) {
-        this(userRepository, friendRepository, friendService, closeFriendService, messagingTemplate, access, null, null);
+        this(userRepository, friendRepository, friendService, messagingTemplate, access,
+                feedCacheInvalidator, null);
     }
 
     public Optional<User> findUserBasicInfo(Long userId) {
@@ -98,6 +101,17 @@ public class UserService {
                         .findById(targetUserId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileResponse(user, currentUserId);
+    }
+
+    public UserProfileDto getProfileByUsername(String username, Long currentUserId) {
+        User user = userRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileResponse(user, currentUserId);
+    }
+
+    private UserProfileDto profileResponse(User user, Long currentUserId) {
+        Long targetUserId = user.getId();
         access.requireProfile(currentUserId, user);
         IFriendRepository.ProfileRelationshipStats relationshipStats =
                 friendRepository.getProfileRelationshipStats(targetUserId, currentUserId);
@@ -111,8 +125,6 @@ public class UserService {
         dto.setBio(user.getBio());
         dto.setFollowerCount(relationshipStats == null ? 0L : relationshipStats.followerCount());
         dto.setFollowingCount(relationshipStats == null ? 0L : relationshipStats.followingCount());
-        dto.setCloseFriendCount((int) Math.min(Integer.MAX_VALUE,
-                closeFriendService.countCloseFriends(targetUserId)));
         dto.setPrivateAccount(user.isPrivateAccount());
 
         if (currentUserId != null && !currentUserId.equals(targetUserId)) {
@@ -120,15 +132,18 @@ public class UserService {
                     relationshipStats != null && relationshipStats.viewerFollows();
             boolean mutualFriend = followedByCurrentUser
                     && relationshipStats.targetFollowsViewer();
+            if ((relationshipStats == null || !relationshipStats.targetFollowsViewer())
+                    && friendService.hasPendingFollowRequest(targetUserId, currentUserId)) {
+                dto.setIncomingFollowRequestId(targetUserId + ":" + currentUserId);
+            }
             dto.setFollowedByCurrentUser(followedByCurrentUser);
             dto.setMutualFriend(mutualFriend);
+            if (closeFriendService != null && mutualFriend)
+                dto.setCloseFriendStatus(closeFriendService.getStatusMap(currentUserId, List.of(targetUserId))
+                        .getOrDefault(targetUserId, "NONE"));
             dto.setFollowRequestPending(
                     !followedByCurrentUser
                             && friendService.hasPendingFollowRequest(currentUserId, targetUserId));
-            dto.setCloseFriendStatus(
-                    closeFriendService
-                            .getStatusMap(currentUserId, List.of(targetUserId))
-                            .getOrDefault(targetUserId, "NONE"));
         }
 
         dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, targetUserId));
@@ -196,6 +211,17 @@ public class UserService {
 
     public List<UserProfileDto> searchUsers(
             String keyword, Long currentUserId, int page, int size) {
+        return searchUsersInternal(keyword, currentUserId, page, size, false);
+    }
+
+    /** Search-page results must not include the account that is performing the search. */
+    public List<UserProfileDto> searchUsersExcludingCurrentUser(
+            String keyword, Long currentUserId, int page, int size) {
+        return searchUsersInternal(keyword, currentUserId, page, size, true);
+    }
+
+    private List<UserProfileDto> searchUsersInternal(
+            String keyword, Long currentUserId, int page, int size, boolean excludeCurrentUser) {
         String term = keyword == null ? "" : keyword.trim();
         if (term.startsWith("@")) term = term.substring(1).trim();
         if (term.isBlank()) return Collections.emptyList();
@@ -203,15 +229,22 @@ public class UserService {
             throw new IllegalStateException("User search is not available without UserSearchQuery");
         }
 
-        // Ids come from the trigram-indexed query (newest first); entities are then loaded in one
-        // batch (with their role) and put back in that order.
+        // Exclude the current account in the indexed query before pagination, so it cannot occupy
+        // a result slot. Keep a defensive filter here as well for stale/mocked result sets.
         int safePage = Math.max(0, Math.min(10_000, page));
         int safeSize = Math.max(1, Math.min(50, size));
-        List<Long> ids = userSearchQuery.findIds(term, safePage, safeSize);
+        List<Long> ids = excludeCurrentUser && currentUserId != null
+                ? userSearchQuery.findIds(term, safePage, safeSize, currentUserId)
+                : userSearchQuery.findIds(term, safePage, safeSize);
         if (ids.isEmpty()) return Collections.emptyList();
         Map<Long, User> byId = new HashMap<>();
         for (User user : userRepository.findAllById(ids)) byId.put(user.getId(), user);
-        List<User> users = ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+        List<User> users = ids.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
+                .filter(user -> !excludeCurrentUser || currentUserId == null
+                        || !currentUserId.equals(user.getId()))
+                .toList();
         return toProfiles(users, currentUserId);
     }
 
@@ -247,7 +280,7 @@ public class UserService {
 
         Set<Long> followingSet = Collections.emptySet();
         Set<Long> followerSet = Collections.emptySet();
-        Map<Long, String> closeStatuses = Collections.emptyMap();
+        Set<Long> pendingRequestTargetIds = Collections.emptySet();
 
         if (currentUserId != null) {
 
@@ -259,8 +292,11 @@ public class UserService {
                     friendRepository.findByFollowedIdAndFollowerIdIn(currentUserId, ids).stream()
                             .map(Friend::getFollowerId)
                             .collect(Collectors.toCollection(HashSet::new));
+            if (friendService != null) {
+                Set<Long> foundPending = friendService.pendingFollowRequestTargetIds(currentUserId, ids);
+                if (foundPending != null) pendingRequestTargetIds = foundPending;
+            }
 
-            closeStatuses = closeFriendService.getStatusMap(currentUserId, ids);
         }
 
         List<UserProfileDto> result = new java.util.ArrayList<>(users.size());
@@ -280,8 +316,8 @@ public class UserService {
             if (currentUserId != null) {
                 boolean iFollow = followingSet.contains(id);
                 dto.setFollowedByCurrentUser(iFollow);
+                dto.setFollowRequestPending(!iFollow && pendingRequestTargetIds.contains(id));
                 dto.setMutualFriend(iFollow && followerSet.contains(id));
-                dto.setCloseFriendStatus(closeStatuses.getOrDefault(id, "NONE"));
                 dto.setCanMessage(canMessage(user, dto.isMutualFriend(), currentUserId, id));
             }
             result.add(dto);
