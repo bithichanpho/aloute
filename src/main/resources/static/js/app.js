@@ -2756,10 +2756,13 @@ window.Aloute = (function () {
   function watchLoadMore(button, load) {
     let disposed = false;
     let frame = 0;
+    // Start while roughly two screens remain, giving the request time to finish before
+    // the reader reaches the last post. Keep the same one-request-at-a-time guard.
+    const preloadDistance = Math.max(1200, Math.min(2400, Math.round(window.innerHeight * 2)));
     const observer = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting) && !disposed && button.isConnected
           && !button.disabled && !button.hidden && !button.closest('[hidden]')) load();
-    }, { rootMargin: '0px 0px 400px 0px' }) : null;
+    }, { rootMargin: '0px 0px ' + preloadDistance + 'px 0px' }) : null;
     function refresh() {
       if (disposed) return;
       cancelAnimationFrame(frame);
