@@ -115,6 +115,7 @@ public class DemoFeedExpansionSeeder implements CommandLineRunner {
                             + "\n#ALOUTE #demo #feed #realtime\nBài mở rộng số "
                             + (i + 1)
                             + ".");
+            p.setHashtags(com.aloute.service.ContentTagService.extract(p.getContent(), '#'));
             p.setImageUrl(i % 3 == 0 ? "/images/demo/demo-post-" + ((i % 6) + 1) + ".svg" : null);
             p.setLikeCount(0);
             p.setCommentCount(0);

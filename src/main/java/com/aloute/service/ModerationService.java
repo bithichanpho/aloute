@@ -294,6 +294,18 @@ public class ModerationService implements com.aloute.moderation.api.ModerationPo
         return isMediaApproved(url, mediaType, false);
     }
 
+    /**
+     * Preserve the full moderation decision for media in the asynchronous post pipeline.
+     * Upload admission can continue using isMediaApprovedForUpload(), while post moderation
+     * distinguishes FLAGGED (eligible for ordinary visibility and optional review) from HIDDEN.
+     */
+    public ModerationStatus resolveMediaStatus(String url, String mediaType) {
+        if (url == null || url.isBlank()) return ModerationStatus.APPROVED;
+        ModerationResult result = checkMedia(url, mediaType);
+        requireKnownResult(result);
+        return resolveStatus(result);
+    }
+
     public boolean isMediaApprovedForUpload(String url, String mediaType) {
         return isMediaApproved(url, mediaType, true);
     }

@@ -36,6 +36,8 @@ public class CommentService {
     private final PostgresDocumentStore documentStore;
     private final CommentPersistenceService commentPersistenceService;
     private final AuthRateLimitService rateLimitService;
+    private final ModerationService moderationService;
+    private final CommentModerationCoordinator moderationCoordinator;
     private final PostgresTransactionRetryExecutor transactionRetryExecutor;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -58,6 +60,8 @@ public class CommentService {
         this.documentStore = documentStore;
         this.commentPersistenceService = commentPersistenceService;
         this.rateLimitService = rateLimitService;
+        this.moderationService = moderationService;
+        this.moderationCoordinator = moderationCoordinator;
         this.transactionRetryExecutor = transactionRetryExecutor;
     }
 
@@ -102,11 +106,19 @@ public class CommentService {
                 "Bạn bình luận quá nhanh. Thử lại sau %d phút.",
                 "Tạm khóa bình luận do gửi quá nhiều yêu cầu.");
 
-        // Comments publish immediately. Community managers approve community posts separately;
-        // reported comments are handled after publication instead of entering a global queue.
-        var status = com.aloute.model.document.ModerationStatus.APPROVED;
+        // Every comment goes through the moderation engine when it is enabled. PENDING comments
+        // remain visible only to their author; after the asynchronous decision, APPROVED and
+        // successful FLAGGED results are readable, while HIDDEN stays hidden. A moderation
+        // transport failure is marked FLAGGED with a failure reason and remains fail-closed.
+        boolean moderationRequired = moderationService != null && moderationService.isEnabled();
+        ModerationStatus initialStatus = moderationRequired
+                ? ModerationStatus.PENDING : ModerationStatus.APPROVED;
         Comment saved = commentPersistenceService.create(
-                postId, currentUserId, request, status, request.getParentCommentId());
+                postId, currentUserId, request, initialStatus, request.getParentCommentId());
+        if (moderationRequired && moderationCoordinator != null) {
+            String commentId = saved.getId();
+            TransactionCommitHooks.afterCommit(() -> moderationCoordinator.submit(commentId));
+        }
 
         return toResponses(List.of(saved)).stream()
                 .findFirst()
@@ -177,9 +189,15 @@ public class CommentService {
     }
 
     private Criteria visibleCommentCriteria(Long viewerId) {
+        Criteria flaggedButEvaluated = new Criteria().andOperator(
+                Criteria.where("moderationStatus").is(com.aloute.model.document.ModerationStatus.FLAGGED),
+                new Criteria().orOperator(
+                        Criteria.where("moderationFailureReason").is(null),
+                        Criteria.where("moderationFailureReason").is("")));
         Criteria visibleStatus = new Criteria().orOperator(
                 Criteria.where("moderationStatus").is(com.aloute.model.document.ModerationStatus.APPROVED),
                 Criteria.where("moderationStatus").is(null),
+                flaggedButEvaluated,
                 Criteria.where("userId").is(viewerId == null ? "__anonymous__" : String.valueOf(viewerId)));
         return new Criteria().andOperator(
                 Criteria.where("moderationStatus").ne(com.aloute.model.document.ModerationStatus.HIDDEN),
@@ -190,8 +208,11 @@ public class CommentService {
         if (comment == null || comment.getModerationStatus() == com.aloute.model.document.ModerationStatus.HIDDEN) {
             return false;
         }
+        boolean successfulFlag = comment.getModerationStatus() == com.aloute.model.document.ModerationStatus.FLAGGED
+                && (comment.getModerationFailureReason() == null || comment.getModerationFailureReason().isBlank());
         return comment.getModerationStatus() == null
                 || comment.getModerationStatus() == com.aloute.model.document.ModerationStatus.APPROVED
+                || successfulFlag
                 || (viewerId != null && String.valueOf(viewerId).equals(comment.getUserId()));
     }
 
@@ -322,8 +343,22 @@ public class CommentService {
             throw new ForbiddenException("Nội dung đã bị ẩn, không thể chỉnh sửa");
         }
         String normalizedContent = content == null ? "" : content.trim();
+        if (normalizedContent.isBlank()) {
+            throw new com.aloute.common.exception.BadRequestException("Nội dung bình luận không được để trống");
+        }
+        if (moderationService != null && moderationService.isEnabled()) {
+            Comment pending = commentPersistenceService.updatePendingForModeration(comment, normalizedContent);
+            if (moderationCoordinator != null) {
+                String id = pending.getId();
+                TransactionCommitHooks.afterCommit(() -> moderationCoordinator.submit(id));
+            }
+            return toResponses(List.of(pending)).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bình luận"));
+        }
         comment.setContent(normalizedContent);
         comment.setModerationStatus(ModerationStatus.APPROVED);
+        comment.setModerationFailureReason(null);
         return toResponses(List.of(commentRepository.save(comment))).stream()
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Bình luận đang bị ẩn"));

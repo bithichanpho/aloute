@@ -180,9 +180,11 @@ public class CommunityService {
     }
 
     public List<CommunityResponse> getDiscoverList(Long userId, int limit) {
-        List<Community> communities =
-                communityRepository.findByPrivacyOrderByMemberCountDesc(
-                        PRIVACY_PUBLIC, PageRequest.of(0, clamp(limit, 1, 50)));
+        var page = PageRequest.of(0, clamp(limit, 1, 50));
+        // Exclude joined groups before applying LIMIT, so they cannot crowd out new groups.
+        List<Community> communities = userId == null
+                ? communityRepository.findByPrivacyOrderByMemberCountDesc(PRIVACY_PUBLIC, page)
+                : communityRepository.findDiscoverableForUser(PRIVACY_PUBLIC, userId, activeRoles(), page);
         return toResponses(communities, userId);
     }
 
@@ -190,9 +192,11 @@ public class CommunityService {
         if (keyword == null || keyword.isBlank()) {
             return Collections.emptyList();
         }
+        // PRIVATE means only members can read posts; it is not a hidden-group setting.
+        // Keep the group discoverable by name and let getFeed() enforce post privacy.
         List<Community> communities =
-                communityRepository.findByNameContainingIgnoreCaseAndPrivacy(
-                        keyword.trim(), PRIVACY_PUBLIC, PageRequest.of(0, clamp(limit, 1, 30)));
+                communityRepository.findByNameContainingIgnoreCaseOrderByMemberCountDesc(
+                        keyword.trim(), PageRequest.of(0, clamp(limit, 1, 30)));
         return toResponses(communities, userId);
     }
 
@@ -289,6 +293,45 @@ public class CommunityService {
         return postService.getFeedByCommunity(String.valueOf(communityId), userId, page, size);
     }
 
+    /**
+     * Resolves a notification's community-post target to a route that the recipient can open.
+     * Pending community posts go to the manager review row; visible posts go to their group anchor.
+     */
+    public String postNavigationUrl(String postId, Long requesterId) {
+        Post post = postService.getPostOrThrow(postId);
+        String rawCommunityId = post.getCommunityId();
+        if (rawCommunityId == null || rawCommunityId.isBlank()) {
+            return "/feed?postId=" + java.net.URLEncoder.encode(
+                    postId, java.nio.charset.StandardCharsets.UTF_8);
+        }
+
+        final Long communityId;
+        try {
+            communityId = Long.valueOf(rawCommunityId);
+        } catch (NumberFormatException invalidCommunityId) {
+            throw new ResourceNotFoundException("Không tìm thấy hội nhóm của bài viết");
+        }
+        Community community = getCommunityOrThrow(communityId);
+        CommunityMember membership = memberRepository
+                .findByCommunityIdAndUserId(communityId, requesterId)
+                .orElse(null);
+        boolean activeMember = membership != null && isActiveMember(membership);
+        boolean author = java.util.Objects.equals(String.valueOf(requesterId), post.getUserId());
+
+        if (PRIVACY_PRIVATE.equals(community.getPrivacy()) && !activeMember && !author) {
+            // Do not disclose the location of a private-group post to a former/non-member.
+            return "/communities";
+        }
+
+        String encodedPostId = java.net.URLEncoder.encode(
+                postId, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        if (post.getCommunityPostStatus() == CommunityPostStatus.PENDING
+                && membership != null && isManagerRole(membership.getRole())) {
+            return "/communities/" + communityId + "#community-post-review-" + encodedPostId;
+        }
+        return "/communities/" + communityId + "#post-" + encodedPostId;
+    }
+
     public PostResponse createPost(Long communityId, Long userId, CreatePostRequest request) {
         getCommunityOrThrow(communityId);
         CommunityMember membership = memberRepository.findByCommunityIdAndUserId(communityId, userId)
@@ -303,6 +346,18 @@ public class CommunityService {
             notifyManagersOfPendingPost(communityId, userId, response.getId());
         }
         return response;
+    }
+
+    /** Returns only owner/manager identities; private-group leadership is visible to members only. */
+    public List<CommunityMemberResponse> leadership(Long communityId, Long requesterId) {
+        Community community = getCommunityOrThrow(communityId);
+        if (PRIVACY_PRIVATE.equals(community.getPrivacy())
+                && !isActiveMember(communityId, requesterId)) {
+            throw new ForbiddenException("Chỉ thành viên mới có thể xem người quản lý nhóm riêng tư");
+        }
+        List<CommunityMember> leaders = memberRepository.findByCommunityIdAndRoleInOrderByJoinedAtAsc(
+                communityId, managerRoles(), PageRequest.of(0, 20));
+        return toMemberResponses(leaders);
     }
 
     public List<CommunityMemberResponse> members(
@@ -482,8 +537,13 @@ public class CommunityService {
         validateMediaPurpose(request, community, requesterId);
         community.setName(request.getName().trim());
         community.setDescription(blankToNull(request.getDescription()));
-        community.setAvatarUrl(blankToNull(request.getAvatarUrl()));
-        community.setCoverUrl(blankToNull(request.getCoverUrl()));
+        // Omitted or blank media fields preserve existing images during a text-only update.
+        if (request.getAvatarUrl() != null && !request.getAvatarUrl().isBlank()) {
+            community.setAvatarUrl(request.getAvatarUrl().trim());
+        }
+        if (request.getCoverUrl() != null && !request.getCoverUrl().isBlank()) {
+            community.setCoverUrl(request.getCoverUrl().trim());
+        }
         community.setPrivacy(
                 PRIVACY_PRIVATE.equals(request.getPrivacy()) ? PRIVACY_PRIVATE : PRIVACY_PUBLIC);
         Community saved = communityRepository.save(community);

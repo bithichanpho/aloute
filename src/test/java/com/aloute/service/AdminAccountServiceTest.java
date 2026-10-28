@@ -51,6 +51,25 @@ class AdminAccountServiceTest {
     }
 
     @Test
+    void deletedAccountCannotBeLockedUnlockedOrForceLoggedOut() {
+        User actor = user(1L, "admin", "ROLE_ADMIN");
+        User deleted = user(7L, "deleted~7", "ROLE_USER");
+        deleted.setEmail("deleted_7@invalid.local");
+        deleted.setFullName("Tài khoản đã xóa");
+        deleted.setActive(false);
+        deleted.setSelfDeactivated(false);
+        when(users.findById(1L)).thenReturn(Optional.of(actor));
+        when(users.findById(7L)).thenReturn(Optional.of(deleted));
+
+        assertThrows(com.aloute.common.exception.BadRequestException.class,
+                () -> service.lock(1L, 7L, "Lý do khóa hợp lệ"));
+        assertThrows(com.aloute.common.exception.BadRequestException.class,
+                () -> service.unlock(1L, 7L, "Mở khóa"));
+        assertThrows(com.aloute.common.exception.BadRequestException.class,
+                () -> service.forceLogout(1L, 7L, "Đăng xuất"));
+    }
+
+    @Test
     void listUsesDatabasePaginationAndReturnsMetadata() {
         User target = user(7L, "member", "ROLE_USER");
         when(users.findByUsernameContainingIgnoreCaseOrFullNameContainingIgnoreCaseOrEmailContainingIgnoreCase(

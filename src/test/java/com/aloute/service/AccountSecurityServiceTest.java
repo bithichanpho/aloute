@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.model.entity.User;
 import com.aloute.notifications.api.NotificationAccountCleanup;
@@ -49,6 +50,15 @@ class AccountSecurityServiceTest {
         assertThrows(UnauthorizedException.class, () -> service.checkPassword(1L, "wrong"));
     }
 
+
+    @Test
+    void deletionRejectsNonMatchingPasswordConfirmationBeforeMutation() {
+        AccountSecurityService service = service(mock(IUserRepository.class), mock(PasswordEncoder.class));
+
+        assertThrows(BadRequestException.class,
+                () -> service.deleteAccount(1L, "Current1!Pass", "different"));
+    }
+
     private AccountSecurityService service(IUserRepository users, PasswordEncoder passwords) {
         return new AccountSecurityService(
                 users, passwords, mock(AuthRateLimitService.class),
@@ -56,6 +66,6 @@ class AccountSecurityServiceTest {
                 mock(ICommunityMemberRepository.class), mock(IGroupMemberRepository.class),
                 mock(NotificationAccountCleanup.class), mock(IGroupReadStatusRepository.class),
                 mock(RefreshTokenService.class), mock(AccountDataCleanupService.class),
-                mock(AuthenticationUserCache.class), mock(FirebaseAdminService.class));
+                mock(AuthenticationUserCache.class));
     }
 }

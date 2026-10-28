@@ -53,8 +53,7 @@ public class JdbcCallSessions implements CallSessions {
                     state=CASE WHEN state='ACTIVE' THEN 'ENDED'
                         WHEN deadline_at<=statement_timestamp() THEN 'MISSED'
                         WHEN caller_id=? THEN 'CANCELLED' ELSE 'DECLINED' END,
-                    processing_status=CASE WHEN state='RINGING' AND deadline_at<=statement_timestamp()
-                        THEN 'PENDING' ELSE 'COMPLETED' END,
+                    processing_status='PENDING',next_attempt_at=statement_timestamp(),
                     ended_at=statement_timestamp()
                 WHERE call_id=? AND state IN ('RINGING','ACTIVE') AND
                     ((caller_id=? AND callee_id=?) OR (callee_id=? AND caller_id=?))
@@ -68,7 +67,8 @@ public class JdbcCallSessions implements CallSessions {
                 WITH due AS (SELECT call_id FROM call_sessions WHERE state='ACTIVE'
                     AND answered_at<=statement_timestamp()-interval '2 hours'
                     ORDER BY answered_at,call_id LIMIT 100 FOR UPDATE SKIP LOCKED)
-                UPDATE call_sessions c SET state='ENDED',ended_at=statement_timestamp()
+                UPDATE call_sessions c SET state='ENDED',ended_at=statement_timestamp(),
+                    processing_status='PENDING',next_attempt_at=statement_timestamp()
                 FROM due WHERE c.call_id=due.call_id AND c.state='ACTIVE'
                 """);
         jdbc.update("""
@@ -85,6 +85,23 @@ public class JdbcCallSessions implements CallSessions {
                 """);
     }
 
+    public Optional<History> terminalHistory(String id, Long first, Long second) {
+        if (id == null || id.isBlank() || first == null || second == null || first.equals(second)) {
+            return Optional.empty();
+        }
+        return jdbc.query("""
+                SELECT call_type, state,
+                    CASE WHEN state='ENDED' AND answered_at IS NOT NULL AND ended_at IS NOT NULL
+                        THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (ended_at - answered_at))))::bigint
+                        ELSE 0::bigint END AS duration_seconds
+                FROM call_sessions
+                WHERE call_id=? AND state IN ('ENDED','DECLINED','CANCELLED','MISSED')
+                    AND ((caller_id=? AND callee_id=?) OR (caller_id=? AND callee_id=?))
+                """, (rs, row) -> new History(
+                    rs.getString("call_type"), rs.getString("state"), rs.getLong("duration_seconds")),
+                id, first, second, second, first).stream().findFirst();
+    }
+
     public boolean missedFor(String id, Long caller, Long callee) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM call_sessions WHERE call_id=? AND caller_id=? AND callee_id=?
@@ -96,7 +113,7 @@ public class JdbcCallSessions implements CallSessions {
     public List<Claim> claimDue() {
         String token = UUID.randomUUID().toString();
         return jdbc.query("""
-                WITH due AS (SELECT call_id FROM call_sessions WHERE state='MISSED' AND
+                WITH due AS (SELECT call_id FROM call_sessions WHERE state IN ('MISSED','ENDED','DECLINED','CANCELLED') AND
                     ((processing_status IN ('PENDING','RETRY') AND next_attempt_at<=statement_timestamp())
                     OR (processing_status='PROCESSING' AND lease_until<=statement_timestamp()))
                     AND attempt_count<20 ORDER BY created_at,call_id LIMIT 10 FOR UPDATE SKIP LOCKED)
@@ -110,7 +127,7 @@ public class JdbcCallSessions implements CallSessions {
     public Optional<Snapshot> lockClaim(Claim claim) {
         return jdbc.query("""
                 SELECT * FROM call_sessions WHERE call_id=? AND lease_token=?
-                    AND state='MISSED' AND processing_status='PROCESSING' FOR UPDATE
+                    AND state IN ('MISSED','ENDED','DECLINED','CANCELLED') AND processing_status='PROCESSING' FOR UPDATE
                 """, this::snapshot, claim.call().callId(), claim.token()).stream().findFirst();
     }
 

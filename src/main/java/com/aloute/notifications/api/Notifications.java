@@ -12,6 +12,10 @@ public interface Notifications {
     void notifyPostLiked(String postId, Long likerId);
     /** Durable system notice for a post author when automatic/admin moderation restricts a post. */
     void notifyPostModerationResult(Long authorId, String postId, com.aloute.model.document.ModerationStatus status);
+    /** Durable alert for a community owner/manager when a community post is reported. */
+    void notifyCommunityPostReported(Long receiverId, String postId);
+    /** Durable alert that routes system administrators to the formal moderation report queue. */
+    void notifyAdminCommunityReportOpened(Long receiverId, String reportId);
     List<NotificationResponse> getMyNotifications(Long userId);
     NotificationCursorPage getMyNotifications(Long userId, Long beforeId, int size);
     long countUnread(Long userId);

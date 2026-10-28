@@ -15,8 +15,8 @@ public class JpaUserAccountAdministration implements UserAccountAdministration {
     public void requireAdministrator(Long actorId) {
         if (actorId == null || users.findById(actorId)
                 .filter(user -> user.isActive() && user.getRole() != null
-                        && "ROLE_ADMIN".equals(user.getRole().getName())).isEmpty()) {
-            throw new ForbiddenException("Chỉ quản trị viên xử lý báo cáo được truy cập");
+                        && java.util.Set.of("ROLE_ADMIN", "ROLE_HOST").contains(user.getRole().getName())).isEmpty()) {
+            throw new ForbiddenException("Chỉ quản trị viên hoặc HOST mới được xử lý báo cáo");
         }
     }
 
@@ -29,11 +29,15 @@ public class JpaUserAccountAdministration implements UserAccountAdministration {
 
     public ChangedAccount setHiddenByAdministrator(Long actorId, Long targetId, boolean hidden) {
         requireAdministrator(actorId);
+        var actor = users.findById(actorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản người thực hiện"));
         var target = users.findById(targetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản"));
-        if (target.getId().equals(actorId) || target.getRole() == null
-                || java.util.Set.of("ROLE_ADMIN", "ROLE_HOST").contains(target.getRole().getName())) {
-            throw new BadRequestException("Không thể khóa tài khoản quản trị được bảo vệ");
+        String actorRole = actor.getRole() == null ? "" : actor.getRole().getName();
+        String targetRole = target.getRole() == null ? "" : target.getRole().getName();
+        if (target.getId().equals(actorId) || "ROLE_HOST".equals(targetRole)
+                || ("ROLE_ADMIN".equals(targetRole) && !"ROLE_HOST".equals(actorRole))) {
+            throw new BadRequestException("Không đủ quyền xử lý tài khoản quản trị được bảo vệ");
         }
         Instant revokedAt = Instant.now();
         target.setActive(!hidden);

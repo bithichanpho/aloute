@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+  <th:block th:fragment="postCards">
+    <th:block th:replace="~{feed/index :: postCards(${posts}, false)}"></th:block>
+  </th:block>
+</body>
+</html>

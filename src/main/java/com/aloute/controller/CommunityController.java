@@ -97,6 +97,16 @@ public class CommunityController {
         return ApiResponse.success(communityService.getCommunity(communityId, userId));
     }
 
+    public record PostLocation(String url) {}
+
+    @GetMapping("/posts/{postId}/location")
+    public ApiResponse<PostLocation> postLocation(
+            Authentication authentication,
+            @PathVariable @NotBlank(message = "Thiếu mã bài viết") @Size(max = 100, message = "Mã bài viết không hợp lệ") String postId) {
+        return ApiResponse.success(new PostLocation(
+                communityService.postNavigationUrl(postId, requireUserId(authentication))));
+    }
+
     @PostMapping("/{communityId}/join")
     public ApiResponse<CommunityResponse> join(
             Authentication authentication, @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
@@ -148,6 +158,14 @@ public class CommunityController {
             @RequestParam(defaultValue = "true") boolean banned) {
         communityService.banMember(communityId, requireUserId(authentication), userId, banned);
         return ApiResponse.success(null);
+    }
+
+    @GetMapping("/{communityId}/leadership")
+    public ApiResponse<List<CommunityMemberResponse>> leadership(
+            Authentication authentication,
+            @PathVariable @Positive(message = "Mã hội nhóm không hợp lệ") Long communityId) {
+        return ApiResponse.success(
+                communityService.leadership(communityId, requireUserId(authentication)));
     }
 
     @GetMapping("/{communityId}/members")

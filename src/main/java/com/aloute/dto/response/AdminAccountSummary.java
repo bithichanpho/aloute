@@ -12,5 +12,6 @@ public record AdminAccountSummary(
         boolean active,
         boolean selfDeactivated,
         boolean emailVerified,
+        boolean deleted,
         Instant tokensRevokedAt,
         LocalDateTime createdAt) {}

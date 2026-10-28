@@ -64,6 +64,45 @@ class AuthServiceRegisterTest {
         return request;
     }
 
+    @Test
+    void availabilityNormalizesPublicHandleWithoutCreatingAccountOrSendingMail() {
+        org.mockito.Mockito.clearInvocations(encoder);
+        org.junit.jupiter.api.Assertions.assertTrue(service.registrationUsernameAvailable(" Alice ", " New@Example.com "));
+        verify(users).existsByUsernameIgnoreCase("alice");
+        verify(pendings).findByUsernameIgnoreCase("alice");
+        verify(users, never()).findByEmailIgnoreCase(anyString());
+        verify(users, never()).save(any(User.class));
+        verify(pendings, never()).save(any(PendingUser.class));
+        org.mockito.Mockito.verifyNoInteractions(encoder, email, limits);
+    }
+
+    @Test
+    void availabilityRejectsRegisteredHandleWithoutReadingPrivateEmail() {
+        when(users.existsByUsernameIgnoreCase("alice")).thenReturn(true);
+        org.junit.jupiter.api.Assertions.assertFalse(service.registrationUsernameAvailable("ALICE", null));
+        org.mockito.Mockito.verifyNoInteractions(pendings, email);
+        verify(users, never()).findByEmailIgnoreCase(anyString());
+    }
+
+    @Test
+    void availabilityPreservesPendingRegistrationOwnershipAndExpiration() {
+        PendingUser pending = livePending("alice", "owner@example.invalid", LocalDateTime.now());
+        when(pendings.findByUsernameIgnoreCase("alice")).thenReturn(Optional.of(pending));
+        org.junit.jupiter.api.Assertions.assertFalse(service.registrationUsernameAvailable("alice", "other@example.invalid"));
+        org.junit.jupiter.api.Assertions.assertFalse(service.registrationUsernameAvailable("alice", null));
+        org.junit.jupiter.api.Assertions.assertTrue(service.registrationUsernameAvailable("alice", " OWNER@example.invalid "));
+        pending.setExpiresAt(LocalDateTime.now().minusMinutes(1));
+        org.junit.jupiter.api.Assertions.assertTrue(service.registrationUsernameAvailable("alice", "other@example.invalid"));
+        verify(pendings, never()).save(any(PendingUser.class));
+        org.mockito.Mockito.verifyNoInteractions(email);
+    }
+
+    @Test
+    void availabilityRejectsReservedHandleWithoutDatabaseLookup() {
+        org.junit.jupiter.api.Assertions.assertFalse(service.registrationUsernameAvailable("deleted_account", null));
+        org.mockito.Mockito.verifyNoInteractions(users, pendings, email);
+    }
+
     private static User existingUser() {
         User user = new User();
         user.setId(1L);

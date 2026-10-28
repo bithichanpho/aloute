@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
+<head><title th:text="${pageTitle + ' — ALOUTE'}">Quản lý tài khoản — ALOUTE</title></head>
+<body>
+<section class="content-inner admin-accounts" data-admin-accounts
+         th:attr="data-is-host=${isHost},data-current-user-id=${currentUserId}">
+  <header class="admin-accounts__header">
+    <div>
+      <span class="admin-accounts__eyebrow">Quản trị nền tảng</span>
+      <h1>Quản lý tài khoản</h1>
+      <p>Tìm kiếm tài khoản, xem lịch sử và thực hiện các thao tác quản trị được cấp.</p>
+    </div>
+    <span class="admin-accounts__role" th:text="${isHost == true ? 'HOST · Toàn quyền quản trị' : 'ADMIN · Quản trị viên'}">ADMIN</span>
+  </header>
+
+  <form class="admin-accounts__search" id="adminAccountSearchForm">
+    <label for="adminAccountQuery"><i class="bi bi-search" aria-hidden="true"></i><span class="visually-hidden">Tìm tài khoản</span></label>
+    <input id="adminAccountQuery" type="search" maxlength="100" placeholder="Tìm theo username, họ tên hoặc email" autocomplete="off">
+    <button type="submit"><i class="bi bi-search" aria-hidden="true"></i> Tìm kiếm</button>
+    <button type="button" class="admin-accounts__reset" id="adminAccountReset">Đặt lại</button>
+  </form>
+
+  <div class="admin-accounts__notice" id="adminAccountsMessage" role="status" aria-live="polite">Đang tải danh sách tài khoản…</div>
+  <div class="admin-accounts__table-wrap">
+    <table class="admin-accounts__table">
+      <thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Email</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
+      <tbody id="adminAccountsRows"><tr><td colspan="6">Đang tải…</td></tr></tbody>
+    </table>
+  </div>
+  <footer class="admin-accounts__pagination">
+    <span id="adminAccountsPageInfo">Trang 1</span>
+    <div><button type="button" id="adminAccountsPrev" disabled>Trang trước</button><button type="button" id="adminAccountsNext" disabled>Trang sau</button></div>
+  </footer>
+
+  <dialog class="admin-accounts__dialog" id="adminAccountActionDialog" aria-labelledby="adminAccountActionTitle">
+    <form method="dialog" id="adminAccountActionForm">
+      <h2 id="adminAccountActionTitle">Xác nhận thao tác</h2>
+      <p id="adminAccountActionDescription"></p>
+      <label for="adminAccountActionReason">Lý do / ghi chú <span id="adminAccountReasonRequired">(bắt buộc, tối thiểu 5 ký tự khi khóa)</span></label>
+      <textarea id="adminAccountActionReason" maxlength="500" rows="3" placeholder="Nhập lý do để ghi vào lịch sử quản trị"></textarea>
+      <div class="admin-accounts__dialog-actions"><button type="button" data-dialog-cancel>Hủy</button><button type="button" id="adminAccountActionConfirm" class="is-danger">Xác nhận</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="admin-accounts__dialog admin-accounts__detail" id="adminAccountDetailDialog" aria-labelledby="adminAccountDetailTitle">
+    <div class="admin-accounts__detail-head"><h2 id="adminAccountDetailTitle">Chi tiết tài khoản</h2><button type="button" data-dialog-close aria-label="Đóng">×</button></div>
+    <div id="adminAccountDetailContent">Đang tải…</div>
+    <div class="admin-accounts__dialog-actions"><button type="button" data-dialog-close>Đóng</button></div>
+  </dialog>
+</section>
+</body>
+</html>

@@ -130,11 +130,15 @@ public class PostResponseMapper {
 
     private boolean isPubliclyModerated(Post post) {
         ModerationStatus status = post == null ? null : post.getModerationStatus();
-        // Treat legacy records without a status as approved. PENDING, FLAGGED and HIDDEN
-        // contents must not leak through counters/media of a repost.
+        // Treat legacy records without a status as approved. HIDDEN and PENDING remain blocked.
+        // FLAGGED is a moderation signal, not an automatic publishing gate, when the engine
+        // successfully evaluated the content. A FLAGGED result with a failure reason stays fail-closed.
         com.aloute.model.document.CommunityPostStatus communityStatus =
                 post == null ? null : post.getCommunityPostStatus();
-        return (status == null || status == ModerationStatus.APPROVED)
+        boolean moderationReadable = status == null || status == ModerationStatus.APPROVED
+                || (status == ModerationStatus.FLAGGED
+                        && (post.getModerationFailureReason() == null || post.getModerationFailureReason().isBlank()));
+        return moderationReadable
                 && (communityStatus == null
                         || communityStatus == com.aloute.model.document.CommunityPostStatus.APPROVED);
     }

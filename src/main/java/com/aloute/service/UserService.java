@@ -35,6 +35,7 @@ public class UserService {
     private final SimpMessagingTemplate messagingTemplate;
     private final FeedCacheInvalidator feedCacheInvalidator;
     private final UserSearchQuery userSearchQuery;
+    private final CloseFriendService closeFriendService;
 
     @Autowired
     public UserService(
@@ -44,7 +45,7 @@ public class UserService {
             SimpMessagingTemplate messagingTemplate,
             ContentAccessService access,
             FeedCacheInvalidator feedCacheInvalidator,
-            UserSearchQuery userSearchQuery) {
+            UserSearchQuery userSearchQuery, CloseFriendService closeFriendService) {
         this.access = access;
         this.userRepository = userRepository;
         this.friendRepository = friendRepository;
@@ -52,6 +53,13 @@ public class UserService {
         this.messagingTemplate = messagingTemplate;
         this.feedCacheInvalidator = feedCacheInvalidator;
         this.userSearchQuery = userSearchQuery;
+        this.closeFriendService = closeFriendService;
+    }
+
+    public UserService(IUserRepository users, IFriendRepository friends, FriendService friendService,
+            SimpMessagingTemplate messaging, ContentAccessService access, FeedCacheInvalidator invalidator,
+            UserSearchQuery search) {
+        this(users, friends, friendService, messaging, access, invalidator, search, null);
     }
 
     /** Compatibility constructor for isolated service tests without cache/search collaborators. */
@@ -93,6 +101,17 @@ public class UserService {
                         .findById(targetUserId)
                         .orElseThrow(
                                 () -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileResponse(user, currentUserId);
+    }
+
+    public UserProfileDto getProfileByUsername(String username, Long currentUserId) {
+        User user = userRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng"));
+        return profileResponse(user, currentUserId);
+    }
+
+    private UserProfileDto profileResponse(User user, Long currentUserId) {
+        Long targetUserId = user.getId();
         access.requireProfile(currentUserId, user);
         IFriendRepository.ProfileRelationshipStats relationshipStats =
                 friendRepository.getProfileRelationshipStats(targetUserId, currentUserId);
@@ -113,8 +132,15 @@ public class UserService {
                     relationshipStats != null && relationshipStats.viewerFollows();
             boolean mutualFriend = followedByCurrentUser
                     && relationshipStats.targetFollowsViewer();
+            if ((relationshipStats == null || !relationshipStats.targetFollowsViewer())
+                    && friendService.hasPendingFollowRequest(targetUserId, currentUserId)) {
+                dto.setIncomingFollowRequestId(targetUserId + ":" + currentUserId);
+            }
             dto.setFollowedByCurrentUser(followedByCurrentUser);
             dto.setMutualFriend(mutualFriend);
+            if (closeFriendService != null && mutualFriend)
+                dto.setCloseFriendStatus(closeFriendService.getStatusMap(currentUserId, List.of(targetUserId))
+                        .getOrDefault(targetUserId, "NONE"));
             dto.setFollowRequestPending(
                     !followedByCurrentUser
                             && friendService.hasPendingFollowRequest(currentUserId, targetUserId));

@@ -109,7 +109,7 @@ class NotificationApplicationServiceTest {
 
         verify(outbox).enqueue(
                 2L, 2L, "POST_MODERATION_FLAGGED", "post-77",
-                "Bài viết của bạn có chứa nội dung bị đánh dấu. Bài viết đang bị hạn chế hiển thị và cần được xem xét.");
+                "Moderation đã đánh dấu bài viết. Nếu hệ thống đánh giá thành công, bài viết tiếp tục theo quyền hiển thị bình thường; nếu kiểm duyệt chưa hoàn tất do lỗi, bài viết sẽ tạm bị hạn chế cho đến khi có kết quả hoặc được xem xét bổ sung.");
     }
 
     @Test
@@ -203,12 +203,12 @@ class NotificationApplicationServiceTest {
     }
 
     @Test
-    void removedCloseFriendNotificationsAreHiddenAndNotCountedAsUnread() {
+    void removedFollowRequestNotificationsAreHiddenAndNotCountedAsUnread() {
         Notification legacy = new Notification();
         legacy.setId(20L);
         legacy.setReceiverId(2L);
         legacy.setSenderId(1L);
-        legacy.setType("CLOSE_FRIEND_REQUEST");
+        legacy.setType("FOLLOW_REQUEST");
         legacy.setContent("alice muốn kết bạn thân với bạn");
 
         Notification follow = new Notification();

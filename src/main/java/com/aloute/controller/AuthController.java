@@ -87,6 +87,26 @@ public class AuthController {
         this.accessRevocations = accessRevocations;
     }
 
+    public record RegistrationUsernameRequest(
+            @NotBlank @Size(min = 3, max = 50)
+            @Pattern(regexp = "^[A-Za-z0-9_](?:[A-Za-z0-9_.-]{1,48}[A-Za-z0-9_])?$") String username,
+            @Size(max = 254) String email) {}
+
+    public record RegistrationUsernameAvailability(boolean available) {}
+
+    @PostMapping("/register/username-availability")
+    public ResponseEntity<ApiResponse<RegistrationUsernameAvailability>> registrationUsernameAvailability(
+            @Valid @RequestBody RegistrationUsernameRequest request, HttpServletRequest httpRequest) {
+        authRateLimitService.checkAndRecord(
+                "REGISTER_USERNAME_IP", clientIpResolver.resolve(httpRequest), 60,
+                java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(15),
+                "Bạn đã kiểm tra tên đăng nhập quá nhiều lần. Thử lại sau khoảng %d phút.",
+                "Bạn đã kiểm tra tên đăng nhập quá nhiều lần. Vui lòng thử lại sau.");
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(ApiResponse.success(
+                new RegistrationUsernameAvailability(
+                        authService.registrationUsernameAvailable(request.username(), request.email()))));
+    }
+
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
             @Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {

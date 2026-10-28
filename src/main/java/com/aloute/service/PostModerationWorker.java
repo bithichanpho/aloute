@@ -80,9 +80,16 @@ public class PostModerationWorker {
                     ? moderation.check(content)
                     : new ModerationResult("safe", 0.0);
             ModerationStatus finalStatus = moderation.resolveStatus(text);
-            if (!moderation.isMediaApproved(snapshot.getImageUrl(), "image")
-                    || !moderation.isMediaApproved(snapshot.getVideoUrl(), "video")) {
+            ModerationStatus imageStatus = moderation.resolveMediaStatus(snapshot.getImageUrl(), "image");
+            ModerationStatus videoStatus = moderation.resolveMediaStatus(snapshot.getVideoUrl(), "video");
+            // Combine the strongest moderation outcome across text, image and video. FLAGGED
+            // remains a valid automatic result and does not block publishing; HIDDEN wins if any
+            // modality crosses the hide threshold. A service failure still follows fail-closed retry.
+            if (imageStatus == ModerationStatus.HIDDEN || videoStatus == ModerationStatus.HIDDEN) {
                 finalStatus = ModerationStatus.HIDDEN;
+            } else if (finalStatus != ModerationStatus.HIDDEN
+                    && (imageStatus == ModerationStatus.FLAGGED || videoStatus == ModerationStatus.FLAGGED)) {
+                finalStatus = ModerationStatus.FLAGGED;
             }
 
             Query unchanged = unchangedPostQuery(snapshot);
@@ -96,6 +103,7 @@ public class PostModerationWorker {
                     .unset("notifyMentionsAfterModeration");
             if (documentStore.updateFirst(unchanged, result, Post.class).getModifiedCount() > 0) {
                 snapshot.setModerationStatus(finalStatus);
+                snapshot.setModerationFailureReason(null);
                 snapshot.setToxicityScore(text.getScore());
                 // Log the decision (never the submitted text) so operators can verify the
                 // asynchronous moderation path without exposing user-generated content.
@@ -104,7 +112,8 @@ public class PostModerationWorker {
                 if (finalStatus == ModerationStatus.FLAGGED || finalStatus == ModerationStatus.HIDDEN) {
                     notifyPostModerationStatus(snapshot.getUserId(), postId, finalStatus);
                 }
-                if (finalStatus == ModerationStatus.APPROVED && snapshot.isNotifyMentionsAfterModeration()) {
+                if ((finalStatus == ModerationStatus.APPROVED || finalStatus == ModerationStatus.FLAGGED)
+                        && snapshot.isNotifyMentionsAfterModeration()) {
                     notifyReadableMentions(snapshot);
                 }
                 if (postMediaAssets != null) {

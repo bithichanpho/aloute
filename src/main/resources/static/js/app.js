@@ -2,6 +2,12 @@
 
 window.Aloute = (function () {
 
+  function profileUrl(username, legacyId) {
+    return username && String(username).trim()
+      ? '/people/' + encodeURIComponent(String(username).trim())
+      : '/profile/' + encodeURIComponent(legacyId == null ? 'me' : legacyId);
+  }
+
   function csrfTokenFromCookie() {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
     if (!match) return '';
@@ -84,7 +90,9 @@ window.Aloute = (function () {
 
     if (!res.ok || (payload && payload.success === false)) {
       const message = (payload && payload.message) || ('Máy chủ trả về lỗi ' + res.status);
-      throw new Error(message);
+      const error = new Error(message);
+      error.status = res.status;
+      throw error;
     }
     return payload ? payload.data : null;
   }
@@ -284,6 +292,10 @@ window.Aloute = (function () {
           });
         }
         if (targetId === currentUserId) {
+          if (payload.eventType === 'REQUESTS_SEEN') {
+            followRequestBadgeRevision++;
+            setBadge('followRequestBadge', 0);
+          }
           document.dispatchEvent(new CustomEvent('aloute:follow-requests-changed', { detail: payload }));
           refreshNavBadges(true);
         }
@@ -336,6 +348,7 @@ window.Aloute = (function () {
         document.dispatchEvent(new CustomEvent('aloute:group-update', { detail: payload }));
       });
 
+      document.dispatchEvent(new CustomEvent('aloute:realtime-ready', { detail: { client: stompClient } }));
       readyCallbacks.forEach(cb => cb(stompClient));
       readyCallbacks.length = 0;
     }, function (frame) {
@@ -676,7 +689,7 @@ window.Aloute = (function () {
     function appendActor(actor) {
       const link = document.createElement('a');
       link.className = 'post__repost-others-list__item';
-      link.href = '/profile/' + encodeURIComponent(actor.userId);
+      link.href = profileUrl(actor.username, actor.userId);
       const img = document.createElement('img');
       img.src = actor.userAvatarUrl || '/images/avatar_default.png';
       img.alt = '';
@@ -964,7 +977,7 @@ window.Aloute = (function () {
             if (index > 0) names.appendChild(document.createTextNode(index === 2 ? ' và ' : ', '));
             const link = document.createElement('a');
             link.className = 'post__reposter';
-            link.href = '/profile/' + encodeURIComponent(actor.userId);
+            link.href = profileUrl(actor.username, actor.userId);
             link.textContent = actor.username || 'người dùng';
             names.appendChild(link);
           });
@@ -1134,7 +1147,7 @@ window.Aloute = (function () {
     const moderationLabel = moderationStatus === 'PENDING'
       ? '<span class="comment-item__moderation-status" data-moderation-status="PENDING">Đang kiểm duyệt</span>'
       : (moderationStatus === 'FLAGGED'
-        ? '<span class="comment-item__moderation-status" data-moderation-status="FLAGGED">Chờ quản trị viên xem xét</span>'
+        ? '<span class="comment-item__moderation-status" data-moderation-status="FLAGGED">Được Moderation đánh dấu</span>'
         : '');
     return '<div class="comment-item" data-comment-id="' + commentId + '" data-post-id="' + safePostId + '" data-reply-count="' + replies + '" data-moderation-status="' + escapeHtml(moderationStatus) + '">' +
       '  <img src="' + escapeHtml(comment.userAvatarUrl || '/images/avatar_default.png') + '" alt="avatar" loading="lazy">' +
@@ -1349,6 +1362,73 @@ window.Aloute = (function () {
     const form = document.getElementById('composeForm');
     if (!form) return;
 
+    const audienceValue = document.getElementById('postVisibility');
+    const audienceMenu = document.getElementById('postAudienceMenu');
+    const audienceTrigger = form.querySelector('[data-audience-open]');
+    if (audienceMenu && audienceTrigger && audienceValue) {
+      const choices = [...audienceMenu.querySelectorAll('[data-audience-value]')];
+      const positionMenu = () => {
+        const anchor = audienceTrigger.getBoundingClientRect();
+        const box = audienceMenu.getBoundingClientRect();
+        const left = Math.max(8, Math.min(anchor.left, window.innerWidth - box.width - 8));
+        const top = anchor.bottom + 6 + box.height <= window.innerHeight - 8
+          ? anchor.bottom + 6 : Math.max(8, anchor.top - box.height - 6);
+        audienceMenu.style.left = left + 'px';
+        audienceMenu.style.top = top + 'px';
+      };
+      const openMenu = () => {
+        choices.forEach(choice => choice.setAttribute('aria-selected', String(choice.dataset.audienceValue === audienceValue.value)));
+        audienceMenu.showPopover();
+        audienceTrigger.setAttribute('aria-expanded', 'true');
+        positionMenu();
+        choices.find(choice => choice.dataset.audienceValue === audienceValue.value)?.focus();
+      };
+      const closeMenu = () => {
+        audienceMenu.hidePopover();
+        audienceTrigger.setAttribute('aria-expanded', 'false');
+      };
+      audienceTrigger.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        openMenu();
+      });
+      choices.forEach(choice => choice.addEventListener('click', () => {
+        audienceValue.value = choice.dataset.audienceValue;
+        choices.forEach(option => option.setAttribute('aria-selected', String(option === choice)));
+        audienceTrigger.querySelector('[data-audience-current-label]').textContent = choice.getAttribute('aria-label');
+        audienceTrigger.querySelector('[data-audience-current-icon]').innerHTML = postAudienceMarkup(audienceValue.value);
+        audienceTrigger.setAttribute('aria-label', 'Ai có thể xem bài viết: ' + choice.getAttribute('aria-label'));
+        audienceValue.dispatchEvent(new Event('change', { bubbles: true }));
+        closeMenu();
+        audienceTrigger.focus();
+      }));
+      audienceMenu.addEventListener('keydown', event => {
+        const index = choices.indexOf(document.activeElement);
+        let next;
+        if (event.key === 'ArrowDown') next = (index + 1) % choices.length;
+        else if (event.key === 'ArrowUp') next = (index + choices.length - 1) % choices.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = choices.length - 1;
+        else if (event.key === 'Escape' || event.key === 'Tab') {
+          closeMenu();
+          if (event.key === 'Escape') { event.preventDefault(); audienceTrigger.focus(); }
+          return;
+        } else return;
+        event.preventDefault();
+        choices[next].focus();
+      });
+      audienceMenu.addEventListener('toggle', () => {
+        const isOpen = audienceMenu.matches(':popover-open');
+        audienceTrigger.setAttribute('aria-expanded', String(isOpen));
+        if (isOpen) {
+          positionMenu();
+          choices.find(choice => choice.dataset.audienceValue === audienceValue.value)?.focus();
+        }
+      });
+      window.addEventListener('resize', () => { if (audienceMenu.matches(':popover-open')) positionMenu(); });
+      window.addEventListener('scroll', () => { if (audienceMenu.matches(':popover-open')) positionMenu(); }, true);
+    }
+
     const textarea = document.getElementById('composeContent');
     const fileInput = document.getElementById('composeImageInput');
     const videoInput = document.getElementById('composeVideoInput');
@@ -1427,12 +1507,43 @@ window.Aloute = (function () {
           if (res.type !== 'video') throw new Error('Tệp đã chọn không phải video hợp lệ.');
           videoUrl = res.url;
         }
-        const created = await api('/api/posts', { method: 'POST', body: { content, imageUrl, videoUrl, visibility: document.getElementById('postVisibility')?.value || 'PUBLIC' } });
+        const communityId = String(form.dataset.communityId || '').trim();
+        const postBody = { content, imageUrl, videoUrl };
+        let endpoint = '/api/posts';
+        if (communityId) {
+          endpoint = '/api/communities/' + encodeURIComponent(communityId) + '/posts';
+        } else {
+          postBody.visibility = document.getElementById('postVisibility')?.value || 'PUBLIC';
+        }
+        const created = await api(endpoint, { method: 'POST', body: postBody });
         const moderationStatus = String(created?.moderationStatus || '').toUpperCase();
+        const communityStatus = String(created?.communityPostStatus || '').toUpperCase();
+        if (communityId) {
+          if (communityStatus === 'PENDING' && moderationStatus === 'PENDING') {
+            toast('Bài viết đã gửi và đang chờ cả hệ thống kiểm duyệt lẫn chủ nhóm/quản lý duyệt.');
+          } else if (communityStatus === 'PENDING') {
+            toast('Bài viết đã gửi và đang chờ chủ nhóm/quản lý duyệt.');
+          } else if (moderationStatus === 'PENDING') {
+            toast('Bài viết đã gửi và đang chờ hệ thống kiểm duyệt.');
+          } else if (moderationStatus === 'FLAGGED') {
+            toast('Moderation đã đánh dấu bài viết để theo dõi bổ sung. Bài viết không cần chờ ADMIN duyệt.');
+          } else if (moderationStatus === 'HIDDEN') {
+            toast('Bài viết đang bị ẩn sau khi kiểm duyệt.', true);
+          } else {
+            await showNewCommunityPost(communityId, created && created.id);
+          }
+          textarea.value = '';
+          fileInput.value = '';
+          videoInput.value = '';
+          preview.replaceChildren();
+          refreshComposeState();
+          submitBtn.textContent = 'Đăng';
+          return;
+        }
         if (moderationStatus === 'PENDING') {
           queueFlashToast('Đã gửi bài viết. Hệ thống đang kiểm duyệt nội dung; trong lúc chờ, bài viết chỉ hiển thị với bạn.', false);
         } else if (moderationStatus === 'FLAGGED') {
-          queueFlashToast('Bài viết đã được hệ thống đánh dấu và đang bị hạn chế hiển thị.', true);
+          queueFlashToast('Moderation đã đánh dấu bài viết để theo dõi bổ sung. Bài viết không cần chờ ADMIN duyệt.', false);
         } else if (moderationStatus === 'HIDDEN') {
           queueFlashToast('Bài viết bị ẩn sau khi kiểm duyệt. Bạn có thể sửa nội dung rồi gửi lại.', true);
         } else {
@@ -1471,6 +1582,7 @@ window.Aloute = (function () {
           document.dispatchEvent(new CustomEvent('aloute:follow-request-updated', {
             detail: { targetId: Number(userId), status: status }
           }));
+          if (btn.closest('.profile-cover')?.querySelector('.profile-cover__badge')) location.reload();
         } catch (err) {
           toast(err.message, true);
         } finally {
@@ -1493,6 +1605,106 @@ window.Aloute = (function () {
 
   function applyFollowState(btn, following) {
     applyFollowStatus(btn, following ? 'FOLLOWING' : 'NONE');
+  }
+
+  function initCloseFriendButtons() {
+    document.querySelectorAll('.btn-close-friend[data-user-id]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCloseFriendClick(btn);
+      });
+    });
+
+    document.querySelectorAll('.close-friend-request-bar[data-user-id]').forEach(bar => {
+      if (bar.dataset.bound) return;
+      bar.dataset.bound = '1';
+      const userId = bar.dataset.userId;
+      const acceptBtn = bar.querySelector('.close-friend-request-bar__accept');
+      const declineBtn = bar.querySelector('.close-friend-request-bar__decline');
+
+      if (acceptBtn) {
+        acceptBtn.addEventListener('click', async () => {
+          acceptBtn.disabled = true;
+          if (declineBtn) declineBtn.disabled = true;
+          try {
+            await api('/api/close-friends/' + userId + '/accept', { method: 'POST' });
+            toast('Đã chấp nhận kết bạn thân');
+            location.reload();
+          } catch (err) {
+            toast(err.message, true);
+            acceptBtn.disabled = false;
+            if (declineBtn) declineBtn.disabled = false;
+          }
+        });
+      }
+      if (declineBtn) {
+        declineBtn.addEventListener('click', async () => {
+          if (!(await AlouteUI.confirm({ title: 'Từ chối lời mời', message: 'Từ chối lời mời kết bạn thân này?', okText: 'Từ chối' }))) return;
+          if (acceptBtn) acceptBtn.disabled = true;
+          declineBtn.disabled = true;
+          try {
+            await api('/api/close-friends/' + userId, { method: 'DELETE' });
+            toast('Đã từ chối lời mời');
+            location.reload();
+          } catch (err) {
+            toast(err.message, true);
+            if (acceptBtn) acceptBtn.disabled = false;
+            declineBtn.disabled = false;
+          }
+        });
+      }
+    });
+  }
+
+  async function handleCloseFriendClick(btn) {
+    const userId = btn.dataset.userId;
+    const status = btn.dataset.status || 'NONE';
+    btn.disabled = true;
+    try {
+      if (status === 'NONE') {
+        const result = await api('/api/close-friends/' + userId + '/request', { method: 'POST' });
+        applyCloseFriendState(btn, result);
+        toast(result === 'ACCEPTED' ? 'Đã trở thành bạn thân' : 'Đã gửi lời mời kết bạn thân');
+      } else if (status === 'PENDING_SENT') {
+        if (!(await AlouteUI.confirm({ title: 'Hủy lời mời', message: 'Hủy lời mời kết bạn thân đã gửi?', okText: 'Hủy lời mời' }))) return;
+        await api('/api/close-friends/' + userId, { method: 'DELETE' });
+        applyCloseFriendState(btn, 'NONE');
+        toast('Đã hủy lời mời');
+      } else if (status === 'PENDING_RECEIVED') {
+        await api('/api/close-friends/' + userId + '/accept', { method: 'POST' });
+        applyCloseFriendState(btn, 'ACCEPTED');
+        toast('Đã chấp nhận kết bạn thân');
+      } else if (status === 'ACCEPTED') {
+        if (!(await AlouteUI.confirm({ title: 'Xóa bạn thân', message: 'Xóa khỏi danh sách bạn thân?', okText: 'Xóa' }))) return;
+        await api('/api/close-friends/' + userId, { method: 'DELETE' });
+        applyCloseFriendState(btn, 'NONE');
+        toast('Đã xóa khỏi bạn thân');
+      }
+      if (btn.closest('.profile-cover')) location.reload();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function applyCloseFriendState(btn, status) {
+    btn.dataset.status = status;
+    btn.classList.remove('is-close', 'is-pending');
+    if (status === 'ACCEPTED') {
+      btn.classList.add('is-close');
+      btn.textContent = '★ Bạn thân';
+    } else if (status === 'PENDING_SENT') {
+      btn.classList.add('is-pending');
+      btn.textContent = 'Đã gửi lời mời';
+    } else if (status === 'PENDING_RECEIVED') {
+      btn.textContent = 'Chấp nhận bạn thân';
+    } else {
+      btn.textContent = '+ Bạn thân';
+    }
   }
 
   function initSearchPage() {
@@ -1567,7 +1779,10 @@ window.Aloute = (function () {
           if (tab.dataset.tab === currentTab) return;
           currentTab = tab.dataset.tab;
           setActiveTab(currentTab);
-          if (keyword) runSearch();
+          clearTimeout(debounceTimer);
+          keyword = input.value.trim();
+          if (keyword || currentTab === 'posts') runSearch();
+          else showDiscover();
         });
       });
     }
@@ -1581,6 +1796,7 @@ window.Aloute = (function () {
         const query = trigger.dataset.searchQuery || '';
         if (!query) return;
 
+        clearTimeout(debounceTimer);
         input.value = query;
         keyword = query.trim();
         if (clearBtn) clearBtn.hidden = false;
@@ -1599,6 +1815,7 @@ window.Aloute = (function () {
     }
 
     function resetSearch() {
+      clearTimeout(debounceTimer);
       input.value = '';
       keyword = '';
       if (clearBtn) clearBtn.hidden = true;
@@ -1606,10 +1823,14 @@ window.Aloute = (function () {
     }
 
     function showDiscover() {
+      if (currentTab === 'posts') {
+        runSearch();
+        return;
+      }
       cancelSearch();
       resultsEl.hidden = true;
       resultsEl.innerHTML = '';
-      if (tabsEl) tabsEl.hidden = true;
+      if (tabsEl) tabsEl.hidden = false;
       if (discoverEl) discoverEl.hidden = false;
     }
 
@@ -1627,6 +1848,7 @@ window.Aloute = (function () {
 
       const tab = currentTab;
       const key = keyword;
+      const browsingPosts = tab === 'posts' && !key;
       const token = ++requestToken;
 
       // A fresh query revalidates visibility; cached items only preserve pagination state.
@@ -1635,16 +1857,22 @@ window.Aloute = (function () {
 
       if (!append) resultsEl.innerHTML = searchSkeleton(tab);
       try {
-        const url = (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=')
-          + encodeURIComponent(key) + '&page=' + page + '&size=' + SEARCH_PAGE_SIZE;
+        // Reuse the authorized cursor feed for an empty Posts tab; search APIs keep their contract.
+        const cursor = append && cache.posts[key] ? cache.posts[key].nextCursor : null;
+        const url = browsingPosts
+          ? '/api/posts/feed/cursor?tab=foryou&size=' + SEARCH_PAGE_SIZE
+            + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '')
+          : (tab === 'posts' ? '/api/search/posts?q=' : '/api/search/users?q=')
+            + encodeURIComponent(key) + '&page=' + page + '&size=' + SEARCH_PAGE_SIZE;
         const data = await api(url, { signal: controller.signal });
         if (token !== requestToken) return;
-        const batch = data || [];
+        const batch = browsingPosts ? (data?.items || []) : (data || []);
         const existing = append && cache[tab][key] ? cache[tab][key].items : [];
         cache[tab][key] = {
           items: existing.concat(batch),
           page,
-          hasMore: batch.length === SEARCH_PAGE_SIZE
+          hasMore: browsingPosts ? Boolean(data?.hasMore && data?.nextCursor) : batch.length === SEARCH_PAGE_SIZE,
+          nextCursor: browsingPosts ? data?.nextCursor : null
         };
         const keys = Object.keys(cache[tab]);
         if (keys.length > 20) {
@@ -1664,7 +1892,9 @@ window.Aloute = (function () {
     function paint(tab, items, hasMore, page) {
       if (!items.length) {
         resultsEl.innerHTML = tab === 'posts'
-          ? discoverEmpty('Chưa có bài viết nào khớp', 'Thử một từ khóa ngắn hơn hoặc kiểm tra lại chính tả.')
+          ? (keyword
+            ? discoverEmpty('Chưa có bài viết nào khớp', 'Thử một từ khóa ngắn hơn hoặc kiểm tra lại chính tả.')
+            : discoverEmpty('Chưa có bài viết nào', 'Các bài viết bạn có quyền xem sẽ xuất hiện ở đây.'))
           : discoverEmpty('Không tìm thấy ai', 'Bạn có thể tìm theo họ tên hoặc @username.');
         return;
       }
@@ -1728,7 +1958,7 @@ window.Aloute = (function () {
 
     return (
       '<div class="discover-user">' +
-      '  <a class="discover-user__main" href="/profile/' + u.id + '">' +
+      '  <a class="discover-user__main" href="' + profileUrl(u.username, u.id) + '">' +
       '    <img class="discover-user__avatar" src="' + avatar + '" alt="avatar">' +
       '    <div class="discover-user__info">' +
       '      <div class="discover-user__name">' + escapeHtml(u.fullName || u.username) + '</div>' +
@@ -1764,6 +1994,20 @@ window.Aloute = (function () {
     );
   }
 
+  function postAudienceMarkup(visibility) {
+    const audience = visibility || 'PUBLIC';
+    const icons = {
+      PUBLIC: ['Công khai', '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/>'],
+      FRIENDS: ['Bạn bè', '<circle cx="9" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zm17 0v-3a9 9 0 0 0-1.5-5 6 6 0 0 1 6.5 6v2z"/>'],
+      CLOSE_FRIENDS: ['Bạn thân', '<circle cx="12" cy="12" r="9"/><path fill="currentColor" stroke="none" d="m12 5 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5.2 10l4.7-.7z"/>'],
+      ONLY_ME: ['Chỉ mình tôi', '<path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h8V7a4 4 0 0 0-8 0zm3 5v3h2v-3z"/>']
+    };
+    if (!Object.prototype.hasOwnProperty.call(icons, audience)) return '';
+    const [label, paths] = icons[audience];
+    return '<span class="post__audience" role="img" data-post-audience="' + audience + '" aria-label="' + label + '" title="' + label + '">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true" ' + (audience === 'PUBLIC' || audience === 'CLOSE_FRIENDS' ? 'fill="none" stroke="currentColor" stroke-width="1.8"' : 'fill="currentColor"') + '>' + paths + '</svg></span>';
+  }
+
   function renderVisibilityBadge(visibility, moderationStatus) {
     const moderation = moderationStatus == null ? '' : String(moderationStatus).trim().toUpperCase();
     // Unknown moderation state must fail closed too. Only an explicit APPROVED state may
@@ -1771,13 +2015,13 @@ window.Aloute = (function () {
     if (!moderation) {
       return '<span class="post__moderation-status post__moderation-status--pending" title="Chưa xác minh trạng thái kiểm duyệt" aria-label="Chưa xác minh trạng thái kiểm duyệt"><i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Chưa xác minh</span></span>';
     }
-    // Moderation state takes precedence over audience privacy in the UI. A post may
-    // have been submitted as PUBLIC, but PENDING/FLAGGED/HIDDEN must never look public.
+    // PENDING is visible only to the author; HIDDEN is hidden. A successfully evaluated
+    // FLAGGED item still follows the post's audience/privacy setting and is not an admin gate.
     if (moderation === 'PENDING') {
       return '<span class="post__moderation-status post__moderation-status--pending" title="Bài viết chỉ hiển thị với bạn trong lúc chờ kiểm duyệt" aria-label="Đang kiểm duyệt, chỉ bạn thấy"><i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Đang kiểm duyệt</span></span>';
     }
     if (moderation === 'FLAGGED') {
-      return '<span class="post__moderation-status post__moderation-status--flagged" title="Nội dung bị đánh dấu và hạn chế hiển thị, đang chờ xem xét" aria-label="Nội dung bị đánh dấu, hạn chế hiển thị"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Bị đánh dấu</span></span>';
+      return '<span class="post__moderation-status post__moderation-status--flagged" title="Moderation đã đánh dấu nội dung để theo dõi bổ sung; không mặc định chờ ADMIN" aria-label="Moderation đã đánh dấu để theo dõi bổ sung"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Đã đánh dấu</span></span>';
     }
     if (moderation === 'HIDDEN') {
       return '<span class="post__moderation-status post__moderation-status--hidden" title="Bài viết đã bị ẩn sau khi kiểm duyệt" aria-label="Bài viết đã bị ẩn"><i class="bi bi-eye-slash" aria-hidden="true"></i><span>Đã ẩn</span></span>';
@@ -1789,6 +2033,9 @@ window.Aloute = (function () {
     }
     if (status === 'FRIENDS') {
       return '<span class="post__visibility post__visibility--private" title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"><i class="bi bi-people-fill" aria-hidden="true"></i></span>';
+    }
+    if (status === 'CLOSE_FRIENDS') {
+      return '<span class="post__visibility post__visibility--private" title="Bạn thân" aria-label="Bài viết dành cho bạn thân"><i class="bi bi-star-fill" aria-hidden="true"></i></span>';
     }
     if (status === 'ONLY_ME') {
       return '<span class="post__visibility post__visibility--private" title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>';
@@ -1804,11 +2051,11 @@ window.Aloute = (function () {
     return (
       '<div class="post" data-post-id="' + escapeHtml(post.id) + '" data-action-post-id="' + actionPostId + '">' +
       '  <div class="post__avatar-col">' +
-      '    <a href="/profile/' + post.userId + '"><img class="post__avatar" src="' + avatar + '" alt="avatar"></a>' +
+      '    <a href="' + profileUrl(post.username, post.userId) + '"><img class="post__avatar" src="' + avatar + '" alt="avatar"></a>' +
       '  </div>' +
       '  <div class="post__body">' +
       '    <div class="post__header">' +
-      '      <a href="/profile/' + post.userId + '" class="post__username">' + escapeHtml(post.username || '') + '</a>' +
+      '      <a href="' + profileUrl(post.username, post.userId) + '" class="post__username">' + escapeHtml(post.username || '') + '</a>' +
       '      <span class="post__time">' + when + '</span>' +
       renderVisibilityBadge(post.visibility, post.moderationStatus) +
       '    </div>' +
@@ -1861,7 +2108,7 @@ window.Aloute = (function () {
 
     return (
       '<div class="discover-user">' +
-      '  <a class="discover-user__main" href="/profile/' + u.id + '">' +
+      '  <a class="discover-user__main" href="' + profileUrl(u.username, u.id) + '">' +
       '    <img class="discover-user__avatar" src="' + escapeHtml(u.avatarUrl || DEFAULT_AVATAR) + '" alt="avatar">' +
       '    <div class="discover-user__info">' +
       '      <div class="discover-user__name">' + escapeHtml(u.fullName || u.username) + '</div>' +
@@ -2119,12 +2366,23 @@ window.Aloute = (function () {
     });
   }
 
-  function notificationTarget(item) {
+  async function notificationTarget(item) {
     const type = item.dataset.notificationType || '';
     const referenceId = (item.dataset.referenceId || '').trim();
     if (!referenceId) return null;
-    if (type === 'FOLLOW' || type === 'FOLLOW_REQUEST_ACCEPTED') {
+    if (['FOLLOW', 'FOLLOW_REQUEST_ACCEPTED', 'CLOSE_FRIEND_REQUEST', 'CLOSE_FRIEND_ACCEPTED'].includes(type)) {
       return /^\d+$/.test(referenceId) ? '/profile/' + encodeURIComponent(referenceId) : null;
+    }
+    if (type === 'CONTENT_REPORT_OPENED') {
+      return '/admin/moderation?reportId=' + encodeURIComponent(referenceId);
+    }
+    if (['COMMUNITY_POST_REPORTED', 'COMMUNITY_REVIEW', 'COMMUNITY_POST_OK', 'COMMUNITY_POST_NO'].includes(type)) {
+      try {
+        const locationInfo = await api('/api/communities/posts/' + encodeURIComponent(referenceId) + '/location');
+        return locationInfo && typeof locationInfo.url === 'string' ? locationInfo.url : '/communities';
+      } catch (_) {
+        return '/communities';
+      }
     }
     if (['LIKE', 'COMMENT', 'REPOST', 'MENTION', 'POST_MODERATION_FLAGGED', 'POST_MODERATION_HIDDEN'].includes(type)) {
       return '/feed?postId=' + encodeURIComponent(referenceId);
@@ -2156,9 +2414,9 @@ window.Aloute = (function () {
     if (!item || item.dataset.notificationBound === '1') return;
     item.dataset.notificationBound = '1';
     const open = async () => {
-      const target = notificationTarget(item);
       const marked = await markNotificationRead(item);
       if (marked === false) return;
+      const target = await notificationTarget(item);
       if (target) window.location.href = target;
     };
     item.addEventListener('click', event => {
@@ -2267,9 +2525,9 @@ window.Aloute = (function () {
       const payload = { fullName, bio };
       if (privateToggle) payload.privateAccount = privateToggle.checked;
       try {
-        await api('/api/users/me', { method: 'PUT', body: payload });
+        const updated = await api('/api/users/me', { method: 'PUT', body: payload });
         toast('Đã lưu thay đổi');
-        if (!form.closest('.settings-page')) window.location.href = '/profile/me';
+        if (!form.closest('.settings-page')) window.location.href = profileUrl(updated?.username, 'me');
       } catch (err) {
         toast(err.message, true);
       }
@@ -2418,6 +2676,8 @@ window.Aloute = (function () {
     const grid = document.getElementById('profileGrid');
     if (!grid) return;
     posts.forEach(post => {
+      // Repost fragments contain the original author's post, not this profile's own media.
+      if (!post.closest('#profilePosts') || post.classList.contains('post--repost')) return;
       const img = post.querySelector('.post__image');
       if (!img) return;
       const likeCount = post.querySelector('.action--like span');
@@ -2461,7 +2721,7 @@ window.Aloute = (function () {
             const hasAnyReposts = Boolean(button.parentElement && button.parentElement.querySelector('.post'));
             if (emptyState) emptyState.hidden = hasAnyReposts || response.headers.get('X-Has-More') === 'true';
           }
-          appendGridTiles(posts);
+          if (button.closest('#profilePosts')) appendGridTiles(posts);
           button.dataset.cursor = response.headers.get('X-Next-Cursor') || '';
           const hasMore = response.headers.get('X-Has-More') === 'true';
           button.hidden = !hasMore;
@@ -2532,23 +2792,34 @@ window.Aloute = (function () {
         body.appendChild(desc);
       }
 
+      const role = String(c.role || '').toUpperCase();
+      const pending = role === 'PENDING';
+      const banned = role === 'BANNED';
       const action = document.createElement('button');
       action.type = 'button';
       action.className = 'community-card__action ' + (c.member ? 'btn-outline is-joined' : 'btn-primary') + ' btn-community-join';
       action.dataset.communityId = c.id;
-      action.textContent = c.member ? 'Đã tham gia' : 'Tham gia';
+      action.textContent = pending ? 'Đã gửi yêu cầu' : (banned ? 'Đã bị cấm' : (c.member ? 'Đã tham gia' : 'Tham gia'));
+      action.disabled = pending || banned;
+      if (pending || banned) action.classList.add('btn-outline');
 
       card.appendChild(avatarLink);
       card.appendChild(body);
       card.appendChild(action);
       action.addEventListener('click', async () => {
-        if (action.dataset.busy === '1') return;
+        if (action.disabled || action.dataset.busy === '1') return;
         const joined = action.classList.contains('is-joined');
         if (joined && !(await AlouteUI.confirm({ title: 'Rời hội nhóm', message: 'Bạn muốn rời khỏi hội nhóm này?', okText: 'Rời nhóm' }))) return;
         action.dataset.busy = '1';
         setCommunityJoinButton(action, !joined);
         try {
-          await api('/api/communities/' + encodeURIComponent(c.id) + (joined ? '/leave' : '/join'), { method: 'POST' });
+          const membership = await api('/api/communities/' + encodeURIComponent(c.id) + (joined ? '/leave' : '/join'), { method: 'POST' });
+          if (!joined && membership && String(membership.role || '').toUpperCase() === 'PENDING') {
+            action.classList.remove('btn-primary', 'is-joined');
+            action.classList.add('btn-outline');
+            action.textContent = 'Đã gửi yêu cầu';
+            action.disabled = true;
+          }
         } catch (err) {
           setCommunityJoinButton(action, joined);
           toast(err.message || 'Không thể cập nhật hội nhóm', true);
@@ -2726,7 +2997,11 @@ window.Aloute = (function () {
         btn.dataset.busy = '1';
         setCommunityJoinButton(btn, !wasJoined);
         try {
-          await api('/api/communities/' + id + (wasJoined ? '/leave' : '/join'), { method: 'POST' });
+          const membership = await api('/api/communities/' + id + (wasJoined ? '/leave' : '/join'), { method: 'POST' });
+          if (page.isConnected && page.classList.contains('community-page--list') && (wasJoined || membership?.member)) {
+            // Refresh both lists from the server after membership changes.
+            await navigateSoft(new URL(window.location.href), false);
+          }
         } catch (err) {
           setCommunityJoinButton(btn, wasJoined);
           toast(err.message || 'Không thể thực hiện thao tác này', true);
@@ -2762,6 +3037,86 @@ window.Aloute = (function () {
         finally { button.dataset.busy = '0'; button.disabled = false; }
       });
       return button;
+    }
+
+    async function loadCommunityLeadership() {
+      const host = document.getElementById('communityLeadershipList');
+      if (!host) return;
+      try {
+        const leaders = await api('/api/communities/' + communityId + '/leadership') || [];
+        host.replaceChildren();
+        if (!leaders.length) {
+          host.appendChild(communityState('Chưa có chủ nhóm/quản lý được chỉ định. Chủ nhóm cần kiểm tra dữ liệu thành viên của nhóm.'));
+          return;
+        }
+        const labels = { OWNER: 'Chủ nhóm', MANAGER: 'Quản lý' };
+        leaders.forEach(leader => {
+          const row = document.createElement('div');
+          row.className = 'community-leadership__row';
+          const avatar = document.createElement('img');
+          avatar.src = leader.avatarUrl || '/images/avatar_default.png';
+          avatar.alt = '';
+          const info = document.createElement('div');
+          info.className = 'community-management__info';
+          const name = document.createElement('strong');
+          name.textContent = leader.fullName || leader.username || ('Người dùng ' + leader.userId);
+          const meta = document.createElement('span');
+          meta.textContent = '@' + (leader.username || leader.userId) + ' · ' + (labels[leader.role] || leader.role);
+          info.append(name, meta);
+          row.append(avatar, info);
+          host.appendChild(row);
+        });
+      } catch (err) {
+        host.replaceChildren(communityState(err.message || 'Không tải được danh sách quản lý.'));
+      }
+    }
+    if (document.getElementById('communityLeadershipList')) loadCommunityLeadership();
+
+    if (isCommunityOwner) {
+      const settingsForm = document.getElementById('communitySettingsForm');
+      if (settingsForm) {
+        settingsForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const submit = document.getElementById('saveCommunitySettingsBtn');
+          if (submit?.disabled) return;
+          if (submit) submit.disabled = true;
+          const form = new FormData(settingsForm);
+          try {
+            await api('/api/communities/' + communityId, {
+              method: 'PUT',
+              body: {
+                name: String(form.get('name') || '').trim(),
+                description: String(form.get('description') || '').trim(),
+                privacy: String(form.get('privacy') || 'PUBLIC')
+              }
+            });
+            toast('Đã lưu cài đặt hội nhóm');
+            location.reload();
+          } catch (err) {
+            toast(err.message || 'Không thể lưu cài đặt hội nhóm', true);
+          } finally { if (submit) submit.disabled = false; }
+        });
+      }
+      const deleteButton = document.getElementById('deleteCommunityBtn');
+      if (deleteButton) {
+        deleteButton.addEventListener('click', async () => {
+          const ok = await AlouteUI.confirm({
+            title: 'Xóa hội nhóm',
+            message: 'Bạn chắc chắn muốn xóa hội nhóm này? Thao tác không thể hoàn tác.',
+            okText: 'Xóa hội nhóm'
+          });
+          if (!ok) return;
+          deleteButton.disabled = true;
+          try {
+            await api('/api/communities/' + communityId, { method: 'DELETE' });
+            toast('Đã xóa hội nhóm');
+            location.href = '/communities';
+          } catch (err) {
+            toast(err.message || 'Không thể xóa hội nhóm', true);
+            deleteButton.disabled = false;
+          }
+        });
+      }
     }
 
     async function loadCommunityMembers() {
@@ -2887,6 +3242,7 @@ window.Aloute = (function () {
         posts.forEach(post => {
           const row = document.createElement('article');
           row.className = 'community-management__post';
+          row.id = 'community-post-review-' + String(post.id);
           const author = document.createElement('strong');
           author.textContent = '@' + (post.username || post.userId);
           const content = document.createElement('p');
@@ -2908,6 +3264,12 @@ window.Aloute = (function () {
           );
           row.append(author, content, actions);
           host.appendChild(row);
+          if (window.location.hash === '#' + row.id) {
+            const management = document.getElementById('communityManagement');
+            if (management) management.open = true;
+            row.classList.add('community-management__post--targeted');
+            requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+          }
         });
       } catch (err) {
         host.replaceChildren(communityState(err.message || 'Không tải được hàng chờ duyệt bài.'));
@@ -2935,6 +3297,48 @@ window.Aloute = (function () {
     if (isCommunityManager) {
       Promise.all([loadCommunityMembers(), loadCommunityRequests(), loadCommunityPendingPosts()]);
       bindCommunityModeratorDeleteButtons();
+    }
+
+    const communityMenu = page.querySelector('[data-community-menu]');
+    const communityMenuTrigger = page.querySelector('[data-community-menu-trigger]');
+    if (communityMenu && communityMenuTrigger) {
+      communityMenuTrigger.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isOpen = communityMenu.classList.toggle('is-open');
+        communityMenuTrigger.setAttribute('aria-expanded', String(isOpen));
+      });
+      document.addEventListener('click', (event) => {
+        if (!communityMenu.contains(event.target)) {
+          communityMenu.classList.remove('is-open');
+          communityMenuTrigger.setAttribute('aria-expanded', 'false');
+        }
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          communityMenu.classList.remove('is-open');
+          communityMenuTrigger.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    const reportCommunityBtn = page.querySelector('[data-community-report]');
+    if (reportCommunityBtn) {
+      reportCommunityBtn.addEventListener('click', async () => {
+        communityMenu?.classList.remove('is-open');
+        const reason = window.prompt('Vui lòng nhập lý do báo cáo hội nhóm (tối đa 1000 ký tự):');
+        if (reason == null) return;
+        if (!reason.trim()) { toast('Vui lòng nhập lý do báo cáo', true); return; }
+        reportCommunityBtn.disabled = true;
+        try {
+          await api('/api/reports', {
+            method: 'POST',
+            body: { targetType: 'COMMUNITY', targetId: String(communityId), reason: reason.trim() }
+          });
+          toast('Đã gửi báo cáo hội nhóm');
+        } catch (err) {
+          toast(err.message || 'Không thể gửi báo cáo hội nhóm', true);
+        } finally { reportCommunityBtn.disabled = false; }
+      });
     }
 
     const joinBtn = document.getElementById('communityJoinBtn');
@@ -2966,38 +3370,7 @@ window.Aloute = (function () {
       });
     }
 
-    const composeInput = document.getElementById('communityComposeInput');
-    const composeBtn = document.getElementById('communityComposeBtn');
-    if (composeInput && composeBtn) {
-      composeInput.addEventListener('input', () => {
-        composeBtn.disabled = composeInput.value.trim().length === 0;
-      });
-      composeInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); if (!composeBtn.disabled) composeBtn.click(); }
-      });
 
-      composeBtn.addEventListener('click', async () => {
-        const content = composeInput.value.trim();
-        if (!content) return;
-        composeBtn.disabled = true;
-        try {
-          const created = await api('/api/communities/' + communityId + '/posts', {
-            method: 'POST',
-            body: { content: content }
-          });
-          composeInput.value = '';
-          if (created && created.communityPostStatus === 'PENDING') {
-            toast('Bài viết đã được gửi và đang chờ quản lý duyệt');
-            composeBtn.disabled = true;
-            return;
-          }
-          await showNewCommunityPost(communityId, created && created.id);
-        } catch (err) {
-          toast(err.message || 'Không thể đăng bài', true);
-          composeBtn.disabled = false;
-        }
-      });
-    }
   }
 
   async function showNewCommunityPost(communityId, postId) {
@@ -3046,6 +3419,7 @@ window.Aloute = (function () {
   let navBadgeRefreshAt = 0;
   let navBadgeRequest = null;
   let navBadgeForceAfterPending = false;
+  let followRequestBadgeRevision = 0;
 
   function refreshNavBadges(force) {
     const userId = document.body.dataset.currentUserId;
@@ -3063,6 +3437,7 @@ window.Aloute = (function () {
     }
     if (!force && now - navBadgeRefreshAt < 30000) return;
 
+    const requestRevision = followRequestBadgeRevision;
     navBadgeRequest = Promise.allSettled([
       api('/api/notifications/unread-count', { method: 'GET' }),
       api('/api/chat/unread-count', { method: 'GET' }),
@@ -3071,7 +3446,8 @@ window.Aloute = (function () {
       if (document.body.dataset.currentUserId !== userId) return;
       if (results[0].status === 'fulfilled') setBadge('notifUnreadBadge', results[0].value?.count ?? results[0].value ?? 0);
       if (results[1].status === 'fulfilled') setBadge('chatUnreadBadge', results[1].value?.count ?? results[1].value ?? 0);
-      if (results[2].status === 'fulfilled') setBadge('followRequestBadge', results[2].value?.count ?? results[2].value ?? 0);
+      if (results[2].status === 'fulfilled' && requestRevision === followRequestBadgeRevision)
+        setBadge('followRequestBadge', results[2].value?.count ?? results[2].value ?? 0);
       navBadgeRefreshAt = Date.now();
     }).finally(function () {
       navBadgeRequest = null;
@@ -3084,7 +3460,7 @@ window.Aloute = (function () {
 
   document.addEventListener('aloute:follow-request-updated', function () { refreshNavBadges(true); });
 
-  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/follow-requests', '/saved', '/profile/me', '/communities', '/settings', '/admin/moderation', '/admin/dashboard'];
+  const SOFT_NAV_ROUTES = ['/feed', '/compose', '/search', '/activity', '/follow-requests', '/saved', '/profile/me', '/people', '/communities', '/settings', '/admin/moderation', '/admin/accounts', '/admin/dashboard', '/host/moderation', '/host/accounts', '/host/server'];
   let restoringHistory = false;
   let softNavigationBusy = false;
 
@@ -3158,6 +3534,7 @@ window.Aloute = (function () {
     initCommunityPages();
     initComposePage();
     initFollowButtons();
+    initCloseFriendButtons();
     initSearchPage();
     initProfileActionMenu();
     initProfilePeoplePanel();
@@ -3167,7 +3544,12 @@ window.Aloute = (function () {
     initChangePasswordForm();
     initLogout();
     initSidebarNavigation();
-    refreshNavBadges();
+    if (document.querySelector('.follow-requests-page')) {
+      followRequestBadgeRevision++;
+      const serverCount = parseInt(document.getElementById('followRequestBadge')?.textContent, 10) || 0;
+      setBadge('followRequestBadge', serverCount);
+      refreshNavBadges(true);
+    } else refreshNavBadges();
     document.dispatchEvent(new Event('aloute:navigated'));
   }
 
@@ -3209,7 +3591,7 @@ window.Aloute = (function () {
   });
 
   return {
-    api, toast, timeAgo, escapeHtml, formatCount, csrfHeaders, fetchWithSessionRefresh,
+    api, toast, timeAgo, escapeHtml, formatCount, csrfHeaders, fetchWithSessionRefresh, profileUrl,
     onRealtimeReady, connectRealtime, refreshNavBadges,
     initFeedInteractions, initFollowButtons
   };

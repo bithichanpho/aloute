@@ -21,6 +21,20 @@ public class FollowRequestRealtimePublisher {
         this.messagingTemplate = messagingTemplate;
     }
 
+    /** User-scoped hint only; clients reload the authoritative unread count. */
+    public void publishSeen(Long recipientUserId) {
+        if (recipientUserId == null) return;
+        try {
+            users.username(recipientUserId).ifPresent(username -> messagingTemplate.convertAndSendToUser(
+                    username, "/queue/follow-requests", Map.of(
+                            "eventType", "REQUESTS_SEEN", "targetId", recipientUserId,
+                            "occurredAt", Instant.now().toString())));
+        } catch (RuntimeException failure) {
+            log.warn("Could not publish follow-request inbox seen event (recipientId={}, cause={})",
+                    recipientUserId, failure.getClass().getSimpleName());
+        }
+    }
+
     public void publish(Long recipientUserId, String eventType, Long followerId, Long targetId, String status) {
         if (recipientUserId == null || eventType == null || followerId == null || targetId == null) return;
         try {

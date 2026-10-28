@@ -450,41 +450,63 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
     @Transactional
     public ChatMessageResponse createMissedCallMessage(
             Long callerId, Long receiverId, String callId, String callType) {
-        if (callerId == null || receiverId == null || callerId <= 0 || receiverId <= 0
-                || callerId.equals(receiverId) || callId == null || callId.isBlank() || callId.length() > 100)
-            throw new BadRequestException("Thông tin cuộc gọi không hợp lệ");
-
-        if (callHistoryAuthorization != null && !callHistoryAuthorization.missedFor(callId, callerId, receiverId))
+        validateCallHistoryParticipants(callerId, receiverId, callId);
+        if (callHistoryAuthorization != null
+                && !callHistoryAuthorization.missedFor(callId, callerId, receiverId)) {
             throw new ForbiddenException("Không thể ghi lịch sử cho cuộc gọi chưa được xác thực");
+        }
+        return persistCallHistoryMessage(callerId, receiverId, callId, callType, "MISSED", 0L);
+    }
+
+    /** Writes the record from server-authoritative terminal call state, including answered duration. */
+    @Override
+    @Transactional
+    public ChatMessageResponse createCallHistoryMessage(Long callerId, Long receiverId, String callId) {
+        validateCallHistoryParticipants(callerId, receiverId, callId);
+        if (callHistoryAuthorization == null) {
+            throw new ForbiddenException("Không có nguồn xác thực lịch sử cuộc gọi");
+        }
+        var terminal = callHistoryAuthorization.terminalCallFor(callId, callerId, receiverId)
+                .orElseThrow(() -> new ForbiddenException("Cuộc gọi chưa kết thúc hoặc không thuộc hai người dùng này"));
+        String status = terminal.callStatus() == null ? "ENDED" : terminal.callStatus().toUpperCase(java.util.Locale.ROOT);
+        if (!java.util.Set.of("ENDED", "DECLINED", "CANCELLED", "MISSED").contains(status)) {
+            throw new ForbiddenException("Trạng thái cuộc gọi không hợp lệ để ghi lịch sử");
+        }
+        return persistCallHistoryMessage(callerId, receiverId, callId, terminal.callType(), status,
+                status.equals("ENDED") ? Math.max(0L, terminal.durationSeconds()) : 0L);
+    }
+
+    private void validateCallHistoryParticipants(Long callerId, Long receiverId, String callId) {
+        if (callerId == null || receiverId == null || callerId <= 0 || receiverId <= 0
+                || callerId.equals(receiverId) || callId == null || callId.isBlank() || callId.length() > 100) {
+            throw new BadRequestException("Thông tin cuộc gọi không hợp lệ");
+        }
+    }
+
+    private ChatMessageResponse persistCallHistoryMessage(
+            Long callerId, Long receiverId, String callId, String callType, String callStatus, long durationSeconds) {
         var existed = chatMessageRepository.findByCallId(callId);
         if (existed.isPresent()) {
             requireCallParticipants(existed.get(), callerId, receiverId);
             return toResponse(existed.get());
         }
 
-        User caller =
-                userRepository
-                        .findById(callerId)
-                        .orElseThrow(
-                                () -> new ResourceNotFoundException("Không tìm thấy người gọi"));
-        User receiver =
-                userRepository
-                        .findById(receiverId)
-                        .orElseThrow(
-                                () -> new ResourceNotFoundException("Không tìm thấy người nhận"));
+        User caller = userRepository.findById(callerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người gọi"));
+        User receiver = userRepository.findById(receiverId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người nhận"));
 
         ChatMessage message = new ChatMessage();
-        message.setConversationId(
-                ChatMessage.buildConversationId(
-                        String.valueOf(callerId), String.valueOf(receiverId)));
+        message.setConversationId(ChatMessage.buildConversationId(String.valueOf(callerId), String.valueOf(receiverId)));
         message.setSenderId(String.valueOf(callerId));
         message.setReceiverId(String.valueOf(receiverId));
         message.setContent("");
+        // Keep the established CALL type so the existing unique callId index remains the idempotency guard.
         message.setMessageType("CALL");
         message.setCallId(callId);
         message.setCallType("audio".equalsIgnoreCase(callType) ? "audio" : "video");
-        message.setCallStatus("MISSED");
-
+        message.setCallStatus(callStatus);
+        message.setCallDurationSeconds(Math.max(0L, durationSeconds));
         message.setRead(false);
 
         // The database unique callId index, not the preliminary lookup, decides the concurrent winner.
@@ -494,10 +516,9 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
             requireCallParticipants(winner, callerId, receiverId);
             return toResponse(winner);
         }
-        ChatMessage saved = message;
-        ChatMessageResponse dto = toResponse(saved, caller);
 
-        afterCommitSafely("missed-call message delivery", () -> {
+        ChatMessageResponse dto = toResponse(message, caller);
+        afterCommitSafely("call-history message delivery", () -> {
             messagingTemplate.convertAndSendToUser(receiver.getUsername(), "/queue/messages", dto);
             messagingTemplate.convertAndSendToUser(caller.getUsername(), "/queue/messages", dto);
         });

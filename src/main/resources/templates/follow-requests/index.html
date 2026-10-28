@@ -2,15 +2,18 @@
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title>Yêu cầu theo dõi — ALOUTE</title></head>
 <body><section class="content-inner feature-page follow-requests-page" th:attr="data-feature-page=${pageKind}">
-  <header class="feature-hero"><div><span class="feature-eyebrow">Quyền riêng tư</span><h1>Yêu cầu theo dõi</h1><p>Chấp nhận những tài khoản bạn muốn cho phép theo dõi hồ sơ riêng tư.</p></div></header>
+  <header class="feature-hero"><div><span class="feature-eyebrow">Quyền riêng tư</span><h1>Yêu cầu theo dõi</h1><p>Chọn những tài khoản được theo dõi hồ sơ riêng tư của bạn.</p></div></header>
   <main id="featureContent" class="feature-content" data-loaded="true" aria-live="polite">
     <section class="feature-card">
-      <div class="feature-card__title"><span class="feature-icon"><i class="bi bi-person-plus" aria-hidden="true"></i></span><div><h2>Yêu cầu đang chờ</h2><p>Yêu cầu theo dõi được quản lý riêng, không hiển thị trong Thông báo.</p></div></div>
+      <div class="feature-card__title"><span class="feature-icon"><i class="bi bi-person-plus" aria-hidden="true"></i></span><div><h2>Yêu cầu đang chờ</h2></div></div>
       <div class="feature-list" id="followRequestList">
         <div class="feature-empty compact" th:if="${#lists.isEmpty(followRequests)}">Không có yêu cầu theo dõi đang chờ.</div>
         <div class="feature-list__row" th:each="request : ${followRequests}" th:attr="data-request-id=${request.id}">
-          <a th:href="@{/profile/{id}(id=${request.followerId})}" th:text="${requestProfiles[request.followerId] != null ? '@' + requestProfiles[request.followerId].username : 'Tài khoản #' + request.followerId}">@username</a>
-          <span><button type="button" data-action="accept-follow" th:attr="data-request-id=${request.id}">Chấp nhận</button><button type="button" data-action="reject-follow" th:attr="data-request-id=${request.id}">Từ chối</button></span>
+          <a class="feature-request-account" th:href="${request.followerUsername != null} ? @{/people/{username}(username=${request.followerUsername})} : @{/profile/{id}(id=${request.followerId})}">
+            <img class="follow-request-avatar" th:src="${request.followerAvatarUrl ?: '/images/avatar_default.png'}" alt="Ảnh đại diện" loading="lazy">
+            <span class="follow-request-identity"><strong th:text="${!#strings.isEmpty(#strings.trim(request.followerFullName)) ? request.followerFullName : (!#strings.isEmpty(request.followerUsername) ? request.followerUsername : 'Tài khoản không còn khả dụng')}"></strong><small th:if="${!#strings.isEmpty(request.followerUsername)}" th:text="${'@' + request.followerUsername}"></small></span>
+          </a>
+          <div th:replace="~{fragments/follow-request :: actions(${request.id}, false)}"></div>
         </div>
       </div>
       <button type="button" data-action="load-more-requests" th:if="${requestsHasMore}" th:attr="data-cursor=${requestsNextCursor}">Xem thêm yêu cầu</button>

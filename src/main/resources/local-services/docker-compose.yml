@@ -1,0 +1,33 @@
+# Bundled in the application JAR. Credentials are supplied by the running app's environment.
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ALOUTE_LOCAL_REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  moderation:
+    build:
+      context: ./moderation
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MODERATION_API_TOKEN: ${MODERATION_API_TOKEN:-}
+      OPENAI_MODERATION_MODEL: ${OPENAI_MODERATION_MODEL:-omni-moderation-latest}
+      OPENAI_AUDIO_MODEL: ${OPENAI_AUDIO_MODEL:-gpt-4o-mini-transcribe}
+      OPENAI_MODERATION_TIMEOUT_SECONDS: ${OPENAI_MODERATION_TIMEOUT_SECONDS:-8}
+      OPENAI_AUDIO_TIMEOUT_SECONDS: ${OPENAI_AUDIO_TIMEOUT_SECONDS:-15}
+      MODERATION_ALLOWED_MEDIA_HOSTS: ${MODERATION_ALLOWED_MEDIA_HOSTS:-res.cloudinary.com}
+    ports:
+      - "127.0.0.1:${ALOUTE_LOCAL_MODERATION_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 15s

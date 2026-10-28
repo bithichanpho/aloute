@@ -8,6 +8,10 @@ springdoc:
 spring:
   application:
     name: aloute
+  docker:
+    compose:
+      # Opt in when Spring Boot should manage local containers.
+      enabled: ${SPRING_DOCKER_COMPOSE_ENABLED:false}
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -87,7 +91,7 @@ spring:
       - application-actuator.yml
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8082}
 
   compression:
     enabled: true
@@ -110,6 +114,10 @@ logging:
     level: "%5p [requestId:%X{requestId:-},traceId:%X{traceId:-},spanId:%X{spanId:-}]"
 
 app:
+  local-services:
+    # Start bundled Docker services on Windows/macOS/Linux; existing Windows WSL is a fallback.
+    auto-start: ${LOCAL_SERVICES_AUTO_START:true}
+    startup-timeout: ${LOCAL_SERVICES_STARTUP_TIMEOUT:5m}
   time-zone: ${APP_TIME_ZONE:Asia/Bangkok}
   host:
     username: ${APP_HOST_USERNAME:}

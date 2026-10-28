@@ -4,6 +4,7 @@ import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.ForbiddenException;
 import com.aloute.common.exception.ResourceNotFoundException;
 import com.aloute.common.util.TransactionCommitHooks;
+import com.aloute.common.util.UsernamePolicy;
 import com.aloute.dto.response.AdminAccountAuditResponse;
 import com.aloute.dto.response.AdminAccountDetail;
 import com.aloute.dto.response.AdminAccountSummary;
@@ -24,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminAccountService {
-    private static final Set<String> PROTECTED_ROLES = Set.of("ROLE_ADMIN", "ROLE_HOST");
 
     private final IUserRepository users;
     private final IAccountAdminAuditRepository audits;
@@ -123,10 +123,21 @@ public class AdminAccountService {
         if (actorId.equals(userId)) {
             throw new BadRequestException("Không thể thực hiện thao tác quản trị trên chính mình");
         }
+        User actor = user(actorId);
+        String actorRole = actor.getRole() == null ? "" : actor.getRole().getName();
+        if (!Set.of("ROLE_ADMIN", "ROLE_HOST").contains(actorRole) || !actor.isActive()) {
+            throw new ForbiddenException("Không có quyền quản trị tài khoản");
+        }
         User target = user(userId);
-        String role = target.getRole() == null ? "" : target.getRole().getName();
-        if (PROTECTED_ROLES.contains(role)) {
-            throw new ForbiddenException("Không thể thay đổi tài khoản quản trị được bảo vệ");
+        if (isDeletedAccount(target)) {
+            throw new BadRequestException("Tài khoản đã xóa không thể khóa, mở khóa hoặc buộc đăng xuất");
+        }
+        String targetRole = target.getRole() == null ? "" : target.getRole().getName();
+        if ("ROLE_HOST".equals(targetRole)) {
+            throw new ForbiddenException("Không thể khóa hoặc thay đổi tài khoản HOST bằng chức năng này");
+        }
+        if ("ROLE_ADMIN".equals(targetRole) && !"ROLE_HOST".equals(actorRole)) {
+            throw new ForbiddenException("Chỉ HOST mới được quản lý tài khoản ADMIN khác");
         }
         return target;
     }
@@ -155,7 +166,17 @@ public class AdminAccountService {
                 user.getId(), user.getUsername(), user.getEmail(), user.getFullName(),
                 user.getRole() == null ? null : user.getRole().getName(), user.isActive(),
                 Boolean.TRUE.equals(user.getSelfDeactivated()), user.isEmailVerified(),
-                user.getTokensRevokedAt(), user.getCreatedAt());
+                isDeletedAccount(user), user.getTokensRevokedAt(), user.getCreatedAt());
+    }
+
+    private boolean isDeletedAccount(User user) {
+        if (user == null) return false;
+        String username = user.getUsername();
+        String email = user.getEmail();
+        String fullName = user.getFullName();
+        return UsernamePolicy.isReserved(username)
+                || (email != null && email.toLowerCase(java.util.Locale.ROOT).endsWith("@invalid.local"))
+                || "Tài khoản đã xóa".equalsIgnoreCase(fullName == null ? "" : fullName.trim());
     }
 
     private AdminAccountAuditResponse auditResponse(AccountAdminAudit audit) {

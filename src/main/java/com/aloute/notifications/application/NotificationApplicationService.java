@@ -19,9 +19,10 @@ import com.aloute.users.api.UserDirectory;
 
 public class NotificationApplicationService implements Notifications {
     private static final java.util.Set<String> REMOVED_FEATURE_NOTIFICATION_TYPES =
-            java.util.Set.of("CLOSE_FRIEND_REQUEST", "CLOSE_FRIEND_ACCEPTED", "FOLLOW_REQUEST");
+            java.util.Set.of("FOLLOW_REQUEST");
     private static final java.util.Set<String> SYSTEM_NOTIFICATION_TYPES = java.util.Set.of(
-            "POST_MODERATION_FLAGGED", "POST_MODERATION_HIDDEN", "FOLLOW_REQUEST_ACCEPTED");
+            "POST_MODERATION_FLAGGED", "POST_MODERATION_HIDDEN", "FOLLOW_REQUEST_ACCEPTED",
+            "COMMUNITY_POST_REPORTED", "CONTENT_REPORT_OPENED");
     private static final Logger log = LoggerFactory.getLogger(NotificationApplicationService.class);
 
     private final ProfileVisibility access;
@@ -86,7 +87,7 @@ public class NotificationApplicationService implements Notifications {
         final String content;
         if (status == com.aloute.model.document.ModerationStatus.FLAGGED) {
             type = "POST_MODERATION_FLAGGED";
-            content = "Bài viết của bạn có chứa nội dung bị đánh dấu. Bài viết đang bị hạn chế hiển thị và cần được xem xét.";
+            content = "Moderation đã đánh dấu bài viết. Nếu hệ thống đánh giá thành công, bài viết tiếp tục theo quyền hiển thị bình thường; nếu kiểm duyệt chưa hoàn tất do lỗi, bài viết sẽ tạm bị hạn chế cho đến khi có kết quả hoặc được xem xét bổ sung.";
         } else if (status == com.aloute.model.document.ModerationStatus.HIDDEN) {
             type = "POST_MODERATION_HIDDEN";
             content = "Bài viết của bạn đã bị ẩn sau khi kiểm duyệt vì nội dung không được chấp nhận.";
@@ -100,6 +101,25 @@ public class NotificationApplicationService implements Notifications {
                     postId, status, failure.getClass().getSimpleName());
             throw failure;
         }
+    }
+
+    /**
+     * Notifies the responsible community leadership. This is a system notice rather than a
+     * social interaction, so it must not be suppressed by profile-visibility checks.
+     */
+    @Override
+    public void notifyCommunityPostReported(Long receiverId, String postId) {
+        if (receiverId == null || postId == null || postId.isBlank()) return;
+        enqueueDurably(receiverId, receiverId, "COMMUNITY_POST_REPORTED", postId,
+                "Có bài viết trong cộng đồng bị báo cáo. Vui lòng xem xét nội dung.");
+    }
+
+    /** Alerts active system administrators and opens the formal moderation queue on click. */
+    @Override
+    public void notifyAdminCommunityReportOpened(Long receiverId, String reportId) {
+        if (receiverId == null || reportId == null || reportId.isBlank()) return;
+        enqueueDurably(receiverId, receiverId, "CONTENT_REPORT_OPENED", reportId,
+                "Có báo cáo bài viết trong cộng đồng mới cần được kiểm duyệt.");
     }
 
     /**
@@ -215,8 +235,8 @@ public class NotificationApplicationService implements Notifications {
                 userId, notifications.stream().map(Notification::getSenderId)
                         .filter(java.util.Objects::nonNull).toList());
         return notifications.stream()
-                .filter(n -> !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType()))
-                .filter(n -> SYSTEM_NOTIFICATION_TYPES.contains(n.getType()) || visible.contains(n.getSenderId()))
+                .filter(n -> (n.getType() == null || !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType())))
+                .filter(n -> (n.getType() != null && SYSTEM_NOTIFICATION_TYPES.contains(n.getType())) || visible.contains(n.getSenderId()))
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -234,8 +254,8 @@ public class NotificationApplicationService implements Notifications {
                 userId, notifications.stream().map(Notification::getSenderId)
                         .filter(java.util.Objects::nonNull).toList());
         List<NotificationResponse> items = notifications.stream()
-                .filter(n -> !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType()))
-                .filter(n -> SYSTEM_NOTIFICATION_TYPES.contains(n.getType()) || visible.contains(n.getSenderId()))
+                .filter(n -> (n.getType() == null || !REMOVED_FEATURE_NOTIFICATION_TYPES.contains(n.getType())))
+                .filter(n -> (n.getType() != null && SYSTEM_NOTIFICATION_TYPES.contains(n.getType())) || visible.contains(n.getSenderId()))
                 .map(this::toResponse)
                 .toList();
         Long nextCursor = hasMore && !notifications.isEmpty()

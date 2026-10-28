@@ -9,8 +9,8 @@ app:
     rate-limit:
       redis-required: false
 
-# Local development: Spring Boot starts the Dockerized moderation service automatically.
-# Run the application with the existing "no-redis" profile from the project root.
+# Optional local development: set SPRING_DOCKER_COMPOSE_ENABLED=true to let Spring Boot
+# start Dockerized moderation with the "no-redis" profile from the project root.
 spring:
   docker:
     compose:
@@ -22,8 +22,8 @@ spring:
         - "--env-file=.env"
       start:
         command: up
-        arguments:
-          - "--build"
+        # arguments:
+         # - "--build"
       # Wait for the service's Docker healthcheck before finishing startup.
       readiness:
         timeout: 2m

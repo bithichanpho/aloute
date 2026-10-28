@@ -36,6 +36,86 @@ class SocialFeatureServiceTest {
                     mock(NotificationService.class));
 
     @Test
+    void unreadCountIncludesOnlyUnseenRequestsForTheRecipient() {
+        when(documentStore.count(any(Query.class), eq(FollowRequest.class))).thenReturn(2L);
+        assertEquals(2L, service.countUnreadRequests(1L));
+        var query = org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(documentStore).count(query.capture(), eq(FollowRequest.class));
+        assertEquals(List.of(
+                new com.aloute.persistence.postgres.document.Criteria.ComparisonNode("targetId",
+                        com.aloute.persistence.postgres.document.Criteria.Operator.EQ, 1L),
+                new com.aloute.persistence.postgres.document.Criteria.ComparisonNode("seenAt",
+                        com.aloute.persistence.postgres.document.Criteria.Operator.EQ, null)), query.getValue().criteria().nodes());
+        verifyNoMoreInteractions(documentStore);
+    }
+
+    @Test
+    void viewingInboxOnlyUpdatesSeenMetadataAndNotifiesTheRecipientAfterCommit() {
+        var publisher = mock(com.aloute.social.FollowRequestRealtimePublisher.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "followRequestRealtimePublisher", publisher);
+        when(documentStore.updateMulti(any(), any(), eq(FollowRequest.class)))
+                .thenReturn(new com.aloute.persistence.postgres.document.UpdateResult(2));
+        var before = Instant.now();
+        org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.markRequestsSeen(1L);
+            verifyNoInteractions(publisher);
+            var query = org.mockito.ArgumentCaptor.forClass(Query.class);
+            var update = org.mockito.ArgumentCaptor.forClass(com.aloute.persistence.postgres.document.Update.class);
+            verify(documentStore).updateMulti(query.capture(), update.capture(), eq(FollowRequest.class));
+            assertEquals(List.of(
+                    new com.aloute.persistence.postgres.document.Criteria.ComparisonNode("targetId",
+                            com.aloute.persistence.postgres.document.Criteria.Operator.EQ, 1L),
+                    new com.aloute.persistence.postgres.document.Criteria.ComparisonNode("seenAt",
+                            com.aloute.persistence.postgres.document.Criteria.Operator.EQ, null)), query.getValue().criteria().nodes());
+            assertEquals(1, update.getValue().operations().size());
+            var operation = update.getValue().operations().getFirst();
+            assertEquals("seenAt", operation.field());
+            assertEquals(com.aloute.persistence.postgres.document.Update.Kind.SET, operation.kind());
+            assertFalse(((Instant) operation.value()).isBefore(before));
+            verifyNoMoreInteractions(documentStore);
+            verifyNoInteractions(friends, closeFriends);
+            for (var synchronization : org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+            verify(publisher).publishSeen(1L);
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+            org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+
+    @Test
+    void revisitingAnAlreadySeenInboxDoesNotPublishAnotherEvent() {
+        var publisher = mock(com.aloute.social.FollowRequestRealtimePublisher.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "followRequestRealtimePublisher", publisher);
+        when(documentStore.updateMulti(any(), any(), eq(FollowRequest.class)))
+                .thenReturn(new com.aloute.persistence.postgres.document.UpdateResult(0));
+        service.markRequestsSeen(1L);
+        verifyNoInteractions(publisher, friends, closeFriends);
+    }
+
+    @Test
+    void anonymousCallerCannotMarkAnInboxSeen() {
+        assertThrows(UnauthorizedException.class, () -> service.markRequestsSeen(null));
+        verifyNoInteractions(documentStore);
+    }
+
+    @Test
+    void legacyRequestsAreUnseenAndSeenMetadataSurvivesSerialization() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+        var request = mapper.readValue("{\"id\":\"6:1\",\"followerId\":6,\"targetId\":1}", FollowRequest.class);
+        assertNull(request.getSeenAt());
+        var viewed = Instant.parse("2026-10-27T14:00:00Z");
+        request.setSeenAt(viewed);
+        var restored = mapper.readValue(mapper.writeValueAsString(request), FollowRequest.class);
+        assertEquals(viewed, restored.getSeenAt());
+        assertEquals(6L, restored.getFollowerId());
+        assertEquals(1L, restored.getTargetId());
+    }
+
+    @Test
     void ordinaryUserCannotViewModerationQueue() {
         User user = new User();
         user.setId(1L);
@@ -147,6 +227,10 @@ class SocialFeatureServiceTest {
         assertEquals(15, queue.get("size"));
         assertEquals(false, queue.get("hasMore"));
         assertTrue(((List<?>) queue.get("reports")).isEmpty());
+        assertTrue(((List<?>) queue.get("flaggedPosts")).isEmpty());
+        assertTrue(((List<?>) queue.get("flaggedComments")).isEmpty());
+        assertTrue(((List<?>) queue.get("flaggedPosts")).isEmpty());
+        assertTrue(((List<?>) queue.get("flaggedComments")).isEmpty());
         var queries = org.mockito.ArgumentCaptor.forClass(com.aloute.persistence.postgres.document.Query.class);
         verify(documentStore).find(queries.capture(), eq(ContentReport.class));
         assertTrue(queries.getAllValues().stream().allMatch(q -> q.skip() == 30 && q.limit() == 16));
@@ -154,14 +238,55 @@ class SocialFeatureServiceTest {
     }
 
     @Test
-    void hostDoesNotInheritReportModerationPermission() {
+    void hostInheritsReportModerationPermissionAndSeesTheSameRestrictedQueue() {
         User host = new User();
         host.setId(10L);
         host.setActive(true);
         host.setRole(new Role("ROLE_HOST"));
         when(users.findById(10L)).thenReturn(Optional.of(host));
-        assertThrows(ForbiddenException.class, () -> service.queue(10L));
-        verifyNoInteractions(documentStore);
+        when(documentStore.find(any(Query.class), eq(ContentReport.class))).thenReturn(List.of());
+        when(documentStore.find(any(Query.class), eq(Post.class))).thenReturn(List.of());
+        when(documentStore.find(any(Query.class), eq(Comment.class))).thenReturn(List.of());
+        Map<String, Object> queue = service.queue(10L);
+        assertTrue(((List<?>) queue.get("reports")).isEmpty());
+        assertTrue(((List<?>) queue.get("flaggedPosts")).isEmpty());
+        assertTrue(((List<?>) queue.get("flaggedComments")).isEmpty());
+    }
+
+    @Test
+    void manualReviewCannotOverrideAnOrdinaryApprovedPostWithoutAnOpenReport() {
+        User admin = new User();
+        admin.setId(9L);
+        admin.setActive(true);
+        admin.setRole(new Role("ROLE_ADMIN"));
+        when(users.findById(9L)).thenReturn(Optional.of(admin));
+        Post approved = new Post();
+        approved.setId("post-ordinary");
+        approved.setUserId("7");
+        approved.setModerationStatus(ModerationStatus.APPROVED);
+        when(documentStore.findById("post-ordinary", Post.class)).thenReturn(approved);
+
+        assertThrows(BadRequestException.class,
+                () -> service.moderate(9L, "POST", "post-ordinary", "HIDE", null));
+        verify(documentStore, never()).updateFirst(any(), any(), eq(Post.class));
+    }
+
+    @Test
+    void autoHiddenPostStaysUnderModerationUnlessAnOpenReportRequestsHumanReview() {
+        User admin = new User();
+        admin.setId(9L);
+        admin.setActive(true);
+        admin.setRole(new Role("ROLE_ADMIN"));
+        when(users.findById(9L)).thenReturn(Optional.of(admin));
+        Post hidden = new Post();
+        hidden.setId("post-auto-hidden");
+        hidden.setUserId("7");
+        hidden.setModerationStatus(ModerationStatus.HIDDEN);
+        when(documentStore.findById("post-auto-hidden", Post.class)).thenReturn(hidden);
+
+        assertThrows(BadRequestException.class,
+                () -> service.moderate(9L, "POST", "post-auto-hidden", "APPROVE", null));
+        verify(documentStore, never()).updateFirst(any(), any(), eq(Post.class));
     }
 
     @Test
@@ -190,7 +315,7 @@ class SocialFeatureServiceTest {
 
         var page = service.blocks(1L, null, 1);
 
-        assertEquals(List.of(newest), page.items());
+        assertEquals(List.of(newest.getId()), page.items().stream().map(com.aloute.dto.response.BlockedAccountResponse::id).toList());
         assertTrue(page.hasMore());
         assertFalse(page.nextCursor().isBlank());
     }
@@ -201,4 +326,61 @@ class SocialFeatureServiceTest {
         verify(documentStore, never()).find(any(Query.class), eq(FollowRequest.class));
     }
 
+
+    @Test
+    void requestCursorBatchesLabelsOnlyForTheReturnedPage() {
+        var request=new FollowRequest(); request.setId("6:1"); request.setFollowerId(6L); request.setTargetId(1L);
+        var extra=new FollowRequest(); extra.setId("7:1"); extra.setFollowerId(7L); extra.setTargetId(1L);
+        when(documentStore.find(any(Query.class),eq(FollowRequest.class))).thenReturn(List.of(request,extra));
+        var label=mock(IUserRepository.ProfileLabelEntry.class); when(label.getId()).thenReturn(6L);
+        when(label.getUsername()).thenReturn("minhan"); when(label.getFullName()).thenReturn("Minh An"); when(label.getAvatarUrl()).thenReturn("/minhan.png");
+        when(users.findProfileLabels(List.of(6L))).thenReturn(List.of(label));
+        var page=service.requests(1L,null,1);
+        assertTrue(page.hasMore()); assertFalse(page.nextCursor().isEmpty()); assertEquals(1,page.items().size());
+        assertEquals("Minh An",page.items().getFirst().followerFullName()); assertEquals("minhan",page.items().getFirst().followerUsername());
+        assertEquals("/minhan.png",page.items().getFirst().followerAvatarUrl()); verify(users).findProfileLabels(List.of(6L)); verifyNoMoreInteractions(users);
+    }
+
+    @Test
+    void blockCursorBatchesOnlyReturnedTargetsAndKeepsOldFieldsWithoutInternalState() throws Exception {
+        var block = new UserBlock(); block.setId("1:6"); block.setOwnerId(1L); block.setTargetId(6L);
+        block.setRelationshipsSynced(true);
+        var extra = new UserBlock(); extra.setId("1:7"); extra.setOwnerId(1L); extra.setTargetId(7L);
+        when(documentStore.find(any(Query.class),eq(UserBlock.class))).thenReturn(List.of(block,extra));
+        var label = mock(IUserRepository.ProfileLabelEntry.class); when(label.getId()).thenReturn(6L);
+        when(label.getUsername()).thenReturn("alice"); when(label.getFullName()).thenReturn("Alice"); when(label.getAvatarUrl()).thenReturn("/alice.png");
+        when(users.findProfileLabels(List.of(6L))).thenReturn(List.of(label));
+        var page = service.blocks(1L,null,1);
+        var item = page.items().getFirst();
+        assertEquals("Alice",item.targetFullName()); assertEquals("alice",item.targetUsername());
+        assertEquals("/alice.png",item.targetAvatarUrl()); assertEquals("1:6",item.id());
+        assertEquals(1L,item.ownerId()); assertEquals(6L,item.targetId()); assertEquals(block.getCreatedAt(),item.createdAt());
+        assertTrue(page.hasMore()); assertFalse(page.nextCursor().isEmpty());
+        verify(users).findProfileLabels(List.of(6L)); verifyNoMoreInteractions(users);
+        var query = org.mockito.ArgumentCaptor.forClass(Query.class); verify(documentStore).find(query.capture(),eq(UserBlock.class));
+        assertTrue(query.getValue().criteria().nodes().stream().anyMatch(node -> node instanceof com.aloute.persistence.postgres.document.Criteria.ComparisonNode c && c.field().equals("ownerId") && c.value().equals(1L)));
+        var json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(item);
+        for (String forbidden:List.of("relationshipsSynced","password","email","token")) assertFalse(json.contains(forbidden));
+    }
+
+    @Test
+    void legacyBlockListHasSameLabelsAndMissingAccountKeepsDefaultAvatar() {
+        var known = new UserBlock(); known.setId("1:6"); known.setOwnerId(1L); known.setTargetId(6L);
+        var missing = new UserBlock(); missing.setId("1:7"); missing.setOwnerId(1L); missing.setTargetId(7L);
+        when(documentStore.find(any(Query.class),eq(UserBlock.class))).thenReturn(List.of(known,missing));
+        var label = mock(IUserRepository.ProfileLabelEntry.class); when(label.getId()).thenReturn(6L);
+        when(label.getUsername()).thenReturn("alice"); when(label.getFullName()).thenReturn("Alice");
+        when(users.findProfileLabels(List.of(6L,7L))).thenReturn(List.of(label));
+        var items = service.blocks(1L);
+        assertEquals("Alice",items.getFirst().targetFullName());
+        assertEquals("/images/avatar_default.png",items.getFirst().targetAvatarUrl());
+        assertNull(items.getLast().targetUsername()); assertEquals("/images/avatar_default.png",items.getLast().targetAvatarUrl());
+        verify(users).findProfileLabels(List.of(6L,7L)); verifyNoMoreInteractions(users);
+    }
+
+    @Test
+    void emptyBlocksDoNotLoadAccountLabels() {
+        assertTrue(service.blocks(1L).isEmpty()); assertTrue(service.blocks(1L,null,50).items().isEmpty());
+        verifyNoInteractions(users);
+    }
 }

@@ -1,23 +1,12 @@
 <!DOCTYPE html>
 <html th:replace="~{layout/base :: layout(~{::title}, ~{::section})}" xmlns:th="http://www.thymeleaf.org">
 <head><title th:text="${pageTitle + ' — ALOUTE'}">ALOUTE</title></head>
-<body><section class="content-inner feature-page" th:classappend="${pageKind == 'settings'} ? ' settings-page'" th:attr="data-feature-page=${pageKind}">
+<body><section class="content-inner feature-page" th:classappend="${pageKind == 'settings' ? 'settings-page' : (pageKind == 'saved' ? 'saved-page' : '')}" th:attr="data-feature-page=${pageKind}">
   <header class="feature-hero" th:unless="${pageKind == 'settings'}"><div><span class="feature-eyebrow">Không gian của bạn</span><h1 th:text="${pageTitle}">Tiện ích</h1></div></header>
   <main id="featureContent" class="feature-content" data-loaded="true" aria-live="polite">
-    <div class="feature-stack" th:if="${pageKind == 'saved'}">
+    <div class="feed-panel feed-stream saved-stream" th:if="${pageKind == 'saved'}">
       <div class="feature-empty" th:if="${#lists.isEmpty(savedPosts)}"><strong>Chưa có bài viết đã lưu</strong><span>Những bài bạn lưu sẽ xuất hiện tại đây.</span></div>
-      <article class="feature-card feature-saved" th:each="post : ${savedPosts}" th:attr="data-saved-post=${post.id}">
-        <div class="feature-card__head"><div><strong th:text="${post.username}">Tác giả</strong><span th:text="${post.timeAgo}">Vừa xong</span>
-          <span class="post__moderation-status post__moderation-status--pending" th:if="${post.moderationStatus != null and post.moderationStatus.name() == 'PENDING'}" title="Bài viết chỉ hiển thị với bạn trong lúc chờ kiểm duyệt"><i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Đang kiểm duyệt</span></span>
-          <span class="post__moderation-status post__moderation-status--flagged" th:if="${post.moderationStatus != null and post.moderationStatus.name() == 'FLAGGED'}" title="Nội dung bị đánh dấu và hạn chế hiển thị"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><span>Bị đánh dấu</span></span>
-          <span class="post__moderation-status post__moderation-status--hidden" th:if="${post.moderationStatus != null and post.moderationStatus.name() == 'HIDDEN'}" title="Bài viết đã bị ẩn sau khi kiểm duyệt"><i class="bi bi-eye-slash" aria-hidden="true"></i><span>Đã ẩn</span></span>
-          <span class="post__moderation-status post__moderation-status--pending" th:if="${post.moderationStatus == null}" title="Chưa xác minh trạng thái kiểm duyệt"><i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Chưa xác minh</span></span>
-          <i class="post__visibility bi bi-globe2" th:if="${(post.moderationStatus != null and post.moderationStatus.name() == 'APPROVED') and post.visibility != null and post.visibility.name() == 'PUBLIC'}" title="Công khai" aria-label="Bài viết công khai"></i>
-          <i class="post__visibility post__visibility--private bi bi-people-fill" th:if="${(post.moderationStatus != null and post.moderationStatus.name() == 'APPROVED') and post.visibility != null and post.visibility.name() == 'FRIENDS'}" title="Chế độ Bạn bè" aria-label="Bài viết theo chế độ Bạn bè"></i>
-          <i class="post__visibility post__visibility--private bi bi-lock-fill" th:if="${(post.moderationStatus != null and post.moderationStatus.name() == 'APPROVED') and post.visibility != null and post.visibility.name() == 'ONLY_ME'}" title="Chỉ mình tôi" aria-label="Bài viết chỉ mình tôi"></i>
-        </div><button type="button" data-action="unsave" th:attr="data-post-id=${post.id}">Bỏ lưu</button></div>
-        <p class="post__content" th:text="${post.content}">Nội dung</p><img th:if="${post.imageUrl != null and !post.imageUrl.isBlank()}" th:src="${post.imageUrl}" alt="Ảnh bài viết" loading="lazy"><video class="post__video" th:if="${post.videoUrl != null and !post.videoUrl.isBlank()}" th:src="${post.videoUrl}" controls preload="metadata"></video>
-      </article>
+      <th:block th:replace="~{feed/index :: postCards(${savedPosts}, true)}"></th:block>
     </div>
     <div class="settings-layout" th:if="${pageKind == 'settings'}">
       <aside class="settings-menu" aria-label="Danh mục cài đặt">
@@ -28,9 +17,8 @@
           <button type="button" class="settings-menu__item is-active" data-settings-target="profile"><span>◎</span>Chỉnh sửa hồ sơ</button>
           <button type="button" class="settings-menu__item" data-settings-target="security"><span>⌁</span>Mật khẩu và bảo mật</button>
           <p class="settings-menu__group">Quyền riêng tư</p>
+          <button type="button" class="settings-menu__item" data-settings-target="requests"><span>↗</span>Yêu cầu đang chờ</button>
           <button type="button" class="settings-menu__item" data-settings-target="blocked"><span>⊘</span>Tài khoản đã chặn</button>
-          <p class="settings-menu__group">Kiểm soát tài khoản</p>
-          <button type="button" class="settings-menu__item" data-settings-target="account"><span>!</span>Quản lý tài khoản</button>
         </div>
       </aside>
 
@@ -62,29 +50,62 @@
             <button type="submit" id="changePasswordSubmit" class="settings-save">Xác nhận đổi mật khẩu</button>
           </form>
           <p class="field-hint">Mọi lần đăng nhập ALOUTE đều dùng mật khẩu tài khoản ALOUTE. Nếu bạn chưa thiết lập hoặc không nhớ mật khẩu, hãy dùng <a href="/forgot-password">Quên mật khẩu</a> để đặt lại qua mã OTP email.</p>
+          <section class="settings-danger-zone" aria-labelledby="deleteAccountHeading">
+            <div class="feature-card__title"><span class="feature-icon">!</span><div><h2 id="deleteAccountHeading">Xóa tài khoản</h2><p>Xóa tài khoản và ẩn danh thông tin cá nhân. Thao tác này không thể hoàn tác.</p></div></div>
+            <div class="feature-actions"><button type="button" class="danger" data-action="delete-account">Xóa tài khoản</button></div>
+          </section>
+        </section>
+        <section class="feature-card settings-panel" data-settings-panel="requests" hidden>
+          <div class="feature-card__title"><span class="feature-icon">♙</span><div><h2>Yêu cầu theo dõi</h2><p>Duyệt người có thể xem tài khoản riêng tư.</p></div></div>
+          <div class="feature-list" id="followRequestList">
+            <div class="feature-empty compact" th:if="${#lists.isEmpty(followRequests)}">Không có yêu cầu chờ duyệt.</div>
+            <div class="feature-list__row" th:each="request : ${followRequests}" th:attr="data-request-id=${request.id}">
+              <a class="feature-request-account" th:href="${request.followerUsername != null} ? @{/people/{username}(username=${request.followerUsername})} : @{/profile/{id}(id=${request.followerId})}">
+                <img class="follow-request-avatar" th:src="${request.followerAvatarUrl ?: '/images/avatar_default.png'}" alt="Ảnh đại diện" loading="lazy">
+                <div class="follow-request-identity">
+                  <strong th:text="${!#strings.isEmpty(#strings.trim(request.followerFullName)) ? request.followerFullName : (!#strings.isEmpty(request.followerUsername) ? request.followerUsername : 'Tài khoản không còn khả dụng')}">Tên tài khoản</strong>
+                  <small th:if="${!#strings.isEmpty(request.followerUsername)}" th:text="${'@' + request.followerUsername}"></small>
+                </div>
+              </a>
+              <div th:replace="~{fragments/follow-request :: actions(${request.id}, false)}"></div>
+            </div>
+          </div>
+          <button type="button" data-action="load-more-requests" th:if="${requestsHasMore}" th:attr="data-cursor=${requestsNextCursor}">Xem thêm</button>
         </section>
         <section class="feature-card settings-panel" data-settings-panel="blocked" hidden>
           <div class="feature-card__title"><span class="feature-icon">⊘</span><div><h2>Tài khoản đã chặn</h2><p>Quản lý những người không thể xem hồ sơ hoặc liên hệ với bạn.</p></div></div>
-          <div class="feature-list" id="blockedAccountList"><div class="feature-empty compact" th:if="${#lists.isEmpty(blocks)}">Bạn chưa chặn tài khoản nào.</div><div class="feature-list__row" th:each="block : ${blocks}" th:attr="data-block-id=${block.targetId}"><span th:text="${'Tài khoản #' + block.targetId}">Tài khoản</span><button type="button" data-action="unblock" th:attr="data-user-id=${block.targetId}">Bỏ chặn</button></div></div>
+          <div class="feature-list" id="blockedAccountList">
+            <div class="feature-empty compact" th:if="${#lists.isEmpty(blocks)}">Bạn chưa chặn tài khoản nào.</div>
+            <div class="feature-list__row" th:each="block : ${blocks}" th:attr="data-block-id=${block.targetId}">
+              <a class="feature-request-account" data-block-profile th:href="${block.targetUsername != null} ? @{/people/{username}(username=${block.targetUsername})} : @{/profile/{id}(id=${block.targetId})}" title="Bỏ chặn để xem trang cá nhân">
+                <img class="follow-request-avatar" th:src="${block.targetAvatarUrl ?: '/images/avatar_default.png'}" alt="Ảnh đại diện" loading="lazy">
+                <div class="follow-request-identity">
+                  <strong th:text="${!#strings.isEmpty(#strings.trim(block.targetFullName)) ? block.targetFullName : (!#strings.isEmpty(block.targetUsername) ? block.targetUsername : 'Tài khoản không còn khả dụng')}">Tên tài khoản</strong>
+                  <small th:if="${!#strings.isEmpty(block.targetUsername)}" th:text="${'@' + block.targetUsername}"></small>
+                </div>
+              </a>
+              <div class="follow-request-actions"><button type="button" data-action="unblock" th:attr="data-user-id=${block.targetId}">Bỏ chặn</button></div>
+            </div>
+          </div>
           <button type="button" data-action="load-more-blocks" th:if="${blocksHasMore}" th:attr="data-cursor=${blocksNextCursor}">Xem thêm</button>
-        </section>
-        <section class="feature-card feature-danger settings-panel" data-settings-panel="account" hidden>
-          <div class="feature-card__title"><span class="feature-icon">!</span><div><h2>Quản lý tài khoản</h2><p>Vô hiệu hóa tạm thời hoặc xóa và ẩn danh dữ liệu.</p></div></div>
-          <label>Mật khẩu hiện tại (tài khoản Google có thể để trống)<input id="accountPassword" type="password" autocomplete="current-password"></label>
-          <small>Nếu tài khoản chỉ dùng Google, hệ thống sẽ yêu cầu bạn xác minh lại bằng Google.</small>
-          <div class="feature-actions"><button type="button" data-action="deactivate-account">Vô hiệu hóa</button><button type="button" class="danger" data-action="delete-account">Xóa tài khoản</button></div>
         </section>
       </div>
     </div>
     <div class="feature-stack" th:if="${pageKind == 'moderation'}">
-      <div class="feature-empty" th:if="${#lists.isEmpty(moderationQueue['reports']) and #lists.isEmpty(moderationQueue['flaggedPosts'])}"><strong>Không có báo cáo hoặc bài viết bị đánh dấu</strong><span>Báo cáo mới và bài viết bị hệ thống gắn cờ sẽ xuất hiện tại đây.</span></div>
-      <article class="feature-card feature-review" th:each="item : ${moderationQueue['reports']}" th:attr="data-review-type=${item.targetType},data-review-id=${item.targetId},data-report-id=${item.id}"><span class="feature-chip" th:text="${item.targetType == 'USER' ? 'Báo cáo tài khoản' : (item.targetType == 'POST' ? 'Báo cáo bài viết' : 'Báo cáo bình luận')}">Báo cáo</span><h2 th:text="${item.targetType + ' · ' + item.targetId}">Nội dung</h2><p th:text="${item.reason}">Lý do</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Giữ nội dung</button><button type="button" class="danger" data-action="hide-review">Ẩn nội dung</button><button type="button" data-action="dismiss-review">Bác báo cáo</button></div></article>
-      <h2 th:if="${!#lists.isEmpty(moderationQueue['flaggedPosts'])}">Bài viết bị hệ thống đánh dấu</h2>
-      <article class="feature-card feature-review" th:each="post : ${moderationQueue['flaggedPosts']}" th:attr="data-review-type='POST',data-review-id=${post.id},data-report-id=''"><span class="feature-chip">FLAGGED · Chờ xem xét</span><h2 th:text="${'Bài viết · ' + post.id}">Bài viết</h2><p th:text="${'Điểm kiểm duyệt: ' + post.toxicityScore}">Điểm kiểm duyệt</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Duyệt bài viết</button><button type="button" class="danger" data-action="hide-review">Ẩn bài viết</button></div></article>
+      <p class="feature-moderation-explainer">Moderation tự động đánh giá toàn bộ bài viết và bình luận. Nội dung thông thường hoạt động theo kết quả Moderation; FLAGGED là tín hiệu theo dõi bổ sung và không mặc định buộc chờ ADMIN. HIDDEN tiếp tục bị ẩn tự động. ADMIN/HOST xử lý báo cáo và có thể xem xét lại nội dung FLAGGED/HIDDEN khi cần.</p>
+      <div class="feature-empty" th:if="${#lists.isEmpty(moderationQueue['reports']) and #lists.isEmpty(moderationQueue['flaggedPosts']) and #lists.isEmpty(moderationQueue['flaggedComments']) and #lists.isEmpty(moderationQueue['hiddenPosts']) and #lists.isEmpty(moderationQueue['hiddenComments'])}"><strong>Không có báo cáo hoặc nội dung cần xem xét bổ sung</strong><span>Moderation tiếp tục tự động xử lý nội dung mới. ADMIN không cần duyệt thủ công từng bài viết.</span></div>
+      <h2 th:if="${!#lists.isEmpty(moderationQueue['reports'])}">Báo cáo do người dùng gửi</h2>
+      <article class="feature-card feature-review" th:each="item : ${moderationQueue['reports']}" th:attr="data-review-type=${item.targetType},data-review-id=${item.targetId},data-report-id=${item.id}"><span class="feature-chip" th:text="${item.targetType == 'USER' ? 'Báo cáo tài khoản' : (item.targetType == 'POST' ? 'Báo cáo bài viết' : (item.targetType == 'COMMENT' ? 'Báo cáo bình luận' : 'Báo cáo hội nhóm'))}">Báo cáo</span><h2 th:text="${item.targetType + ' · ' + item.targetId}">Nội dung</h2><p th:text="${item.reason}">Lý do</p><div class="feature-actions"><button type="button" data-action="review-content">Xem</button><button type="button" data-action="approve-review">Giữ nội dung</button><button type="button" class="danger" data-action="hide-review" th:unless="${item.targetType == 'COMMUNITY'}">Ẩn nội dung</button><button type="button" data-action="dismiss-review">Bác báo cáo</button></div></article>
+      <h2 th:if="${!#lists.isEmpty(moderationQueue['flaggedPosts']) or !#lists.isEmpty(moderationQueue['flaggedComments'])}">Nội dung Moderation đã gắn cờ · xem xét bổ sung nếu cần</h2>
+      <article class="feature-card feature-review" th:each="post : ${moderationQueue['flaggedPosts']}" th:attr="data-review-type='POST',data-review-id=${post.id},data-report-id=''"><span class="feature-chip">FLAGGED · Kết quả tự động</span><h2 th:text="${'Bài viết · ' + post.id}">Bài viết</h2><p th:text="${'Điểm kiểm duyệt: ' + post.toxicityScore}">Điểm kiểm duyệt</p><p th:if="${post.moderationFailureReason != null}" th:text="${'Moderation không hoàn tất: ' + post.moderationFailureReason}">Lý do lỗi</p><p th:unless="${post.moderationFailureReason != null}">Đã được đánh giá tự động; không cần ADMIN thao tác nếu không có lý do.</p><div class="feature-actions"><button type="button" data-action="review-content">Xem lại</button><button type="button" data-action="approve-review">Cho phép hiển thị</button><button type="button" class="danger" data-action="hide-review">Ẩn nội dung</button></div></article>
+      <article class="feature-card feature-review" th:each="comment : ${moderationQueue['flaggedComments']}" th:attr="data-review-type='COMMENT',data-review-id=${comment.id},data-report-id=''"><span class="feature-chip">FLAGGED · Kết quả tự động</span><h2 th:text="${'Bình luận · ' + comment.id}">Bình luận</h2><p th:text="${comment.content}">Nội dung bình luận</p><p th:if="${comment.moderationFailureReason != null}" th:text="${'Moderation chưa hoàn tất: ' + comment.moderationFailureReason}">Lý do lỗi</p><p th:unless="${comment.moderationFailureReason != null}">Đã được đánh giá tự động; không cần ADMIN thao tác nếu không có lý do.</p><div class="feature-actions"><button type="button" data-action="review-content">Xem lại</button><button type="button" data-action="approve-review">Cho phép hiển thị</button><button type="button" class="danger" data-action="hide-review">Ẩn nội dung</button></div></article>
+      <h2 th:if="${!#lists.isEmpty(moderationQueue['hiddenPosts']) or !#lists.isEmpty(moderationQueue['hiddenComments'])}">Nội dung Moderation đang ẩn · chỉ mở lại khi cần</h2>
+      <article class="feature-card feature-review" th:each="post : ${moderationQueue['hiddenPosts']}" th:attr="data-review-type='POST',data-review-id=${post.id},data-report-id=''"><span class="feature-chip">HIDDEN · Đang ẩn</span><h2 th:text="${'Bài viết · ' + post.id}">Bài viết</h2><p th:text="${'Điểm kiểm duyệt: ' + post.toxicityScore}">Điểm kiểm duyệt</p><div class="feature-actions"><button type="button" data-action="review-content">Xem lại</button><button type="button" data-action="approve-review">Cho phép hiển thị</button><button type="button" class="danger" data-action="hide-review">Giữ ẩn</button></div></article>
+      <article class="feature-card feature-review" th:each="comment : ${moderationQueue['hiddenComments']}" th:attr="data-review-type='COMMENT',data-review-id=${comment.id},data-report-id=''"><span class="feature-chip">HIDDEN · Đang ẩn</span><h2 th:text="${'Bình luận · ' + comment.id}">Bình luận</h2><p th:text="${comment.content}">Nội dung bình luận</p><p th:if="${comment.moderationFailureReason != null}" th:text="${'Lý do ẩn: ' + comment.moderationFailureReason}">Lý do ẩn</p><div class="feature-actions"><button type="button" data-action="review-content">Xem lại</button><button type="button" data-action="approve-review">Cho phép hiển thị</button><button type="button" class="danger" data-action="hide-review">Giữ ẩn</button></div></article>
       <nav class="feature-actions" th:if="${pageKind == 'moderation' and ((moderationQueue['page'] != null and moderationQueue['page'] > 0) or moderationQueue['hasMore'] == true)}" aria-label="Phân trang báo cáo vi phạm">
-        <a th:if="${moderationQueue['page'] > 0}" th:href="@{/admin/moderation(page=${moderationQueue['page'] - 1})}">Trang trước</a>
+        <a th:if="${moderationQueue['page'] > 0}" th:href="@{${moderationPath}(page=${moderationQueue['page'] - 1})}">Trang trước</a>
         <span th:text="${'Trang ' + (moderationQueue['page'] + 1)}">Trang 1</span>
-        <a th:if="${moderationQueue['hasMore']}" th:href="@{/admin/moderation(page=${moderationQueue['page'] + 1})}">Trang sau</a>
+        <a th:if="${moderationQueue['hasMore']}" th:href="@{${moderationPath}(page=${moderationQueue['page'] + 1})}">Trang sau</a>
       </nav>
     </div>
   </main>

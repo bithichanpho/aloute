@@ -158,6 +158,33 @@ class PostEditingServiceTest {
         return post;
     }
 
+    @Test
+    void captionEditPreservesOriginalMediaAndStillRequiresReview() {
+        Post post = ownPost(); post.setImageUrl("https://res.cloudinary.com/owned/original.jpg");
+        when(moderation.isEnabled()).thenReturn(true);
+        when(store.updateFirst(any(), any(), eq(Post.class))).thenReturn(new UpdateResult(1, 1));
+        service.edit(1L, "p", new PostEditCommand("new caption", null, null, "CLOSE_FRIENDS", true, false, false));
+        var update = ArgumentCaptor.forClass(Update.class);
+        verify(store).updateFirst(any(), update.capture(), eq(Post.class));
+        assertTrue(update.getValue().operations().stream().anyMatch(op ->
+                op.field().equals("imageUrl") && post.getImageUrl().equals(op.value())));
+        verify(media).validatePostMediaUrl(post.getImageUrl(), post.getImageUrl(), "1");
+        verify(review).submit("p");
+    }
+
+    @Test
+    void explicitNullStillRemovesMediaButCannotLeaveAnEmptyPost() {
+        Post post = ownPost(); post.setImageUrl("https://res.cloudinary.com/owned/photo.jpg");
+        when(store.updateFirst(any(), any(), eq(Post.class))).thenReturn(new UpdateResult(1, 1));
+        service.edit(1L, "p", new PostEditCommand("caption", null, null, "PUBLIC"));
+        var update = ArgumentCaptor.forClass(Update.class);
+        verify(store).updateFirst(any(), update.capture(), eq(Post.class));
+        assertTrue(update.getValue().operations().stream().anyMatch(op -> op.field().equals("imageUrl") && op.value() == null));
+        reset(store);
+        assertThrows(BadRequestException.class, () -> service.edit(1L, "p", command(" ", "PUBLIC")));
+        verifyNoInteractions(store);
+    }
+
     private PostEditCommand command(String content, String visibility) {
         return new PostEditCommand(content, null, null, visibility);
     }

@@ -51,7 +51,7 @@ class PostModerationWorkerTest {
     void defaults() {
         when(documentStore.updateFirst(any(Query.class), any(Update.class), eq(Post.class)))
                 .thenReturn(new UpdateResult(1L, 1L));
-        when(moderation.isMediaApproved(any(), anyString())).thenReturn(true);
+        when(moderation.resolveMediaStatus(any(), anyString())).thenReturn(ModerationStatus.APPROVED);
         when(moderation.check("hello @bob")).thenReturn(new ModerationResult("safe", 0.1));
         when(moderation.resolveStatus(any(ModerationResult.class)))
                 .thenReturn(ModerationStatus.APPROVED);
@@ -74,7 +74,7 @@ class PostModerationWorkerTest {
     }
 
     @Test
-    void flaggedPostIsNotApprovedAndSendsNoMentions() {
+    void flaggedPostUsesAutomaticDecisionAndRemainsReadableWithoutAdminApproval() {
         when(documentStore.findById("post-1", Post.class)).thenReturn(pendingPost());
         when(moderation.resolveStatus(any(ModerationResult.class)))
                 .thenReturn(ModerationStatus.FLAGGED);
@@ -82,7 +82,9 @@ class PostModerationWorkerTest {
         worker.moderate("post-1").join();
 
         assertEquals(ModerationStatus.FLAGGED, finalStatus());
-        verifyNoInteractions(notifications);
+        verify(notifications).notifyPostModerationResult(1L, "post-1", ModerationStatus.FLAGGED);
+        verify(notifications)
+                .notify(eq(2L), eq(1L), eq("MENTION"), eq("post-1"), anyString());
     }
 
     @Test
@@ -94,7 +96,8 @@ class PostModerationWorkerTest {
         worker.moderate("post-1").join();
 
         assertEquals(ModerationStatus.HIDDEN, finalStatus());
-        verifyNoInteractions(notifications);
+        verify(notifications).notifyPostModerationResult(1L, "post-1", ModerationStatus.HIDDEN);
+        verify(notifications, never()).notify(eq(2L), eq(1L), eq("MENTION"), eq("post-1"), anyString());
     }
 
     @Test
@@ -102,11 +105,25 @@ class PostModerationWorkerTest {
         Post post = pendingPost();
         post.setImageUrl("https://res.cloudinary.com/demo/image/upload/bad.png");
         when(documentStore.findById("post-1", Post.class)).thenReturn(post);
-        when(moderation.isMediaApproved(post.getImageUrl(), "image")).thenReturn(false);
+        when(moderation.resolveMediaStatus(post.getImageUrl(), "image"))
+                .thenReturn(ModerationStatus.HIDDEN);
 
         worker.moderate("post-1").join();
 
         assertEquals(ModerationStatus.HIDDEN, finalStatus());
+    }
+
+    @Test
+    void flaggedMediaFlagsPostInsteadOfHidingItAutomatically() {
+        Post post = pendingPost();
+        post.setImageUrl("https://res.cloudinary.com/demo/image/upload/review.png");
+        when(documentStore.findById("post-1", Post.class)).thenReturn(post);
+        when(moderation.resolveMediaStatus(post.getImageUrl(), "image"))
+                .thenReturn(ModerationStatus.FLAGGED);
+
+        worker.moderate("post-1").join();
+
+        assertEquals(ModerationStatus.FLAGGED, finalStatus());
     }
 
     @Test
@@ -120,7 +137,7 @@ class PostModerationWorkerTest {
         Map<String, Object> set = lastUpdateSection("$set");
         assertEquals(ModerationStatus.FLAGGED, set.get("moderationStatus"));
         assertNotNull(set.get("moderationFailureReason"));
-        verifyNoInteractions(notifications);
+        verify(notifications).notifyPostModerationResult(1L, "post-1", ModerationStatus.FLAGGED);
     }
 
     @Test

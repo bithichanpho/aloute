@@ -188,10 +188,25 @@
 
     const actions = document.createElement('div');
     actions.className = 'friends-chat-window__header-actions';
+    if (conversation.type === 'friend') {
+      [['audio', 'Gọi thoại', 'bi-telephone'], ['video', 'Gọi video', 'bi-camera-video']].forEach(([type, label, icon]) => {
+        const call = document.createElement('button');
+        call.type = 'button';
+        call.className = 'friends-chat-window__header-btn';
+        call.dataset.callType = type;
+        call.title = label;
+        call.setAttribute('aria-label', label);
+        call.innerHTML = '<i class="bi ' + icon + '" aria-hidden="true"></i>';
+        call.addEventListener('click', () => {
+          window.AlouteCalls.start(conversation.id, conversation.name, type, conversation.avatar);
+        });
+        actions.appendChild(call);
+      });
+    }
     const profile = document.createElement('a');
     profile.href = conversation.type === 'group'
       ? '/chat?groupId=' + encodeURIComponent(conversation.id)
-      : '/profile/' + encodeURIComponent(conversation.id);
+      : (conversation.username ? '/people/' + encodeURIComponent(conversation.username) : '/profile/' + encodeURIComponent(conversation.id));
     profile.className = 'friends-chat-window__header-btn';
     profile.title = conversation.type === 'group' ? 'Mở nhóm trong trang Tin nhắn' : 'Xem trang cá nhân';
     profile.setAttribute('aria-label', profile.title);
@@ -409,8 +424,15 @@
     const bubble = document.createElement('div');
     bubble.className = 'friends-chat-window__bubble';
     const content = String(message.content || '');
-    if (content) appendLinkedText(bubble, content);
-    if (message.mediaUrl) {
+    const isCall = String(message.messageType || '').toUpperCase() === 'CALL';
+    if (isCall) {
+      bubble.className = 'friends-chat-window__call';
+      const sentAt = new Date(message.sentAt || message.createdAt || Date.now());
+      const clock = Number.isNaN(sentAt.getTime()) ? ''
+        : sentAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      bubble.innerHTML = window.AlouteCalls.renderMessage(message, mine, clock);
+    } else if (content) appendLinkedText(bubble, content);
+    if (message.mediaUrl && !isCall) {
       const mediaLink = document.createElement('a');
       mediaLink.href = message.mediaUrl;
       mediaLink.target = '_blank';
@@ -418,7 +440,7 @@
       mediaLink.textContent = message.mediaName || (message.mediaType === 'image' ? 'Xem ảnh' : 'Xem tệp đính kèm');
       bubble.appendChild(mediaLink);
     }
-    if (!content && !message.mediaUrl) bubble.textContent = 'Tin nhắn';
+    if (!isCall && !content && !message.mediaUrl) bubble.textContent = 'Tin nhắn';
     contentWrap.appendChild(bubble);
     if (mine) {
       const delivery = document.createElement('small');

@@ -636,8 +636,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
         if (search.startsWith("#")) {
             String tag = search.substring(1).trim().toLowerCase(java.util.Locale.ROOT);
             if (tag.isBlank()) return Collections.emptyList();
-            // Hashtags are already materialized and indexed; avoid a full-content regex scan.
-            query = Query.query(Criteria.where("hashtags").is(tag));
+            query = Query.query(com.aloute.posts.infrastructure.PostHashtagQuery.matching(tag));
         } else {
             // Uses the PostgreSQL text index on Post.content instead of an unanchored regex scan.
             query = Query.query(TextCriteria.forLanguage("none").matching(search));
@@ -648,6 +647,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
         return toResponses(documentStore.find(query, Post.class), currentUserId);
     }
 
+    /** Profile total is independent of audience; content queries still enforce viewer access. */
     public long countPostsByUser(Long userId) {
         Criteria hasOwnCaption =
                 new Criteria()
@@ -660,8 +660,7 @@ public class PostService implements com.aloute.feed.api.FeedQuery, com.aloute.po
                         .and("moderationStatus")
                         .ne(ModerationStatus.HIDDEN)
                         .orOperator(Criteria.where("repostOfId").is(null), hasOwnCaption);
-        return documentStore.count(new Query(new Criteria().andOperator(criteria,
-                Criteria.where("visibility").is(com.aloute.model.document.PostVisibility.PUBLIC))), Post.class);
+        return documentStore.count(Query.query(criteria), Post.class);
     }
 
     public void deletePost(String postId, Long currentUserId) {

@@ -70,14 +70,15 @@ public class CommentModerationWorker {
 
     private void persistDecision(Comment snapshot, ModerationStatus finalStatus) {
         Query unchanged = unchangedCommentQuery(snapshot);
-        boolean applyCounters = finalStatus == ModerationStatus.APPROVED
-                && !snapshot.isModerationCountersApplied();
+        boolean publiclyVisibleResult = finalStatus == ModerationStatus.APPROVED
+                || finalStatus == ModerationStatus.FLAGGED;
+        boolean applyCounters = publiclyVisibleResult && !snapshot.isModerationCountersApplied();
         Update update = new Update()
                 .set("moderationStatus", finalStatus)
                 .set("moderationLastAttemptAt", LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS))
                 .unset("moderationLeaseUntil")
                 .unset("moderationFailureReason");
-        if (finalStatus == ModerationStatus.APPROVED) {
+        if (publiclyVisibleResult) {
             update.set("moderationCountersApplied", true).unset("notifyAfterModeration");
         }
 
@@ -86,7 +87,7 @@ public class CommentModerationWorker {
             applyVisibleCounters(snapshot);
             TransactionCommitHooks.afterCommit(this::evictFeedCache);
         }
-        if (finalStatus == ModerationStatus.APPROVED && snapshot.isNotifyAfterModeration()) {
+        if (publiclyVisibleResult && snapshot.isNotifyAfterModeration()) {
             TransactionCommitHooks.afterCommit(() -> {
                 try {
                     notifyAfterApproval(snapshot);
@@ -161,7 +162,10 @@ public class CommentModerationWorker {
         }
         if (comment.getParentCommentId() != null && !comment.getParentCommentId().isBlank()) {
             Comment parent = documentStore.findById(comment.getParentCommentId(), Comment.class);
-            if (parent == null || parent.getModerationStatus() != ModerationStatus.APPROVED) return;
+            if (parent == null || (parent.getModerationStatus() != ModerationStatus.APPROVED
+                    && !(parent.getModerationStatus() == ModerationStatus.FLAGGED
+                            && (parent.getModerationFailureReason() == null
+                                    || parent.getModerationFailureReason().isBlank())))) return;
             try {
                 Long receiverId = Long.valueOf(parent.getUserId());
                 if (!receiverId.equals(senderId)) {

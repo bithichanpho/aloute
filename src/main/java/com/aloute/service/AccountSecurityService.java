@@ -1,5 +1,6 @@
 package com.aloute.service;
 
+import com.aloute.common.exception.BadRequestException;
 import com.aloute.common.exception.UnauthorizedException;
 import com.aloute.common.util.TransactionCommitHooks;
 import com.aloute.common.util.UsernamePolicy;
@@ -34,7 +35,6 @@ public class AccountSecurityService {
     private final RefreshTokenService refreshTokens;
     private final AccountDataCleanupService accountDataCleanupService;
     private final AuthenticationUserCache authenticationUserCache;
-    private final FirebaseAdminService firebaseAdminService;
 
     public AccountSecurityService(
             IUserRepository users,
@@ -48,8 +48,7 @@ public class AccountSecurityService {
             IGroupReadStatusRepository groupReadStatuses,
             RefreshTokenService refreshTokens,
             AccountDataCleanupService accountDataCleanupService,
-            AuthenticationUserCache authenticationUserCache,
-            FirebaseAdminService firebaseAdminService) {
+            AuthenticationUserCache authenticationUserCache) {
         this.users = users;
         this.passwords = passwords;
         this.limits = limits;
@@ -62,15 +61,10 @@ public class AccountSecurityService {
         this.refreshTokens = refreshTokens;
         this.accountDataCleanupService = accountDataCleanupService;
         this.authenticationUserCache = authenticationUserCache;
-        this.firebaseAdminService = firebaseAdminService;
     }
 
+    /** Verifies the user's current local password without opening an external re-authentication flow. */
     public void checkPassword(Long userId, String password) {
-        checkPassword(userId, password, null);
-    }
-
-    /** Proves the current local password or a fresh server-verified Google session. */
-    public void checkPassword(Long userId, String password, String firebaseIdToken) {
         limits.checkAndRecord(
                 "ACCOUNT_SECURITY",
                 userId.toString(),
@@ -80,79 +74,77 @@ public class AccountSecurityService {
                 "Thử lại sau %d phút",
                 "Quá nhiều yêu cầu");
         User account = users.findById(userId).orElseThrow();
-        if (password != null && !password.isBlank()
+        if (password != null && !password.isBlank() && account.getPassword() != null
                 && passwords.matches(password, account.getPassword())) {
             return;
         }
-        if (firebaseAdminService != null
-                && firebaseAdminService.verifyRecentGoogleReauthentication(firebaseIdToken, account.getEmail())) {
-            return;
-        }
         throw new UnauthorizedException(
-                "Mật khẩu không đúng. Nếu bạn dùng Google, hãy xác minh lại bằng Google trong cửa sổ hiện ra.");
+                "Mật khẩu hiện tại không đúng. Nếu bạn đăng nhập bằng Google và chưa thiết lập mật khẩu, hãy đặt mật khẩu trước khi thực hiện thao tác này.");
     }
 
     @Transactional
-    public void close(Long userId, String password, boolean delete, String firebaseIdToken) {
-        checkPassword(userId, password, firebaseIdToken);
+    public void deleteAccount(Long userId, String password, String confirmPassword) {
+        if (!Objects.equals(password, confirmPassword)) {
+            throw new BadRequestException("Mật khẩu nhập lại không khớp. Vui lòng kiểm tra và nhập lại.");
+        }
+        checkPassword(userId, password);
         User account = users.findById(userId).orElseThrow();
-        String usernameBeforeDeactivation = account.getUsername();
-        String avatarUrlBeforeDeletion = delete ? account.getAvatarUrl() : null;
-        String coverUrlBeforeDeletion = delete ? account.getCoverUrl() : null;
+        String usernameBeforeDeletion = account.getUsername();
+        String avatarUrlBeforeDeletion = account.getAvatarUrl();
+        String coverUrlBeforeDeletion = account.getCoverUrl();
         account.setActive(false);
-        account.setSelfDeactivated(!delete);
+        account.setSelfDeactivated(false);
         Instant revokedAt = Instant.now();
         account.setTokensRevokedAt(revokedAt);
         refreshTokens.revokeAll(userId, revokedAt);
-        if (delete) {
-            account.setUsername(UsernamePolicy.deletedAccountUsername(userId));
-            account.setEmail("deleted_" + userId + "@invalid.local");
-            account.setFullName("Tài khoản đã xóa");
-            account.setBio(null);
-            account.setAvatarUrl(null);
-            account.setCoverUrl(null);
-            account.setPassword(passwords.encode(UUID.randomUUID().toString()));
-            account.setResetPasswordToken(null);
-            account.setResetPasswordExpiry(null);
-            account.setVerificationToken(null);
-            account.setVerificationTokenExpiry(null);
-            account.setVerificationEmailSentAt(null);
-        }
+
+        account.setUsername(UsernamePolicy.deletedAccountUsername(userId));
+        account.setEmail("deleted_" + userId + "@invalid.local");
+        account.setFullName("Tài khoản đã xóa");
+        account.setBio(null);
+        account.setAvatarUrl(null);
+        account.setCoverUrl(null);
+        account.setPassword(passwords.encode(UUID.randomUUID().toString()));
+        account.setResetPasswordToken(null);
+        account.setResetPasswordExpiry(null);
+        account.setVerificationToken(null);
+        account.setVerificationTokenExpiry(null);
+        account.setVerificationEmailSentAt(null);
         users.save(account);
+
         if (authenticationUserCache != null) {
-            String usernameAfterDeactivation = account.getUsername();
+            String usernameAfterDeletion = account.getUsername();
             TransactionCommitHooks.afterCommit(() -> {
-                authenticationUserCache.invalidate(usernameBeforeDeactivation);
-                if (!Objects.equals(usernameBeforeDeactivation, usernameAfterDeactivation)) {
-                    authenticationUserCache.invalidate(usernameAfterDeactivation);
+                authenticationUserCache.invalidate(usernameBeforeDeletion);
+                if (!Objects.equals(usernameBeforeDeletion, usernameAfterDeletion)) {
+                    authenticationUserCache.invalidate(usernameAfterDeletion);
                 }
             });
         }
-        if (delete) {
-            friends.deleteByFollowerIdOrFollowedId(userId, userId);
-            closeFriends.deleteByRequesterIdOrReceiverId(userId, userId);
-            communityMembers.deleteByUserId(userId);
-            groupMembers.deleteByUserId(userId);
-            groupReadStatuses.deleteByUserId(userId);
-            notificationCleanup.removeAccountReferences(userId);
-            TransactionCommitHooks.afterCommit(() -> {
+
+        friends.deleteByFollowerIdOrFollowedId(userId, userId);
+        closeFriends.deleteByRequesterIdOrReceiverId(userId, userId);
+        communityMembers.deleteByUserId(userId);
+        groupMembers.deleteByUserId(userId);
+        groupReadStatuses.deleteByUserId(userId);
+        notificationCleanup.removeAccountReferences(userId);
+        TransactionCommitHooks.afterCommit(() -> {
+            try {
+                accountDataCleanupService.deleteUserData(
+                        userId, avatarUrlBeforeDeletion, coverUrlBeforeDeletion);
+            } catch (RuntimeException cleanupError) {
+                org.slf4j.LoggerFactory.getLogger(AccountSecurityService.class)
+                        .error("Account data cleanup failed after account deletion; scheduling retry (userId={}, cause={})",
+                                userId, cleanupError.getClass().getSimpleName(), cleanupError);
                 try {
-                    accountDataCleanupService.deleteUserData(
-                            userId, avatarUrlBeforeDeletion, coverUrlBeforeDeletion);
-                } catch (RuntimeException cleanupError) {
+                    accountDataCleanupService.enqueueRetry(
+                            userId, avatarUrlBeforeDeletion, coverUrlBeforeDeletion, cleanupError);
+                } catch (RuntimeException enqueueError) {
                     org.slf4j.LoggerFactory.getLogger(AccountSecurityService.class)
-                            .error("Account data cleanup failed after account deletion; scheduling retry (userId={}, cause={})",
-                                    userId, cleanupError.getClass().getSimpleName(), cleanupError);
-                    try {
-                        accountDataCleanupService.enqueueRetry(
-                                userId, avatarUrlBeforeDeletion, coverUrlBeforeDeletion, cleanupError);
-                    } catch (RuntimeException enqueueError) {
-                        org.slf4j.LoggerFactory.getLogger(AccountSecurityService.class)
-                                .error("Unable to persist account cleanup retry; manual reconciliation is required (userId={}, cause={})",
-                                        userId, enqueueError.getClass().getSimpleName(), enqueueError);
-                    }
+                            .error("Unable to persist account cleanup retry; manual reconciliation is required (userId={}, cause={})",
+                                    userId, enqueueError.getClass().getSimpleName(), enqueueError);
                 }
-            });
-        }
+            }
+        });
     }
 }

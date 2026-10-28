@@ -1,11 +1,11 @@
 <div class="feed-panel compose-page" th:fragment="postComposer" xmlns:th="http://www.thymeleaf.org">
-  <form id="composeForm">
+  <form id="composeForm" th:attr="data-community-id=${community != null ? community.id : ''}">
     <div class="compose">
       <img class="compose__avatar"
            th:src="${currentUser != null and currentUser.avatarUrl != null ? currentUser.avatarUrl : '/images/avatar_default.png'}"
            src="/images/avatar_default.png" alt="Ảnh đại diện của tôi">
       <div class="compose__body compose__body--editor">
-        <textarea id="composeContent" maxlength="2000" placeholder="Có gì mới?"></textarea>
+        <textarea id="composeContent" maxlength="2000" th:attr="placeholder=${community != null ? 'Đăng gì đó trong ' + community.name + '...' : 'Có gì mới?'}" placeholder="Có gì mới?"></textarea>
         <div id="composePreview"></div>
       </div>
     </div>
@@ -26,14 +26,30 @@
           <span>Video</span>
         </label>
         <input type="file" id="composeVideoInput" accept="video/*" hidden>
-        <label class="compose-page__visibility" for="postVisibility">
-          <span>Hiển thị</span>
-          <select id="postVisibility" aria-label="Ai có thể xem bài viết">
-            <option value="PUBLIC">Công khai</option>
-            <option value="FRIENDS">Bạn bè</option>
-            <option value="ONLY_ME">Chỉ mình tôi</option>
-          </select>
-        </label>
+        <div class="compose-page__visibility" th:if="${community == null}">
+          <input type="hidden" id="postVisibility" name="visibility" value="PUBLIC">
+          <button type="button" class="post-audience-trigger" data-audience-open popovertarget="postAudienceMenu"
+                  aria-haspopup="listbox" aria-controls="postAudienceMenu" aria-expanded="false"
+                  aria-label="Ai có thể xem bài viết: Công khai">
+            <span data-audience-current-icon aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg></span>
+            <span data-audience-current-label>Công khai</span>
+            <svg class="post-audience-trigger__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </button>
+          <div id="postAudienceMenu" class="post-audience-menu" popover="auto" role="listbox" aria-label="Ai có thể xem bài viết">
+            <button type="button" class="post-audience-option" role="option" data-audience-value="PUBLIC" aria-selected="true" aria-label="Công khai">
+              <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg></span><span>Công khai</span>
+            </button>
+            <button type="button" class="post-audience-option" role="option" data-audience-value="FRIENDS" aria-selected="false" aria-label="Bạn bè">
+              <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M1 21v-3a8 8 0 0 1 16 0v3zm17 0v-3a9 9 0 0 0-1.5-5 6 6 0 0 1 6.5 6v2z"/></svg></span><span>Bạn bè</span>
+            </button>
+            <button type="button" class="post-audience-option" role="option" data-audience-value="CLOSE_FRIENDS" aria-selected="false" aria-label="Bạn thân">
+              <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path fill="currentColor" stroke="none" d="m12 5 2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5.2 10l4.7-.7z"/></svg></span><span>Bạn thân</span>
+            </button>
+            <button type="button" class="post-audience-option" role="option" data-audience-value="ONLY_ME" aria-selected="false" aria-label="Chỉ mình tôi">
+              <span class="post-audience-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Chỉ mình tôi</span>
+            </button>
+          </div>
+        </div>
       </div>
       <button type="submit" class="btn-post" id="composeSubmit" disabled>Đăng</button>
     </div>

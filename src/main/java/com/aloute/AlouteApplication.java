@@ -11,6 +11,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class AlouteApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(AlouteApplication.class, args);
+        SpringApplication application = new SpringApplication(AlouteApplication.class);
+        application.addListeners(new com.aloute.config.LocalServicesAutoStarter());
+        application.run(args);
     }
 }

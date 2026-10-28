@@ -187,11 +187,11 @@ public class SecurityConfig {
                                 auth.requestMatchers("/actuator/health", "/actuator/health/**")
                                         .permitAll()
                                 .requestMatchers("/actuator/**")
-                                        .hasAnyRole("ADMIN", "HOST")
+                                        .hasRole("HOST")
                                 .requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").hasAnyRole("ADMIN", "HOST")
                                 .requestMatchers("/api/host/**").hasRole("HOST")
-                                .requestMatchers("/admin/dashboard").hasRole("HOST")
-                                .requestMatchers("/api/admin/**", "/admin/**").hasRole("ADMIN")
+                                .requestMatchers("/admin/dashboard", "/host/**").hasRole("HOST")
+                                .requestMatchers("/api/admin/**", "/admin/**").hasAnyRole("ADMIN", "HOST")
                                 .requestMatchers(
                                                 "/",
                                                 "/login",
