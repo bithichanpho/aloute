@@ -4,6 +4,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
 
 // Full production chat.js in a real browser; media, peer transport and STOMP are test doubles.
 const source = fs.readFileSync('src/main/resources/static/js/chat.js', 'utf8');
+const callsSource = fs.readFileSync('src/main/resources/static/js/calls.js', 'utf8');
 const template = fs.readFileSync('src/main/resources/templates/chat/index.html', 'utf8')
   .match(/<template id="chatThreadTemplate">[\s\S]*?<\/template>/)[0];
 const html = `<body data-current-user-id="1"><div id="chatList"><button class="chat-item" data-user-id="2"
@@ -29,7 +30,11 @@ const html = `<body data-current-user-id="1"><div id="chatList"><button class="c
         window.__alouteRealtimeConnected = true;
         window.fixtureClient = { send(destination, headers, body) { framesSent.push({ destination, ...JSON.parse(body) }); } };
         window.Aloute = {
-          onRealtimeReady(fn) { window.reconnectFixture = () => fn(fixtureClient); fn(fixtureClient); },
+          onRealtimeReady(fn) {
+            (window.realtimeListeners ||= []).push(fn);
+            window.reconnectFixture = () => realtimeListeners.forEach(listener => listener(fixtureClient));
+            fn(fixtureClient);
+          },
           toast: (...args) => toasts.push(args),
           escapeHtml: value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])),
           api: async url => url.includes('ice-servers') ? [{ urls: 'stun:stun.example.invalid' }] : []
@@ -54,6 +59,7 @@ const html = `<body data-current-user-id="1"><div id="chatList"><button class="c
           close() { this.connectionState = 'closed'; }
         };
       });
+      await page.addScriptTag({ content: callsSource });
       await page.addScriptTag({ content: source });
       await page.locator('.chat-item').click();
       assert.equal(await page.locator('#chatDetailsProfileLink').getAttribute('href'), '/people/friend.name');

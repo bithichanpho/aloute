@@ -17,6 +17,23 @@ import java.util.Locale;
 
 class FeatureTemplateTest {
     @Test
+    void joinedCommunityAndDiscoveryUseSeparateSectionsAndShowTheEmptyState() throws Exception {
+        var joined = new com.aloute.dto.response.CommunityResponse();
+        joined.setId(7L); joined.setName("Nhóm đã tham gia"); joined.setPrivacy("PUBLIC"); joined.setMember(true);
+        var available = new com.aloute.dto.response.CommunityResponse();
+        available.setId(8L); available.setName("Nhóm chưa tham gia"); available.setPrivacy("PUBLIC");
+        for (boolean allJoined : java.util.List.of(false, true)) {
+            String html = render("community/index", false, "communities", java.util.Map.of(
+                    "activeNav", "communities", "myCommunities", allJoined ? java.util.List.of(joined, available) : java.util.List.of(joined),
+                    "discoverCommunities", allJoined ? java.util.List.of() : java.util.List.of(available)));
+            assertEquals(1, html.split("Nhóm đã tham gia", -1).length - 1);
+            assertTrue(html.contains("id=\"discoverCommunitiesSection\""));
+            if (allJoined) assertTrue(html.contains("Không còn hội nhóm công khai nào bạn chưa tham gia."));
+            java.nio.file.Files.writeString(java.nio.file.Path.of("target/community-" + (allJoined ? "joined" : "discover") + "-template.html"), html);
+        }
+    }
+
+    @Test
     void profileFixtureUsesUsernameLinksAndKeepsMediaSeparateFromDeferredReposts() throws Exception {
         var own = savedPostFixtures().get(1); own.setId("owner-photo"); own.setUserId(1L); own.setUsername("tester");
         String html = render("profile/view", false, "profile", java.util.Map.ofEntries(

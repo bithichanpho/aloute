@@ -348,6 +348,7 @@ window.Aloute = (function () {
         document.dispatchEvent(new CustomEvent('aloute:group-update', { detail: payload }));
       });
 
+      document.dispatchEvent(new CustomEvent('aloute:realtime-ready', { detail: { client: stompClient } }));
       readyCallbacks.forEach(cb => cb(stompClient));
       readyCallbacks.length = 0;
     }, function (frame) {
@@ -2943,7 +2944,11 @@ window.Aloute = (function () {
         btn.dataset.busy = '1';
         setCommunityJoinButton(btn, !wasJoined);
         try {
-          await api('/api/communities/' + id + (wasJoined ? '/leave' : '/join'), { method: 'POST' });
+          const membership = await api('/api/communities/' + id + (wasJoined ? '/leave' : '/join'), { method: 'POST' });
+          if (page.isConnected && page.classList.contains('community-page--list') && (wasJoined || membership?.member)) {
+            // Refresh both lists from the server after membership changes.
+            await navigateSoft(new URL(window.location.href), false);
+          }
         } catch (err) {
           setCommunityJoinButton(btn, wasJoined);
           toast(err.message || 'Không thể thực hiện thao tác này', true);

@@ -46,6 +46,8 @@ public class PostFeedReader implements FeedPostReader {
         // A feed cursor needs a valid timestamp. Preserve malformed rows for explicit repair.
         clauses.add(Criteria.where("createdAt").validDateTime());
         clauses.add(Criteria.where("moderationStatus").ne(ModerationStatus.HIDDEN));
+        // Discovery lists show other authors; explicit keyword searches use PostService instead.
+        if (viewerId != null) clauses.add(Criteria.where("userId").ne(String.valueOf(viewerId)));
         clauses.add(new Criteria().orOperator(
                 Criteria.where("repostOfId").is(null),
                 new Criteria().andOperator(
@@ -90,6 +92,7 @@ public class PostFeedReader implements FeedPostReader {
                 new Criteria().orOperator(Criteria.where("repostOfId").is(null),
                         new Criteria().andOperator(Criteria.where("repostOfId").ne(null),
                                 Criteria.where("content").nin(null, "")))));
+        if (viewerId != null) query.addCriteria(Criteria.where("userId").ne(String.valueOf(viewerId)));
         if (followingOnly) query.addCriteria(Criteria.where("userId").inReadView(FollowedAccounts.READ_VIEW, viewerId, viewerId));
         List<Post> loaded = documentStore.find(query.limit(ids.size()), Post.class);
         ContentAccessService.AccessBatch permissions = access.forPosts(loaded, viewerId);

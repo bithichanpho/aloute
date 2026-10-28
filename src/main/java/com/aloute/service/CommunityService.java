@@ -180,9 +180,11 @@ public class CommunityService {
     }
 
     public List<CommunityResponse> getDiscoverList(Long userId, int limit) {
-        List<Community> communities =
-                communityRepository.findByPrivacyOrderByMemberCountDesc(
-                        PRIVACY_PUBLIC, PageRequest.of(0, clamp(limit, 1, 50)));
+        var page = PageRequest.of(0, clamp(limit, 1, 50));
+        // Exclude joined groups before applying LIMIT, so they cannot crowd out new groups.
+        List<Community> communities = userId == null
+                ? communityRepository.findByPrivacyOrderByMemberCountDesc(PRIVACY_PUBLIC, page)
+                : communityRepository.findDiscoverableForUser(PRIVACY_PUBLIC, userId, activeRoles(), page);
         return toResponses(communities, userId);
     }
 

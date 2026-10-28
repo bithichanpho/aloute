@@ -37,7 +37,7 @@
     </div>
 
     <div id="communityBrowseSections">
-      <section class="community-list-section">
+      <section class="community-list-section" id="myCommunitiesSection">
         <div class="community-list-section__header">
           <div>
             <h2>Nhóm của bạn</h2>
@@ -65,7 +65,7 @@
         </div>
       </section>
 
-      <section class="community-list-section">
+      <section class="community-list-section" id="discoverCommunitiesSection">
         <div class="community-list-section__header">
           <div>
             <h2>Khám phá hội nhóm</h2>
@@ -92,7 +92,7 @@
           </div>
         </div>
         <div class="community-search-results__state" th:if="${#lists.isEmpty(discoverCommunities)}">
-          Chưa có hội nhóm công khai nào.
+          Không còn hội nhóm công khai nào bạn chưa tham gia.
         </div>
       </section>
     </div>

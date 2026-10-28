@@ -191,6 +191,21 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>moderation</directory>
+                <targetPath>local-services/moderation</targetPath>
+                <includes>
+                    <include>main.py</include>
+                    <include>requirements.txt</include>
+                    <include>Dockerfile</include>
+                    <include>.dockerignore</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
