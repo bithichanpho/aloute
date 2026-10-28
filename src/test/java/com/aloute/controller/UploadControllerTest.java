@@ -83,6 +83,42 @@ class UploadControllerTest {
     }
 
     @Test
+    void chatFileAcceptsUnknownBinaryAtOneMegabyteWithoutContentModeration() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "archive.custom", "application/octet-stream", new byte[1024 * 1024]);
+        Map<String, String> uploaded = Map.of(
+                "url", "https://res.cloudinary.com/demo/raw/upload/v1/aloute/chat/archive.custom",
+                "type", "raw", "publicId", "aloute/chat/archive.custom", "resourceType", "raw");
+        when(storage.uploadMedia(file, com.aloute.service.UploadContentValidator.DetectedType.FILE, UploadPurpose.CHAT))
+                .thenReturn(uploaded);
+
+        assertSame(uploaded, controller.uploadChatFile(authentication, file).getData());
+
+        verify(uploadLimits).assertAllowed(7L);
+        verify(lifecycle).registerUpload(uploaded, UploadPurpose.CHAT, 7L);
+        verifyNoInteractions(moderation);
+    }
+
+    @Test
+    void chatFileStillEnforcesSizeLimit() {
+        org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
+        when(file.getSize()).thenReturn(DataSize.ofMegabytes(1).toBytes() + 1);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.aloute.common.exception.BadRequestException.class,
+                () -> controller.uploadChatFile(authentication, file));
+        verifyNoInteractions(storage, lifecycle, moderation);
+    }
+
+    @Test
+    void chatFileRequiresAuthentication() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.aloute.common.exception.UnauthorizedException.class,
+                () -> controller.uploadChatFile(null, png()));
+        verifyNoInteractions(storage, lifecycle, moderation);
+    }
+
+    @Test
     void omittedPurposeDefaultsToGeneralAndIsStillModerated() throws Exception {
         MockMultipartFile file = png();
         Map<String, String> uploaded = Map.of(

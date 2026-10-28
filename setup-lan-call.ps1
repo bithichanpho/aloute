@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$LanIp = $env:ALOUTE_LAN_IP,
-    [ValidateRange(1024,65535)][int]$Port = 8080,
+    [ValidateRange(1024,65535)][int]$Port = 8085,
     [switch]$ForceNewCertificate,
     [switch]$TrustCertificate,
     [switch]$PrepareOnly

@@ -91,7 +91,7 @@ spring:
       - application-actuator.yml
 
 server:
-  port: ${SERVER_PORT:8082}
+  port: ${SERVER_PORT:8085}
 
   compression:
     enabled: true

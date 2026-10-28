@@ -85,6 +85,27 @@ class MediaAssetLifecycleServiceTest {
     }
 
     @Test
+    void registersRawChatAttachmentAndAllowsOwnerToSendIt() {
+        String url = "https://res.cloudinary.com/demo/raw/upload/v1/aloute/chat/report.pdf";
+        Map<String, String> uploaded = Map.of(
+                "url", url, "publicId", "aloute/chat/report.pdf", "resourceType", "raw", "type", "raw");
+        when(storage.resolveAlouteMediaReference(url)).thenReturn(
+                Optional.of(new ImageStorageService.ManagedMediaReference("aloute/chat/report.pdf", "raw")));
+
+        service.registerUpload(uploaded, UploadPurpose.CHAT, 7L);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(ManagedMediaAsset.class);
+        verify(documentStore).save(captor.capture());
+        when(documentStore.findById("raw:aloute/chat/report.pdf", ManagedMediaAsset.class))
+                .thenReturn(captor.getValue());
+        assertDoesNotThrow(() -> service.requirePurposeUrl(url, UploadPurpose.CHAT, "7", "raw"));
+        assertThrows(BadRequestException.class,
+                () -> service.requirePurposeUrl(url, UploadPurpose.CHAT, "8", "raw"));
+        assertThrows(BadRequestException.class,
+                () -> service.registerUpload(uploaded, UploadPurpose.POST, 7L));
+    }
+
+    @Test
     void rejectsPostUploadThatBelongsToAnotherPurpose() {
         String url = "https://res.cloudinary.com/demo/image/upload/v1/aloute/chat/chat-image.png";
         Map<String, String> image = Map.of(

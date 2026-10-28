@@ -851,7 +851,7 @@ public class ChatService implements com.aloute.messaging.api.MissedCallHistory {
         if (mediaUploadModeration == null) {
             throw new BadRequestException("Không thể xác minh media chat; vui lòng tải lên lại");
         }
-        mediaUploadModeration.requirePurposeUrl(mediaUrl, UploadPurpose.CHAT, senderId, "image", "video");
+        mediaUploadModeration.requirePurposeUrl(mediaUrl, UploadPurpose.CHAT, senderId, "image", "video", "raw");
     }
 
     private String notificationPreview(String content, String mediaUrl) {

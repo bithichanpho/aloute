@@ -73,7 +73,8 @@ public class MediaAssetLifecycleService implements com.aloute.media.api.PostMedi
         String resourceType = trimToNull(uploaded.get("resourceType"));
         String type = trimToNull(uploaded.get("type"));
         if (url == null || publicId == null || resourceType == null
-                || !("image".equals(type) || "video".equals(type))
+                || !("image".equals(type) || "video".equals(type)
+                        || ("raw".equals(type) && purpose.allows(UploadContentValidator.DetectedType.FILE)))
                 || !type.equals(resourceType)) {
             throw new BadRequestException("Thông tin media tải lên không hợp lệ");
         }

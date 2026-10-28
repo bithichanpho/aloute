@@ -30,9 +30,10 @@ public enum UploadPurpose {
                 || publicId.startsWith(cloudinaryFolder() + "/"));
     }
 
-    /** Documents/raw files remain disabled until a dedicated content/file scanner is available. */
+    /** Chat attachments may contain arbitrary files without content moderation. */
     public boolean allows(UploadContentValidator.DetectedType type) {
-        if (type == null || type == UploadContentValidator.DetectedType.FILE) return false;
+        if (type == null) return false;
+        if (type == UploadContentValidator.DetectedType.FILE) return this == CHAT;
         return switch (this) {
             case COMMUNITY, AVATAR -> type == UploadContentValidator.DetectedType.IMAGE;
             case POST, CHAT, GENERAL -> type == UploadContentValidator.DetectedType.IMAGE

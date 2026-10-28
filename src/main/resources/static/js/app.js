@@ -664,7 +664,7 @@ window.Aloute = (function () {
         anchor.className = match[2] === '#' ? 'content-tag content-tag--hashtag' : 'content-tag content-tag--mention';
         anchor.textContent = match[2] + match[3];
         anchor.href = match[2] === '#'
-          ? '/hashtag/' + encodeURIComponent(match[3].toLocaleLowerCase())
+          ? '/search?q=' + encodeURIComponent('#' + match[3])
           : '/people/' + encodeURIComponent(match[3]);
         fragment.append(anchor);
         offset = index + match[0].length;
@@ -1849,6 +1849,16 @@ window.Aloute = (function () {
     }
 
     const SEARCH_PAGE_SIZE = 20;
+
+    const initialQuery = new URLSearchParams(window.location.search).get('q')?.trim();
+    if (initialQuery) {
+      input.value = initialQuery;
+      keyword = initialQuery;
+      currentTab = initialQuery.startsWith('#') ? 'posts' : 'users';
+      setActiveTab(currentTab);
+      if (clearBtn) clearBtn.hidden = false;
+      runSearch();
+    }
 
     async function runSearch(page = 0, append = false) {
       if (append && searchController) return;
