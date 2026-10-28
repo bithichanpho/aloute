@@ -4,7 +4,7 @@ const { chromium } = require(process.env.ALOUTE_PLAYWRIGHT_MODULE);
 let source = fs.readFileSync('src/main/resources/static/js/app.js');
 const article = id => `<article class="post" data-post-id="${id}">${id}</article>`;
 const shell = content => `<!doctype html><html><head><meta charset="utf-8"><style>
-  [hidden]{display:none!important}body{margin:0}.post{height:700px;border-bottom:1px solid;box-sizing:border-box}
+  [hidden]{display:none!important}body{margin:0}.post{height:1600px;border-bottom:1px solid;box-sizing:border-box}
   button{min-height:44px}nav{position:fixed;top:0;right:0;z-index:20}
   </style></head><body>${content}<script src="/js/app.js"></script></body></html>`;
 const loader = (cursor = 'c1') => `<button data-load-posts data-url="/api/posts/feed-fragment?tab=following&tag=hello" data-cursor="${cursor}">Tải thêm</button>`;
@@ -14,7 +14,7 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 
 (async () => {
   if (process.env.ALOUTE_INFINITE_ASSET_ORIGIN) {
-    const response = await fetch(process.env.ALOUTE_INFINITE_ASSET_ORIGIN + '/js/app.js?v=20261028-infinite-posts-v1');
+    const response = await fetch(process.env.ALOUTE_INFINITE_ASSET_ORIGIN + '/js/app.js?v=20261028-infinite-posts-v2');
     assert.equal(response.status,200);
     const served = Buffer.from(await response.arrayBuffer());
     assert.deepEqual(served,source,'The running app must serve the updated script');
@@ -39,6 +39,23 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
   const bottom = page => page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   try {
     for (const width of [1280,390]) {
+      // A slow response starts with reading space left and finishes before reaching the end.
+      let prefetched = 0;
+      const early = await open(width,shell(`<main>${article('reading0')}${article('reading1')}${loader()}</main>`),async route => {
+        prefetched++;
+        await delay(350);
+        return fragment(route,article('ready-before-bottom'));
+      });
+      await early.page.evaluate(() => window.scrollTo(0,700));
+      await early.page.waitForFunction(() => document.querySelector('[data-load-posts]').disabled);
+      const readingSpace = await early.page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
+      assert.ok(readingSpace >= 1200,'Start fetching while more than one screen of posts remains');
+      await early.page.locator('[data-post-id="ready-before-bottom"]').waitFor();
+      assert.equal(prefetched,1);
+      assert.equal(await early.page.evaluate(() => scrollY),700,'Background loading must not move the reading position');
+      assert.deepEqual(early.errors,[]);
+      await early.page.close();
+
       // Multiple pages, duplicate suppression, filtered empty windows, one request at a time, final stop.
       const requests = [];
       let active = 0, maxActive = 0;
